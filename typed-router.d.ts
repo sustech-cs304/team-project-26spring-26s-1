@@ -30,6 +30,34 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/calendar/': RouteRecordInfo<
+      '/calendar/',
+      '/calendar',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/chat/': RouteRecordInfo<
+      '/chat/',
+      '/chat',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/': RouteRecordInfo<
+      '/settings/',
+      '/settings',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/store/': RouteRecordInfo<
+      '/store/',
+      '/store',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -46,6 +74,30 @@ declare module 'vue-router/auto-routes' {
     'src/pages/index.vue': {
       routes:
         | '/'
+      views:
+        | never
+    }
+    'src/pages/calendar/index.vue': {
+      routes:
+        | '/calendar/'
+      views:
+        | never
+    }
+    'src/pages/chat/index.vue': {
+      routes:
+        | '/chat/'
+      views:
+        | never
+    }
+    'src/pages/settings/index.vue': {
+      routes:
+        | '/settings/'
+      views:
+        | never
+    }
+    'src/pages/store/index.vue': {
+      routes:
+        | '/store/'
       views:
         | never
     }

@@ -1,7 +1,7 @@
 <template>
     <v-layout class="rounded rounded-md border">
         <v-app-bar ref="appBarRef" height="32">
-            <v-app-bar-title>Application bar</v-app-bar-title>
+            <v-app-bar-title>My app</v-app-bar-title>
             <template #append>
                 <div ref="btnGroupRef">
                     <v-btn size="small" @click="minimize" text :ripple="false">
@@ -18,25 +18,45 @@
             </template>
         </v-app-bar>
 
-        <v-navigation-drawer>
+        <v-navigation-drawer permanent rail>
             <v-list nav>
-                <v-list-item title="Drawer left" link></v-list-item>
+                <v-menu location="end">
+                    <template #activator="{ props }">
+                        <v-avatar size="38" color="secondary" v-bind="props">
+                            <v-icon>mdi-account</v-icon>
+                        </v-avatar>
+                    </template>
+                    <v-card rounded="lg" min-width="200">
+                        <v-card-text>
+                            <div class="text-subtitle-2 font-weight-semibold">John Doe</div>
+                            <div class="text-caption text-medium-emphasis">john@example.com</div>
+                        </v-card-text>
+                        <v-divider />
+                        <v-list-item prepend-icon="mdi-logout" title="退出登录" @click="logout" />
+                    </v-card>
+                </v-menu>
+                <nav-icon-item title="Home" icon="mdi-home" to="/" />
+                <nav-icon-item title="Chat" icon="mdi-message" to="/chat" />
+                <nav-icon-item title="Calendar" icon="mdi-calendar" to="/calendar" />
+                <nav-icon-item title="Store" icon="mdi-connection" to="/store" />
+                <nav-icon-item title="Settings" icon="mdi-cog" to="/settings" />
             </v-list>
         </v-navigation-drawer>
 
-        <v-navigation-drawer location="right">
+        <!-- <v-navigation-drawer location="right">
             <v-list nav>
                 <v-list-item title="Drawer right" link></v-list-item>
             </v-list>
-        </v-navigation-drawer>
+        </v-navigation-drawer> -->
 
         <v-main>
             <router-view />
         </v-main>
     </v-layout>
 </template>
-<script lang="ts" setup>
+<script setup lang="ts">
     import { getCurrentWindow } from '@tauri-apps/api/window'
+    import NavIconItem from '@/components/NavIconItem.vue'
 
     const appWindow = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
         ? getCurrentWindow()
@@ -72,6 +92,8 @@
             isMaximized.value = true
         }
     }
+
+    const logout = () => { }
 
     const closeWindow = () => void appWindow?.close()
 </script>
