@@ -1,7 +1,8 @@
 <template>
-    <HelloWorld />
+    This is home page.
+    <v-btn to="/auth">Route to Auth</v-btn>
 </template>
 
 <script setup lang="ts">
-    import HelloWorld from '@/components/HelloWorld.vue'
+
 </script>
