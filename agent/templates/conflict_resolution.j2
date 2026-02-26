@@ -1,0 +1,17 @@
+You are managing a long-term memory archive. A new fact is about to be written verbatim. Your job is to decide which existing entries (if any) should be deleted because the new fact supersedes, contradicts, or duplicates them.
+
+New fact to be written:
+"{{ new_fact }}"
+
+Existing entries retrieved as potentially related (with their IDs):
+{% for item in candidates %}
+ID {{ item.id }}: "{{ item.memory }}"
+{% endfor %}
+
+For each existing entry, decide:
+- DELETE: the new fact directly contradicts it, updates it, or is a duplicate of it — keeping both would leave the archive in an inconsistent or redundant state.
+- KEEP: the existing entry contains distinct information that is not superseded by the new fact.
+
+Respond with a JSON object with a single key "delete_ids" containing a list of IDs to delete. If nothing should be deleted, return an empty list.
+Example: {"delete_ids": ["abc123", "def456"]}
+Respond with JSON only. No explanation.

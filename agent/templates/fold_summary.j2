@@ -1,0 +1,10 @@
+Compress the following conversation segment into a concise summary. This summary will replace the original messages in the active context window of an ongoing chat session, so it must preserve everything needed to continue the conversation coherently.
+
+Write 3–6 sentences in third person (e.g. "The user asked about X. The assistant explained Y...").
+Be dense and factual. Preserve: the main topics discussed, the current state of any ongoing tasks or open questions, and any decisions or conclusions reached.
+Do not include pleasantries or filler. Do not editorialize.
+
+Conversation segment:
+{% for message in dialogue %}
+{{ message.role | capitalize }}: {{ message.content }}
+{% endfor %}

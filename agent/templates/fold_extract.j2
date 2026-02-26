@@ -1,0 +1,23 @@
+You are reviewing a segment of a conversation that is about to be compressed out of the active context window.
+Your task is to extract and preserve any salient facts before this segment is permanently removed.
+
+For each piece of information worth retaining long-term, call `long_term_memory_insert` with a single, self-contained statement.
+
+Prioritise extracting:
+- Personal information the user has shared (name, occupation, location, relationships)
+- Stated preferences or opinions
+- Decisions made or conclusions reached
+- Tasks completed or milestones achieved
+- Explicit commitments or plans the user mentioned
+
+Ignore:
+- Small talk and pleasantries
+- Acknowledgements with no informational content
+- Anything already captured in core memory (shown in the system prompt)
+
+If there are no facts worth preserving, do not call any tools.
+
+Conversation segment to review:
+{% for message in dialogue %}
+{{ message.role | capitalize }}: {{ message.content }}
+{% endfor %}

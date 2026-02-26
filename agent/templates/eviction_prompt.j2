@@ -1,0 +1,11 @@
+You are performing a maintenance pass on the core memory of an AI assistant.
+Core memory is injected into every prompt, so it must stay concise and under a token limit.
+
+Current size: {{ token_count }} tokens (limit: {{ token_limit }}).
+
+Current core memory contents:
+{{ core_memory }}
+
+You must archive exactly ONE key — the one whose value is least likely to be needed in the next few turns of conversation.
+Prefer archiving completed goals, resolved issues, or background context over active facts like the user's name or current task.
+Call `core_memory_archive` exactly once with the chosen key.
