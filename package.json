@@ -13,6 +13,7 @@
   "dependencies": {
     "@fontsource/roboto": "^5.2.9",
     "@mdi/font": "7.4.47",
+    "@tauri-apps/api": "^2.0.0",
     "pinia": "^3.0.4",
     "vue": "^3.5.26",
     "vue-i18n": "^11.2.7",
