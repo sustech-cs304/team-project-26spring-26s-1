@@ -18,13 +18,15 @@
             </template>
         </v-app-bar>
 
-        <v-navigation-drawer permanent rail>
-            <v-list nav>
+        <v-navigation-drawer permanent rail rail-width="42">
+            <v-list nav class="px-0 flex-grow-1">
                 <v-menu location="end">
                     <template #activator="{ props }">
-                        <v-avatar size="38" color="secondary" v-bind="props">
-                            <v-icon>mdi-account</v-icon>
-                        </v-avatar>
+                        <div class="d-flex justify-center my-2" v-bind="props">
+                            <v-avatar size="32" color="secondary" variant="outlined">
+                                <v-icon>mdi-account</v-icon>
+                            </v-avatar>
+                        </div>
                     </template>
                     <v-card rounded="lg" min-width="200">
                         <v-card-text>
@@ -35,12 +37,18 @@
                         <v-list-item prepend-icon="mdi-logout" title="退出登录" @click="logout" />
                     </v-card>
                 </v-menu>
+                <v-divider class="pb-2"></v-divider>
                 <nav-icon-item title="Home" icon="mdi-home" to="/" />
                 <nav-icon-item title="Chat" icon="mdi-message" to="/chat" />
                 <nav-icon-item title="Calendar" icon="mdi-calendar" to="/calendar" />
                 <nav-icon-item title="Store" icon="mdi-connection" to="/store" />
                 <nav-icon-item title="Settings" icon="mdi-cog" to="/settings" />
             </v-list>
+            <template #append>
+                <div class="d-flex justify-center py-3">
+                    <TokenUsageIndicator :used-tokens="120" :total-tokens="500" />
+                </div>
+            </template>
         </v-navigation-drawer>
 
         <!-- <v-navigation-drawer location="right">
@@ -57,6 +65,7 @@
 <script setup lang="ts">
     import { getCurrentWindow } from '@tauri-apps/api/window'
     import NavIconItem from '@/components/NavIconItem.vue'
+    import TokenUsageIndicator from '@/components/TokenUsageIndicator.vue'
 
     const appWindow = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
         ? getCurrentWindow()
