@@ -6,6 +6,7 @@ from .config import (
     CONTEXT_TOKEN_LIMIT,
     FOLD_TRIGGER_RATIO,
     FOLD_FRACTION,
+    SANDBOX_ENABLED,
     jinja_env,
     tokenizer,
 )
@@ -55,6 +56,7 @@ class ContextManager:
         return _tmpl_system.render(
             core_memory=self.core_memory.format_memory(),
             token_limit=self.core_memory_limit,
+            sandbox=SANDBOX_ENABLED,
         )
 
     # ------------------------------------------------------------------

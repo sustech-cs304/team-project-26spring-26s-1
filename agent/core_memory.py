@@ -1,12 +1,27 @@
+import json
 from .tools import Tools
-from .config import tokenizer
+from .config import tokenizer, CORE_MEMORY_PATH
 
 class CoreMemory:
     """
     A class to represent the core memory of the agent.
+    Entries are persisted to disk so they survive process restarts.
     """
     def __init__(self):
-        self.memory : dict[str, str] = {}
+        CORE_MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if CORE_MEMORY_PATH.exists():
+            try:
+                self.memory: dict[str, str] = json.loads(CORE_MEMORY_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                self.memory = {}
+        else:
+            self.memory: dict[str, str] = {}
+
+    def _save(self) -> None:
+        CORE_MEMORY_PATH.write_text(
+            json.dumps(self.memory, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def token_count(self) -> int:
         """Return the number of tokens in the formatted core memory string, using cl100k_base encoding."""
@@ -51,9 +66,10 @@ class CoreMemory:
         def tool_func_insert(params: dict) -> str:
             if not params["statement"]:
                 self.memory[params["key"]] = ""
-                return "Statement erased from core memory."
-            self.memory[params["key"]] = self.memory.get(params["key"], "") + params["statement"]
-            return "Statement inserted into core memory."
+            else:
+                self.memory[params["key"]] = self.memory.get(params["key"], "") + params["statement"]
+            self._save()
+            return "Statement inserted into core memory." if params["statement"] else "Statement erased from core memory."
         tools.add_tool(tool_insert, tool_func_insert)
         
         tool_modify = {
@@ -98,6 +114,7 @@ class CoreMemory:
             if params["key"] not in self.memory:
                 return "Key does not exist in core memory."
             self.memory[params["key"]] = self.memory[params["key"]].replace(params["old_substring"], params["new_substring"])
+            self._save()
             return "Statement modified in core memory."
         tools.add_tool(tool_modify, tool_func_modify)
 
@@ -134,6 +151,7 @@ class CoreMemory:
             if key not in self.memory:
                 return f"Key '{key}' does not exist in core memory."
             value = self.memory.pop(key)
+            self._save()
             mem0_instance.archive_fact(f"{key}: {value}", fraction="core_archive")
             return f"Key '{key}' archived to long-term memory (core_archive) and removed from core memory."
         tools.add_tool(tool_archive, tool_func_archive)

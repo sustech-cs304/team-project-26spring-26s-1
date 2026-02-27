@@ -30,7 +30,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
 from .config import (
-    API_BASE_URL,
+    EMBED_API_BASE_URL,
+    EMBED_API_KEY,
     RAG_QDRANT_PATH,
     RAG_COLLECTION_NAME,
     RAG_EMBED_MODEL,
@@ -193,7 +194,7 @@ def ingest_file(
         f"(chunk_size={chunk_size} words, overlap={chunk_overlap} sentences)"
     )
 
-    client = OpenAI(base_url=API_BASE_URL)
+    client = OpenAI(base_url=EMBED_API_BASE_URL, api_key=EMBED_API_KEY)
     print(f"Embedding via {RAG_EMBED_MODEL} …")
     vectors = embed_batched(client, chunks, batch_size=batch_size)
 

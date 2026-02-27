@@ -10,6 +10,7 @@ and is completely separate from the mem0 long-term memory store.
 
 from __future__ import annotations
 
+import atexit
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from openai import OpenAI
@@ -36,6 +37,18 @@ class KnowledgeBase:
         RAG_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
         self._qdrant = QdrantClient(path=str(RAG_QDRANT_PATH))
         self._ensure_collection()
+        atexit.register(self.close)
+
+    def close(self) -> None:
+        """Explicitly close the qdrant client, flushing any pending writes.
+
+        Called by atexit so the flush happens while all library modules are
+        still intact. Safe to call more than once.
+        """
+        try:
+            self._qdrant.close()
+        except Exception:
+            pass
 
     def _ensure_collection(self) -> None:
         existing = {c.name for c in self._qdrant.get_collections().collections}

@@ -3,18 +3,38 @@ from .tools import Tools
 from .config import (
     MEM0_CONFIG,
     ARCHIVE_CANDIDATE_THRESHOLD,
-    AGENT_MODEL,
+    UTILITY_MODEL,
     jinja_env,
 )
 from openai import OpenAI
+import atexit
 import json
 
 _tmpl_conflict = jinja_env.get_template("conflict_resolution.j2")
 
 mem = Memory.from_config(MEM0_CONFIG)
 
+def _close_mem0() -> None:
+    """Explicitly close all qdrant clients held inside the module-level mem object.
+
+    Called by atexit so that the flush happens while all library modules are
+    still intact — well before Python starts nulling out module globals during
+    interpreter teardown, which is when the GC-triggered __del__ path breaks.
+    """
+    for store_attr in ("vector_store", "_telemetry_vector_store"):
+        try:
+            store = getattr(mem, store_attr, None)
+            if store is not None:
+                client = getattr(store, "client", None)
+                if client is not None:
+                    client.close()
+        except Exception:
+            pass
+
+atexit.register(_close_mem0)
+
 class Mem0():
-    def __init__(self, user_id: str | None = None, client: OpenAI | None = None, model: str = AGENT_MODEL):
+    def __init__(self, user_id: str | None = None, client: OpenAI | None = None, model: str = UTILITY_MODEL):
         self.user_id = user_id
         self._client = client
         self._model  = model

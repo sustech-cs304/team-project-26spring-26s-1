@@ -5,6 +5,8 @@ All tuneable parameters live here. Changing a value here takes effect
 everywhere in the codebase without touching individual modules.
 """
 
+import os
+
 from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
 import tiktoken
@@ -13,10 +15,23 @@ import tiktoken
 # API
 # ---------------------------------------------------------------------------
 
-API_BASE_URL: str = "https://api.siliconflow.cn/v1"
+# Main agentic loop
+AGENT_API_BASE_URL: str = "https://api.siliconflow.cn/v1"
+AGENT_API_KEY: str | None = os.getenv("AGENT_API_KEY")
+AGENT_MODEL: str = "Qwen/Qwen3-Next-80B-A3B-Thinking"
 
-# Model used for the main agentic loop and out-of-band management calls
-AGENT_MODEL: str = "Qwen/Qwen3-235B-A22B-Instruct-2507"
+# Lightweight model for cheap background maintenance tasks: mem0 internal LLM,
+# security review of agent-generated code, conflict resolution, etc.
+UTILITY_API_BASE_URL: str = "https://api.siliconflow.cn/v1"
+UTILITY_API_KEY: str | None = os.getenv("UTILITY_API_KEY")
+UTILITY_MODEL: str = "Pro/THUDM/glm-4-9b-chat"
+
+# Embedding model — used by both mem0's vector store and the RAG knowledge base.
+# Must be the same model for both so that stored and query vectors are compatible.
+EMBED_API_BASE_URL: str = "https://api.siliconflow.cn/v1"
+EMBED_API_KEY: str | None = os.getenv("EMBED_API_KEY")
+EMBED_MODEL: str = "BAAI/bge-m3"
+EMBED_DIMS: int = 1024
 
 # ---------------------------------------------------------------------------
 # Database paths
@@ -32,6 +47,9 @@ MEM0_QDRANT_PATH: Path = DATA_DIR / "mem0_qdrant"
 # RAG knowledge-base qdrant store (populated via the agent-ingest CLI)
 RAG_QDRANT_PATH: Path = DATA_DIR / "rag_qdrant"
 
+# Core memory persistence file — survives process restarts
+CORE_MEMORY_PATH: Path = DATA_DIR / "core_memory.json"
+
 # ---------------------------------------------------------------------------
 # mem0 backend
 # ---------------------------------------------------------------------------
@@ -40,22 +58,24 @@ MEM0_CONFIG: dict = {
     "llm": {
         "provider": "openai",
         "config": {
-            "openai_base_url": API_BASE_URL,
-            "model": "THUDM/glm-4-9b-chat",
+            "openai_base_url": UTILITY_API_BASE_URL,
+            "api_key": UTILITY_API_KEY,
+            "model": UTILITY_MODEL,
         },
     },
     "embedder": {
         "provider": "openai",
         "config": {
-            "openai_base_url": API_BASE_URL,
-            "model": "BAAI/bge-m3",
-            "embedding_dims": 1024,
+            "openai_base_url": EMBED_API_BASE_URL,
+            "api_key": EMBED_API_KEY,
+            "model": EMBED_MODEL,
+            "embedding_dims": EMBED_DIMS,
         },
     },
     "vector_store": {
         "provider": "qdrant",
         "config": {
-            "embedding_model_dims": 1024,
+            "embedding_model_dims": EMBED_DIMS,
             "path": str(MEM0_QDRANT_PATH),
         },
     },
@@ -102,10 +122,10 @@ ARCHIVE_CANDIDATE_THRESHOLD: float = 0.70
 # Name of the qdrant collection used for externally-ingested documents
 RAG_COLLECTION_NAME: str = "knowledge_base"
 
-# Embedding model and dimensions for the RAG store.
-# Matches the mem0 embedder so that a single model handles both stores.
-RAG_EMBED_MODEL: str = "BAAI/bge-m3"
-RAG_EMBED_DIMS: int = 1024
+# Aliases for the central embedding constants — kept for backwards compatibility
+# with rag.py and ingest.py which import these names.
+RAG_EMBED_MODEL: str = EMBED_MODEL
+RAG_EMBED_DIMS: int = EMBED_DIMS
 
 # Ingestion chunking — word count per chunk; overlap is in *sentences* (not words)
 RAG_CHUNK_SIZE: int = 200
@@ -116,6 +136,44 @@ RAG_EMBED_BATCH_SIZE: int = 32
 
 # Default number of document chunks returned by the knowledge_base_search tool
 RAG_SEARCH_TOP_K: int = 5
+
+# ---------------------------------------------------------------------------
+# Code execution sandbox
+# ---------------------------------------------------------------------------
+
+def _detect_podman() -> bool:
+    """Return True if podman-py is installed and the podman daemon is reachable."""
+    try:
+        import podman as _pm  # noqa: F401
+        _pm.PodmanClient().version()
+        return True
+    except Exception:
+        print("Code execution sandbox disabled: podman-py not installed or daemon not running.")
+        return False
+
+# Automatically True when podman-py is installed and the daemon is running.
+# Override to False to force local mode even when podman is available.
+SANDBOX_ENABLED: bool = _detect_podman()
+
+# Podman image to use for the sandbox container
+SANDBOX_IMAGE: str = "docker.io/library/python:3.10-slim"
+
+# Subdirectory of cwd that is bind-mounted into the container as /workspace.
+# Host and container share this directory so files written inside the container
+# are immediately accessible on the host and vice versa.
+SANDBOX_WORKDIR_NAME: str = "sandbox_workspace"
+
+# ---------------------------------------------------------------------------
+# Code execution security (local / non-sandbox mode only)
+# ---------------------------------------------------------------------------
+
+# When True (and sandbox is False), UTILITY_MODEL reviews every Python/shell
+# snippet before execution and the user must give explicit consent.
+CODE_SECURITY_REVIEW: bool = True
+
+# When True, snippets rated "low" risk are auto-approved without prompting.
+# Set False to require explicit consent for every execution.
+CODE_SECURITY_AUTORUN_LOW: bool = True
 
 # ---------------------------------------------------------------------------
 # Shared Jinja2 environment
