@@ -1,0 +1,153 @@
+# Sandbox image for the agent code runner.
+# Base: Debian stable (bookworm)
+# Build: podman build -f Dockerfile.sandbox -t agent-sandbox .
+
+FROM debian:stable-slim
+
+# ---------------------------------------------------------------------------
+# APT mirror — SUSTech
+# ---------------------------------------------------------------------------
+RUN sed -i \
+    's|deb.debian.org|mirrors.sustech.edu.cn|g; s|security.debian.org|mirrors.sustech.edu.cn/debian-security|g' \
+    /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    printf 'deb https://mirrors.sustech.edu.cn/debian bookworm main contrib non-free non-free-firmware\n\
+deb https://mirrors.sustech.edu.cn/debian bookworm-updates main contrib non-free non-free-firmware\n\
+deb https://mirrors.sustech.edu.cn/debian-security bookworm-security main contrib non-free non-free-firmware\n' \
+    > /etc/apt/sources.list
+
+# ---------------------------------------------------------------------------
+# System packages
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # --- core utilities ---
+    ca-certificates \
+    curl \
+    wget \
+    gnupg \
+    unzip \
+    zip \
+    xz-utils \
+    tar \
+    bzip2 \
+    file \
+    less \
+    vim-tiny \
+    jq \
+    # --- build tools ---
+    build-essential \
+    gcc \
+    g++ \
+    gfortran \
+    make \
+    cmake \
+    ninja-build \
+    pkg-config \
+    autoconf \
+    automake \
+    libtool \
+    git \
+    patch \
+    # --- Python 3 ---
+    python3 \
+    python3-dev \
+    python3-pip \
+    python3-venv \
+    # --- Node.js (via system package — LTS) ---
+    nodejs \
+    npm \
+    # --- Ruby ---
+    ruby \
+    ruby-dev \
+    # --- Perl ---
+    perl \
+    # --- Lua ---
+    lua5.4 \
+    # --- Shell extras ---
+    bash \
+    dash \
+    zsh \
+    fish \
+    # --- Common numeric / science libs ---
+    libopenblas-dev \
+    liblapack-dev \
+    libffi-dev \
+    libssl-dev \
+    libsqlite3-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libreadline-dev \
+    libncurses5-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    libyaml-dev \
+    libgmp-dev \
+    # --- Image / media libs ---
+    libjpeg-dev \
+    libpng-dev \
+    libwebp-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    # --- Headless X / browser automation ---
+    # Required by Playwright (chromium) and Selenium (chromium/firefox)
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    libxkbcommon0 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libglib2.0-0 \
+    libdbus-1-3 \
+    libasound2 \
+    libexpat1 \
+    fonts-liberation \
+    fonts-noto-cjk \
+    # Virtual framebuffer for headless display
+    xvfb \
+    # Chromium (used as Playwright/Selenium backend)
+    chromium \
+    chromium-driver \
+    # Firefox + geckodriver
+    firefox-esr \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# pip mirror — SUSTech
+# ---------------------------------------------------------------------------
+RUN mkdir -p /root/.config/pip && \
+    printf '[global]\nindex-url = https://mirrors.sustech.edu.cn/pypi/web/simple\ntrusted-host = mirrors.sustech.edu.cn\n' \
+    > /root/.config/pip/pip.conf
+
+# Upgrade pip/setuptools/wheel so the agent can install packages at runtime
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
+
+# ---------------------------------------------------------------------------
+# npm mirror (packages installed at runtime)
+# ---------------------------------------------------------------------------
+RUN npm config set registry https://registry.npmmirror.com
+
+# ---------------------------------------------------------------------------
+# Working directory
+# ---------------------------------------------------------------------------
+WORKDIR /workspace
+
+CMD ["/bin/bash"]
