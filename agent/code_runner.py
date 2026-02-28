@@ -8,6 +8,13 @@ sandbox=True  (Podman)
     /workspace. All code execution happens inside the container. No security
     review is required — the sandbox is the boundary.
 
+    File operations (read_file, write_file, patch_file) are executed inside
+    the container via exec_run rather than by the host Python process. This
+    means the container's own filesystem namespace handles all path resolution
+    and symlink following — a symlink inside /workspace that points outside it
+    only reaches the container image, never the host. There is no TOCTOU
+    window because the host process never opens any file at all.
+
 sandbox=False  (local)
     Both Python and bash are stateless — each call is an independent
     subprocess invocation with no shared state between calls. Before every
@@ -15,16 +22,14 @@ sandbox=False  (local)
     must give explicit consent (unless the review rates it "low" risk and
     CODE_SECURITY_AUTORUN_LOW is True).
 
-File utilities always operate on the real filesystem. In sandbox mode all
-paths are resolved under sandbox_workspace to prevent traversal outside the
-mounted directory.
+    File operations execute directly on the host filesystem.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -259,17 +264,27 @@ class CodeRunner:
     # Path resolution
     # ------------------------------------------------------------------
 
-    def _resolve(self, path: str) -> Path:
+    # ------------------------------------------------------------------
+    # Path helpers
+    # ------------------------------------------------------------------
+
+    def _container_path(self, path: str) -> str:
+        """Return the absolute path as seen from inside the container.
+
+        Relative paths are anchored to /workspace. Absolute paths are used
+        as-is — the container filesystem namespace provides isolation, so an
+        absolute path like /etc refers only to the container's /etc, not the
+        host's. No host-side path validation is needed because the host Python
+        process never opens the file.
+        """
         p = Path(path)
-        if self._sandbox:
-            resolved = (self._workdir / p).resolve()
-            try:
-                resolved.relative_to(self._workdir.resolve())
-            except ValueError:
-                raise PermissionError(
-                    f"Path '{path}' would escape the sandbox workspace."
-                )
-            return resolved
+        if p.is_absolute():
+            return str(p)
+        return str(Path("/workspace") / p)
+
+    def _local_path(self, path: str) -> Path:
+        """Normalise a path for local (non-sandbox) mode."""
+        p = Path(path)
         return p if p.is_absolute() else Path.cwd() / p
 
     # ------------------------------------------------------------------
@@ -283,7 +298,24 @@ class CodeRunner:
         end_line: Optional[int] = None,
     ) -> str:
         try:
-            target = self._resolve(path)
+            if self._sandbox:
+                # Execute entirely inside the container — no host I/O,
+                # no TOCTOU window, no symlink surface on the host side.
+                cp = self._container_path(path)
+                if start_line is None and end_line is None:
+                    raw = self._exec_in_container(["cat", cp])
+                else:
+                    s = (start_line - 1) if start_line else 0
+                    e = repr(end_line) if end_line is not None else "None"
+                    script = (
+                        f"t=open({repr(cp)},encoding='utf-8',errors='replace').read();"
+                        f"lines=t.splitlines(keepends=True);"
+                        f"print(''.join(lines[{s}:{e}]),end='')"
+                    )
+                    raw = self._exec_in_container(["python3", "-c", script])
+                return _cap(raw)
+            # Local mode — direct host I/O
+            target = self._local_path(path)
             text = target.read_text(encoding="utf-8", errors="replace")
             if start_line is not None or end_line is not None:
                 lines = text.splitlines(keepends=True)
@@ -296,7 +328,23 @@ class CodeRunner:
 
     def write_file(self, path: str, content: str) -> str:
         try:
-            target = self._resolve(path)
+            if self._sandbox:
+                # Ship content into the container as base64 to avoid any shell
+                # quoting issues with arbitrary text.
+                cp = self._container_path(path)
+                b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+                script = (
+                    f"import base64,pathlib;"
+                    f"p=pathlib.Path({repr(cp)});"
+                    f"p.parent.mkdir(parents=True,exist_ok=True);"
+                    f"p.write_bytes(base64.b64decode({repr(b64)}))"
+                )
+                raw = self._exec_in_container(["python3", "-c", script])
+                if raw.strip():
+                    return f"[write_file error] {raw.strip()}"
+                return f"Written {len(content):,} characters to '{cp}'."
+            # Local mode — atomic write via temp file
+            target = self._local_path(path)
             target.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=target.parent)
             try:
@@ -310,66 +358,61 @@ class CodeRunner:
         except Exception as exc:
             return f"[write_file error] {exc}"
 
-    def patch_file(self, path: str, old_string: str, new_string: str) -> str:
+    def patch_file(self, path: str, diff: str) -> str:
+        """Apply a unified diff to a file using the patch(1) utility.
+
+        The diff is applied with ``patch --no-backup-if-mismatch -F3``:
+        - ``--no-backup-if-mismatch`` keeps the working tree clean.
+        - ``-F3`` allows up to 3 lines of fuzz so minor context shifts
+          (from previous edits) don't cause needless failures.
+        """
         try:
-            target = self._resolve(path)
-            original = target.read_text(encoding="utf-8", errors="replace")
-            if old_string not in original:
-                return f"[patch_file error] old_string not found in '{target}'."
-            count = original.count(old_string)
-            if count > 1:
-                return (
-                    f"[patch_file error] old_string appears {count} times in "
-                    f"'{target}'. Add more surrounding context to make it unique."
+            if self._sandbox:
+                # Ship the diff into the container as base64, write it to a
+                # temp file there, then invoke patch(1) against the target.
+                # The host never opens either file.
+                cp = self._container_path(path)
+                diff_b64 = base64.b64encode(diff.encode("utf-8")).decode("ascii")
+                script = (
+                    "import base64,os,subprocess,sys,tempfile;"
+                    f"d=base64.b64decode({repr(diff_b64)});"
+                    "fd,tmp=tempfile.mkstemp(suffix='.patch');"
+                    "os.write(fd,d);os.close(fd);"
+                    "r=subprocess.run("
+                    f"    ['patch','--no-backup-if-mismatch','-F3','-i',tmp,{repr(cp)}],"
+                    "    capture_output=True,text=True);"
+                    "os.unlink(tmp);"
+                    "out=(r.stdout+r.stderr).strip();"
+                    "print(out) if out else None;"
+                    "sys.exit(r.returncode)"
                 )
-            patched = original.replace(old_string, new_string, 1)
-            fd, tmp = tempfile.mkstemp(dir=target.parent)
+                raw = self._exec_in_container(["python3", "-c", script])
+                stripped = raw.strip()
+                if stripped:
+                    return stripped
+                return f"Patched '{cp}' successfully."
+            # Local mode — write diff to a host temp file and run patch(1).
+            target = self._local_path(path)
+            fd, tmp = tempfile.mkstemp(suffix=".patch")
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(patched)
-                os.replace(tmp, target)
-            except Exception:
-                os.unlink(tmp)
-                raise
-            return f"Patched '{target}' successfully."
+                    f.write(diff)
+                result = subprocess.run(
+                    ["patch", "--no-backup-if-mismatch", "-F3", "-i", tmp, str(target)],
+                    capture_output=True,
+                    text=True,
+                )
+                out = (result.stdout + result.stderr).strip()
+                if result.returncode != 0:
+                    return f"[patch_file error] patch(1) failed:\n{out}"
+                return out or f"Patched '{target}' successfully."
+            finally:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
         except Exception as exc:
             return f"[patch_file error] {exc}"
-
-    def list_dir(self, path: str = ".") -> str:
-        try:
-            target = self._resolve(path)
-            if not target.is_dir():
-                return f"[list_dir error] '{target}' is not a directory."
-            entries = sorted(target.iterdir(), key=lambda p: (p.is_file(), p.name))
-            lines: list[str] = []
-            for entry in entries:
-                kind = "FILE" if entry.is_file() else "DIR "
-                size = f"{entry.stat().st_size:>12,} B" if entry.is_file() else ""
-                lines.append(f"{kind}  {entry.name:<48} {size}")
-            return "\n".join(lines) if lines else "(empty directory)"
-        except Exception as exc:
-            return f"[list_dir error] {exc}"
-
-    def delete_file(self, path: str) -> str:
-        try:
-            target = self._resolve(path)
-            if target.is_dir():
-                shutil.rmtree(target)
-                return f"Deleted directory tree '{target}'."
-            target.unlink()
-            return f"Deleted '{target}'."
-        except Exception as exc:
-            return f"[delete_file error] {exc}"
-
-    def move_file(self, source: str, destination: str) -> str:
-        try:
-            src = self._resolve(source)
-            dst = self._resolve(destination)
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src), str(dst))
-            return f"Moved '{src}' → '{dst}'."
-        except Exception as exc:
-            return f"[move_file error] {exc}"
 
     # ------------------------------------------------------------------
     # Tool registration
@@ -516,12 +559,14 @@ class CodeRunner:
             {
                 "name": "patch_file",
                 "description": (
-                    "Replace the first (and only) occurrence of old_string with "
-                    "new_string in a file. The patch fails with an error if old_string "
-                    "appears zero times (not found) or more than once (ambiguous — add "
-                    "more surrounding lines to make it unique). This is the preferred "
-                    "tool for editing existing files: include 3–5 lines of unchanged "
-                    "context around the target text in old_string so it is unambiguous."
+                    "Apply a unified diff to a file using the patch(1) utility. "
+                    "Preferred over write_file for editing existing files — patch "
+                    "is line-number anchored, tolerates minor context shifts (e.g. "
+                    "after previous edits moved lines), and makes the change intent "
+                    "explicit. Supply the diff in standard unified format as produced "
+                    "by `diff -u original modified`. The `--- / +++` header lines are "
+                    "optional; a bare hunk starting with `@@ ... @@` is accepted. "
+                    "Multiple hunks in one diff are supported."
                 ),
                 "parameters": {
                     "type": "object",
@@ -530,97 +575,27 @@ class CodeRunner:
                             "type": "string",
                             "description": "Path to the file to patch.",
                         },
-                        "old_string": {
+                        "diff": {
                             "type": "string",
                             "description": (
-                                "The exact literal text to find, including surrounding "
-                                "context lines to make it unique. Must match character-for-"
-                                "character including whitespace and indentation."
+                                "Unified diff to apply. Example:\n"
+                                "@@ -10,6 +10,7 @@\n"
+                                " def foo():\n"
+                                "-    return 1\n"
+                                "+    # updated\n"
+                                "+    return 2\n"
+                                " \n"
+                                "Include 3 or more lines of unchanged context around "
+                                "each change so patch can locate the hunk precisely."
                             ),
                         },
-                        "new_string": {
-                            "type": "string",
-                            "description": "The text to substitute in place of old_string.",
-                        },
                     },
-                    "required": ["path", "old_string", "new_string"],
+                    "required": ["path", "diff"],
                 },
             },
-            lambda p: self.patch_file(p["path"], p["old_string"], p["new_string"]),
+            lambda p: self.patch_file(p["path"], p["diff"]),
         )
 
-        tools.add_tool(
-            {
-                "name": "list_dir",
-                "description": (
-                    "List the contents of a directory, showing each entry's type "
-                    "(FILE or DIR), name, and size in bytes. Entries are sorted with "
-                    "directories first, then files — both groups alphabetically. Use "
-                    "this to explore the project structure or verify that files were "
-                    "written correctly."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path to the directory. Defaults to the current working directory.",
-                        }
-                    },
-                    "required": [],
-                },
-            },
-            lambda p: self.list_dir(p.get("path", ".")),
-        )
-
-        tools.add_tool(
-            {
-                "name": "delete_file",
-                "description": (
-                    "Permanently delete a file or an entire directory tree. "
-                    "This operation is IRREVERSIBLE — there is no trash or undo. "
-                    "Prefer move_file to rename/relocate files rather than deleting "
-                    "them when there is any doubt."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path to the file or directory to delete.",
-                        }
-                    },
-                    "required": ["path"],
-                },
-            },
-            lambda p: self.delete_file(p["path"]),
-        )
-
-        tools.add_tool(
-            {
-                "name": "move_file",
-                "description": (
-                    "Move or rename a file or directory. Works across directories; "
-                    "missing parent directories in the destination path are created "
-                    "automatically. If the destination already exists it is overwritten."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "source": {
-                            "type": "string",
-                            "description": "Current path of the file or directory.",
-                        },
-                        "destination": {
-                            "type": "string",
-                            "description": "New path to move or rename to.",
-                        },
-                    },
-                    "required": ["source", "destination"],
-                },
-            },
-            lambda p: self.move_file(p["source"], p["destination"]),
-        )
 
 
 # ---------------------------------------------------------------------------

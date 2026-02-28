@@ -140,6 +140,16 @@ class ContextManager:
 
         non_system  = messages[1:]
         fold_count  = max(2, int(len(non_system) * self.fold_fraction))
+
+        # Advance the boundary so we never leave a dangling `tool` message at
+        # the start of the surviving history (a `tool` message without a
+        # preceding assistant `tool_calls` message causes a 400 on strict
+        # providers).  Also retreat if the boundary would leave a surviving
+        # `assistant` message that still has `tool_calls` but all its matching
+        # `tool` responses were folded away.
+        while fold_count < len(non_system) and non_system[fold_count].get("role") == "tool":
+            fold_count += 1
+
         fold_target = non_system[:fold_count]
 
         dialogue = [

@@ -26,13 +26,13 @@ import uuid
 from pathlib import Path
 
 from openai import OpenAI
+
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
 
 from .config import (
     EMBED_API_BASE_URL,
     EMBED_API_KEY,
-    RAG_QDRANT_PATH,
+    AGENT_QDRANT_PATH,
     RAG_COLLECTION_NAME,
     RAG_EMBED_MODEL,
     RAG_EMBED_DIMS,
@@ -40,6 +40,7 @@ from .config import (
     RAG_CHUNK_OVERLAP,
     RAG_EMBED_BATCH_SIZE,
 )
+from .vectorstore import VectorStore
 
 
 # ---------------------------------------------------------------------------
@@ -116,41 +117,6 @@ def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Embedding
-# ---------------------------------------------------------------------------
-
-def embed_batched(
-    client: OpenAI,
-    texts: list[str],
-    batch_size: int = RAG_EMBED_BATCH_SIZE,
-) -> list[list[float]]:
-    """Embed *texts* via the configured model, sending at most *batch_size* per API call.
-
-    Batching reduces round-trip overhead on large documents and respects typical
-    API per-request input limits.
-
-    Args:
-        client:     Initialised OpenAI client pointed at the embeddings endpoint.
-        texts:      List of strings to embed.
-        batch_size: Texts per API request.
-
-    Returns:
-        List of embedding vectors, in the same order as *texts*.
-    """
-    embeddings: list[list[float]] = []
-    total = len(texts)
-    for i in range(0, total, batch_size):
-        batch = texts[i : i + batch_size]
-        response = client.embeddings.create(model=RAG_EMBED_MODEL, input=batch)
-        # The API guarantees result ordering matches the input ordering.
-        embeddings.extend(r.embedding for r in response.data)
-        done = min(i + batch_size, total)
-        print(f"  Embedded {done}/{total} chunks …", end="\r", flush=True)
-    print()  # newline after the overwrite-in-place progress line
-    return embeddings
-
-
-# ---------------------------------------------------------------------------
 # Ingestion
 # ---------------------------------------------------------------------------
 
@@ -194,46 +160,36 @@ def ingest_file(
         f"(chunk_size={chunk_size} words, overlap={chunk_overlap} sentences)"
     )
 
-    client = OpenAI(base_url=EMBED_API_BASE_URL, api_key=EMBED_API_KEY)
-    print(f"Embedding via {RAG_EMBED_MODEL} …")
-    vectors = embed_batched(client, chunks, batch_size=batch_size)
-
-    # Ensure the qdrant store and collection exist
-    RAG_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
-    qdrant = QdrantClient(path=str(RAG_QDRANT_PATH))
-    existing = {c.name for c in qdrant.get_collections().collections}
-    if RAG_COLLECTION_NAME not in existing:
-        qdrant.create_collection(
-            collection_name=RAG_COLLECTION_NAME,
-            vectors_config=VectorParams(size=RAG_EMBED_DIMS, distance=Distance.COSINE),
+    embed_client = OpenAI(base_url=EMBED_API_BASE_URL, api_key=EMBED_API_KEY)
+    AGENT_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
+    qdrant = QdrantClient(path=str(AGENT_QDRANT_PATH))
+    try:
+        store = VectorStore(
+            client=embed_client,
+            qdrant=qdrant,
+            collection=RAG_COLLECTION_NAME,
+            embed_model=RAG_EMBED_MODEL,
+            embed_dims=RAG_EMBED_DIMS,
         )
 
-    # Build point list — each point carries text + provenance metadata
-    points = [
-        PointStruct(
-            id=str(uuid.uuid4()),
-            vector=vec,
-            payload={
-                "text": chunk,
-                "source": source_label,
-                "chunk_index": idx,
-            },
-        )
-        for idx, (chunk, vec) in enumerate(zip(chunks, vectors))
-    ]
+        print(f"Embedding via {RAG_EMBED_MODEL} …")
+        vectors = store.embed_batched(chunks, batch_size=batch_size, progress=True)
 
-    # Upsert in batches to avoid oversized payloads
-    print(f"Upserting {len(points)} points into '{RAG_COLLECTION_NAME}' …")
-    for i in range(0, len(points), batch_size):
-        qdrant.upsert(
-            collection_name=RAG_COLLECTION_NAME,
-            points=points[i : i + batch_size],
-        )
-        done = min(i + batch_size, len(points))
-        print(f"  Upserted {done}/{len(points)} points …", end="\r", flush=True)
-    print()
+        records = [
+            {
+                "id": str(uuid.uuid4()),
+                "vector": vec,
+                "payload": {"text": chunk, "source": source_label, "chunk_index": idx},
+            }
+            for idx, (chunk, vec) in enumerate(zip(chunks, vectors))
+        ]
 
-    print(f"Done. Inserted {len(points)} chunks from '{source_label}'.")
+        print(f"Upserting {len(records)} points into '{RAG_COLLECTION_NAME}' …")
+        store.upsert_records(records, batch_size=batch_size, progress=True)
+    finally:
+        qdrant.close()
+
+    print(f"Done. Inserted {len(records)} chunks from '{source_label}'.")
 
 
 # ---------------------------------------------------------------------------

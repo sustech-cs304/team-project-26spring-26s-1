@@ -10,19 +10,18 @@ and is completely separate from the mem0 long-term memory store.
 
 from __future__ import annotations
 
-import atexit
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
 from openai import OpenAI
 
+from qdrant_client import QdrantClient
+
 from .config import (
-    RAG_QDRANT_PATH,
     RAG_COLLECTION_NAME,
     RAG_EMBED_MODEL,
     RAG_EMBED_DIMS,
     RAG_SEARCH_TOP_K,
 )
 from .tools import Tools
+from .vectorstore import VectorStore
 
 
 class KnowledgeBase:
@@ -32,51 +31,29 @@ class KnowledgeBase:
     exist. Use the `agent-ingest` CLI to populate it with document chunks.
     """
 
-    def __init__(self, client: OpenAI) -> None:
-        self._client = client
-        RAG_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
-        self._qdrant = QdrantClient(path=str(RAG_QDRANT_PATH))
-        self._ensure_collection()
-        atexit.register(self.close)
+    def __init__(self, client: OpenAI, qdrant: QdrantClient) -> None:
+        self._store = VectorStore(
+            client=client,
+            qdrant=qdrant,
+            collection=RAG_COLLECTION_NAME,
+            embed_model=RAG_EMBED_MODEL,
+            embed_dims=RAG_EMBED_DIMS,
+        )
 
     def close(self) -> None:
-        """Explicitly close the qdrant client, flushing any pending writes.
-
-        Called by atexit so the flush happens while all library modules are
-        still intact. Safe to call more than once.
-        """
-        try:
-            self._qdrant.close()
-        except Exception:
-            pass
-
-    def _ensure_collection(self) -> None:
-        existing = {c.name for c in self._qdrant.get_collections().collections}
-        if RAG_COLLECTION_NAME not in existing:
-            self._qdrant.create_collection(
-                collection_name=RAG_COLLECTION_NAME,
-                vectors_config=VectorParams(size=RAG_EMBED_DIMS, distance=Distance.COSINE),
-            )
-
-    def _embed(self, texts: list[str]) -> list[list[float]]:
-        response = self._client.embeddings.create(model=RAG_EMBED_MODEL, input=texts)
-        return [r.embedding for r in response.data]
+        """No-op: the shared QdrantClient is closed by the caller (main.py)."""
+        pass
 
     def search(self, query: str, top_k: int = RAG_SEARCH_TOP_K) -> list[dict]:
         """Return the *top_k* most semantically relevant document chunks for *query*."""
-        vec = self._embed([query])[0]
-        hits = self._qdrant.query_points(
-            collection_name=RAG_COLLECTION_NAME,
-            query=vec,
-            limit=top_k,
-        ).points
+        results = self._store.search(query, top_k)
         return [
             {
-                "score": round(hit.score, 4),
-                "text": hit.payload.get("text", ""),
-                "source": hit.payload.get("source", ""),
+                "score": r["score"],
+                "text": r["payload"].get("text", ""),
+                "source": r["payload"].get("source", ""),
             }
-            for hit in hits
+            for r in results
         ]
 
     def register_tools(self, tools: Tools) -> None:

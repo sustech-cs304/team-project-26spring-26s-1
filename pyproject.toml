@@ -28,3 +28,4 @@ agent = ["templates/*.j2"]
 [project.scripts]
 agent = "agent.main:main"
 agent-ingest = "agent.ingest:main"
+agent-skill = "agent.skill_cli:main"

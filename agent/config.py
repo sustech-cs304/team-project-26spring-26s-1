@@ -16,15 +16,15 @@ import tiktoken
 # ---------------------------------------------------------------------------
 
 # Main agentic loop
-AGENT_API_BASE_URL: str = "https://api.siliconflow.cn/v1"
+AGENT_API_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 AGENT_API_KEY: str | None = os.getenv("AGENT_API_KEY")
-AGENT_MODEL: str = "Qwen/Qwen3-Next-80B-A3B-Thinking"
+AGENT_MODEL: str = "qwen3.5-plus"
 
 # Lightweight model for cheap background maintenance tasks: mem0 internal LLM,
 # security review of agent-generated code, conflict resolution, etc.
 UTILITY_API_BASE_URL: str = "https://api.siliconflow.cn/v1"
 UTILITY_API_KEY: str | None = os.getenv("UTILITY_API_KEY")
-UTILITY_MODEL: str = "Pro/THUDM/glm-4-9b-chat"
+UTILITY_MODEL: str = "zai-org/GLM-4.6"
 
 # Embedding model — used by both mem0's vector store and the RAG knowledge base.
 # Must be the same model for both so that stored and query vectors are compatible.
@@ -44,8 +44,11 @@ DATA_DIR: Path = Path.cwd() / "data"
 # mem0's qdrant vector store (persistent local storage)
 MEM0_QDRANT_PATH: Path = DATA_DIR / "mem0_qdrant"
 
-# RAG knowledge-base qdrant store (populated via the agent-ingest CLI)
-RAG_QDRANT_PATH: Path = DATA_DIR / "rag_qdrant"
+# Shared Qdrant database for all agent-owned vector stores (RAG, skills, …).
+# One QdrantClient is opened per process and shared across all VectorStore
+# instances — see main.py. ingest.py opens its own short-lived client on
+# this same path because it runs as a separate process.
+AGENT_QDRANT_PATH: Path = DATA_DIR / "agent_qdrant"
 
 # Core memory persistence file — survives process restarts
 CORE_MEMORY_PATH: Path = DATA_DIR / "core_memory.json"
@@ -138,6 +141,21 @@ RAG_EMBED_BATCH_SIZE: int = 32
 RAG_SEARCH_TOP_K: int = 5
 
 # ---------------------------------------------------------------------------
+# Skills store
+# ---------------------------------------------------------------------------
+
+# Name of the qdrant collection used for agent-learned skill workflows.
+# Lives in the shared agent_qdrant database alongside knowledge_base.
+SKILLS_COLLECTION_NAME: str = "skills"
+
+# Number of skills returned by skills_lookup
+SKILLS_SEARCH_TOP_K: int = 3
+
+# Root directory for on-disk skill files (VS Code agent convention).
+# Each skill lives in skills/<name>/SKILL.md with optional references/ subdir.
+SKILLS_DIR: Path = Path.cwd() / "skills"
+
+# ---------------------------------------------------------------------------
 # Code execution sandbox
 # ---------------------------------------------------------------------------
 
@@ -156,7 +174,7 @@ def _detect_podman() -> bool:
 SANDBOX_ENABLED: bool = _detect_podman()
 
 # Podman image to use for the sandbox container
-SANDBOX_IMAGE: str = "docker.io/library/python:3.10-slim"
+SANDBOX_IMAGE: str = "localhost/code_runner"
 
 # Subdirectory of cwd that is bind-mounted into the container as /workspace.
 # Host and container share this directory so files written inside the container
