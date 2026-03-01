@@ -7,11 +7,11 @@
             <v-card-title class="text-h6 font-weight-bold pa-0 mb-10">有什么我能帮你的吗？</v-card-title>
 
             <!-- 快捷建议卡片 -->
-            <v-row justify="center" class="mb-6" no-gutters>
+            <v-row justify="center" class="mb-6" density="compact">
                 <v-col v-for="s in suggestions" :key="s.label" cols="6" sm="3" class="pa-2">
                     <v-card rounded="lg" variant="outlined" hover @click="startWith(s.prompt)" height="100%">
                         <v-card-text class="pa-3">
-                            <v-row align="center" no-gutters class="mb-1">
+                            <v-row align="center" class="mb-1">
                                 <v-icon size="small" :color="s.color" class="mr-2">{{ s.icon }}</v-icon>
                                 <span class="text-caption font-weight-medium">{{ s.label }}</span>
                             </v-row>

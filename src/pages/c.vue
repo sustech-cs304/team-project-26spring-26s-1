@@ -25,12 +25,57 @@
             </div>
             <v-list nav density="compact">
                 <v-list-item v-for="conv in conversations" :key="conv.id" :subtitle="conv.title" :to="`/c/${conv.id}`"
-                    rounded="lg" color="primary" slim prepend-gap="6" :ripple="false">
+                    rounded="lg" color="primary" slim prepend-gap="6" :ripple="false" class="conv-item">
                     <template #prepend>
                         <v-icon size="x-small">mdi-message-text-outline</v-icon>
                     </template>
+                    <template #append>
+                        <v-menu :close-on-content-click="true" location="end">
+                            <template #activator="{ props: menuProps }">
+                                <v-btn v-bind="menuProps" icon="mdi-dots-vertical" size="x-small" variant="text"
+                                    :ripple="false" class="conv-menu-btn" @click.prevent.stop />
+                            </template>
+                            <v-list density="compact" min-width="120" nav slim tile>
+                                <v-list-item title="重命名" slim density="compact" @click="renameConversation(conv)"
+                                    height="10">
+                                    <template #prepend>
+                                        <v-icon size="x-small">mdi-pencil-outline</v-icon>
+                                    </template>
+                                </v-list-item>
+                                <v-list-item slim density="compact" :title="conv.pinned ? '取消置顶' : '置顶'"
+                                    @click="togglePin(conv)">
+                                    <template #prepend>
+                                        <v-icon size="x-small">{{ conv.pinned ? 'mdi-pin-off-outline' :
+                                            'mdi-pin-outline' }}</v-icon>
+                                    </template>
+                                </v-list-item>
+                                <v-divider />
+                                <v-list-item slim density="compact" title="删除" base-color="error"
+                                    @click="deleteConversation(conv)">
+                                    <template #prepend>
+                                        <v-icon size="x-small">mdi-delete-outline</v-icon>
+                                    </template>
+                                </v-list-item>
+                            </v-list>
+                        </v-menu>
+                    </template>
                 </v-list-item>
             </v-list>
+
+            <!-- 重命名对话框 -->
+            <v-dialog v-model="renameDialog" max-width="360">
+                <v-card title="重命名对话">
+                    <v-card-text>
+                        <v-text-field v-model="renameValue" label="对话名称" autofocus variant="outlined" density="compact"
+                            @keyup.enter="confirmRename" />
+                    </v-card-text>
+                    <v-card-actions>
+                        <v-spacer />
+                        <v-btn variant="text" @click="renameDialog = false">取消</v-btn>
+                        <v-btn variant="tonal" color="primary" @click="confirmRename">确认</v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
         </v-navigation-drawer>
 
         <!-- 顶部应用栏 -->
@@ -41,7 +86,9 @@
                 <v-btn icon="mdi-chat-plus-outline" @click="newConversation" size="x-small" variant="text"
                     v-if="!isStartPage" :ripple="false"></v-btn>
             </template>
-            <v-btn @click="editTitle" text :ripple="false" v-if="!isStartPage" class="title-btn">{{ currentTitle }}
+            <v-btn @click="currentConversation && renameConversation(currentConversation)" text :ripple="false"
+                v-if="!isStartPage" class="title-btn">{{
+                    currentTitle }}
                 <template #append>
                     <v-icon size="x-small" class="edit-icon">mdi-pencil-outline</v-icon>
                 </template>
@@ -64,16 +111,46 @@
     const drawer = ref(true)
 
     const conversations = ref([
-        { id: '1', title: '对话 1' },
-        { id: '2', title: '对话 2' },
-        { id: '123', title: '对话 123' },
+        { id: '1', title: '对话 1', pinned: false },
+        { id: '2', title: '对话 2', pinned: false },
+        { id: '123', title: '对话 123', pinned: false },
     ])
 
+    // 重命名
+    const renameDialog = ref(false)
+    const renameValue = ref('')
+    const renamingConv = ref<{ id: string; title: string; pinned: boolean } | null>(null)
+
+    const renameConversation = (conv: { id: string; title: string; pinned: boolean }) => {
+        renamingConv.value = conv
+        renameValue.value = conv.title
+        renameDialog.value = true
+    }
+
+    const confirmRename = () => {
+        if (renamingConv.value && renameValue.value.trim()) {
+            renamingConv.value.title = renameValue.value.trim()
+        }
+        renameDialog.value = false
+    }
+
+    // 置顶
+    const togglePin = (conv: { id: string; title: string; pinned: boolean }) => {
+        conv.pinned = !conv.pinned
+    }
+
+    // 删除
+    const deleteConversation = (conv: { id: string; title: string; pinned: boolean }) => {
+        const idx = conversations.value.findIndex(c => c.id === conv.id)
+        if (idx !== -1) conversations.value.splice(idx, 1)
+        if (route.path === `/c/${conv.id}`) router.push('/c/')
+    }
+
     const route = useRoute()
+    const currentConversation = computed(() => conversations.value.find(c => route.path === `/c/${c.id}`))
     const currentTitle = computed(() => {
-        // 外层 /c/ 拿不到子路由参数，通过当前路径从列表中匹配
-        const conv = conversations.value.find(c => route.path === `/c/${c.id}`)
-        return conv?.title ?? '新对话'
+        if (route.path === '/c/' || route.path === '/c') return '新的对话'
+        return currentConversation.value ? currentConversation.value.title : '未知对话'
     })
 
     const isStartPage = computed(() => route.path === '/c/' || route.path === '/c')
@@ -81,11 +158,6 @@
     const newConversation = () => {
         // TODO: route to /c/
         router.push('/c/')
-    }
-
-
-    const editTitle = () => {
-        // TODO: 编辑标题逻辑
     }
 
     const searchConversations = () => {
@@ -100,6 +172,15 @@
     }
 
     .title-btn:hover .edit-icon {
+        opacity: 1;
+    }
+
+    .conv-item .conv-menu-btn {
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    .conv-item:hover .conv-menu-btn {
         opacity: 1;
     }
 </style>
