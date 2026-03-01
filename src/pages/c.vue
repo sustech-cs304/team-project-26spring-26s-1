@@ -36,17 +36,17 @@
                                     :ripple="false" class="conv-menu-btn" @click.prevent.stop />
                             </template>
                             <v-list density="compact" min-width="120" nav slim tile>
-                                <v-list-item title="重命名" slim density="compact" @click="renameConversation(conv)"
-                                    height="10">
-                                    <template #prepend>
-                                        <v-icon size="x-small">mdi-pencil-outline</v-icon>
-                                    </template>
-                                </v-list-item>
                                 <v-list-item slim density="compact" :title="conv.pinned ? '取消置顶' : '置顶'"
                                     @click="togglePin(conv)">
                                     <template #prepend>
                                         <v-icon size="x-small">{{ conv.pinned ? 'mdi-pin-off-outline' :
                                             'mdi-pin-outline' }}</v-icon>
+                                    </template>
+                                </v-list-item>
+                                <v-list-item title="重命名" slim density="compact" @click="renameConversation(conv)"
+                                    height="10">
+                                    <template #prepend>
+                                        <v-icon size="x-small">mdi-pencil-outline</v-icon>
                                     </template>
                                 </v-list-item>
                                 <v-divider />
@@ -79,7 +79,7 @@
         </v-navigation-drawer>
 
         <!-- 顶部应用栏 -->
-        <v-app-bar flat height="48">
+        <v-app-bar flat height="48" color="transparent">
             <template #prepend>
                 <v-btn :icon="drawer ? 'mdi-menu-open' : 'mdi-menu'" variant="text" @click="drawer = !drawer"
                     :ripple="false" size="x-small" />
@@ -100,7 +100,7 @@
 
 
         <!-- 子路由内容区 -->
-        <v-main>
+        <v-main scrollable>
             <RouterView />
         </v-main>
     </v-layout>
