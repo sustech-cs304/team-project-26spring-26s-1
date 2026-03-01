@@ -37,16 +37,31 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/calendar/': RouteRecordInfo<
-      '/calendar/',
-      '/calendar',
+    '/c': RouteRecordInfo<
+      '/c',
+      '/c',
+      Record<never, never>,
+      Record<never, never>,
+      | '/c/'
+      | '/c/[conversationId]'
+    >,
+    '/c/': RouteRecordInfo<
+      '/c/',
+      '/c',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/chat/': RouteRecordInfo<
-      '/chat/',
-      '/chat',
+    '/c/[conversationId]': RouteRecordInfo<
+      '/c/[conversationId]',
+      '/c/:conversationId',
+      { conversationId: ParamValue<true> },
+      { conversationId: ParamValue<false> },
+      | never
+    >,
+    '/calendar/': RouteRecordInfo<
+      '/calendar/',
+      '/calendar',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -90,15 +105,29 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/calendar/index.vue': {
+    'src/pages/c.vue': {
       routes:
-        | '/calendar/'
+        | '/c'
+        | '/c/'
+        | '/c/[conversationId]'
+      views:
+        | 'default'
+    }
+    'src/pages/c/index.vue': {
+      routes:
+        | '/c/'
       views:
         | never
     }
-    'src/pages/chat/index.vue': {
+    'src/pages/c/[conversationId].vue': {
       routes:
-        | '/chat/'
+        | '/c/[conversationId]'
+      views:
+        | never
+    }
+    'src/pages/calendar/index.vue': {
+      routes:
+        | '/calendar/'
       views:
         | never
     }
