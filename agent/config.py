@@ -16,7 +16,7 @@ import tiktoken
 # ---------------------------------------------------------------------------
 
 # Main agentic loop
-AGENT_API_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+AGENT_API_BASE_URL: str = "https://coding.dashscope.aliyuncs.com/v1"
 AGENT_API_KEY: str | None = os.getenv("AGENT_API_KEY")
 AGENT_MODEL: str = "qwen3.5-plus"
 
@@ -80,6 +80,7 @@ MEM0_CONFIG: dict = {
         "config": {
             "embedding_model_dims": EMBED_DIMS,
             "path": str(MEM0_QDRANT_PATH),
+            "on_disk": True,
         },
     },
 }

@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     less \
     vim-tiny \
     jq \
+    sudo \
     # --- build tools ---
     build-essential \
     gcc \
@@ -132,16 +133,45 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# pip mirror — SUSTech
+# Non-root user
 # ---------------------------------------------------------------------------
-RUN mkdir -p /root/.config/pip && \
+# A fixed UID/GID of 1000 is the conventional first human user on Debian.
+# At runtime the container is launched with --userns=keep-id (rootless Podman)
+# so the host user's UID is mapped to the same UID inside the container,
+# making bind-mount file ownership match automatically.
+RUN groupadd --gid 1000 agent && \
+    useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash agent && \
+    echo 'ALL ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/sandbox && \
+    chmod 0440 /etc/sudoers.d/sandbox
+
+# ---------------------------------------------------------------------------
+# pip mirror — SUSTech  (written to the agent user's home)
+# ---------------------------------------------------------------------------
+RUN mkdir -p /home/agent/.config/pip && \
     printf '[global]\nindex-url = https://mirrors.sustech.edu.cn/pypi/web/simple\ntrusted-host = mirrors.sustech.edu.cn\n' \
-    > /root/.config/pip/pip.conf
+    > /home/agent/.config/pip/pip.conf
 
 # ---------------------------------------------------------------------------
 # npm mirror (packages installed at runtime)
 # ---------------------------------------------------------------------------
-RUN npm config set registry https://registry.npmmirror.com
+# Debian's nodejs sets prefix=/usr globally, which forces npm -g installs into
+# /usr/lib/node_modules (root-only). Override the prefix to a world-writable
+# directory so any effective UID (keep-id remapping) can install without sudo.
+RUN npm config set registry https://registry.npmmirror.com --global && \
+    npm config set prefix /opt/npm-global --global && \
+    mkdir -p /opt/npm-global && chmod 1777 /opt/npm-global && \
+    printf 'registry=https://registry.npmmirror.com\nprefix=/opt/npm-global\n' > /home/agent/.npmrc
+
+ENV PATH="/opt/npm-global/bin:$PATH"
+
+# ---------------------------------------------------------------------------
+# Workspace — owned by agent so the non-root user can write freely
+# ---------------------------------------------------------------------------
+RUN mkdir -p /workspace && chown agent:agent /workspace
+
+RUN chown -R agent:agent /home/agent
+
+USER agent
 
 # ---------------------------------------------------------------------------
 # Working directory

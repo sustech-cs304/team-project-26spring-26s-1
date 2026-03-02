@@ -35,10 +35,6 @@ def _shutdown(
     have already been nulled out.
     """
     try:
-        longterm_memory.insert_memory(messages)
-    except Exception as exc:
-        print(f"[Shutdown] Warning: could not save session memory: {exc}")
-    try:
         code_runner.cleanup()
     except Exception:
         pass

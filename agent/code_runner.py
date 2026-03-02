@@ -114,6 +114,15 @@ class CodeRunner:
                     }
                 ],
                 working_dir="/workspace",
+                # Run as the host user so bind-mount file ownership matches.
+                # userns_mode="keep-id" is a rootless-Podman feature that maps
+                # the host UID to the same UID inside the container — so files
+                # created in /workspace are owned by the calling user on both
+                # sides of the bind mount.
+                userns_mode="keep-id",
+                # Point HOME at the agent user's home dir so pip.conf / .npmrc
+                # are found even when the effective UID != 1000.
+                environment={"HOME": "/home/agent"},
             )
             print(
                 f"[CodeRunner] Sandbox started  image={self._image}  "

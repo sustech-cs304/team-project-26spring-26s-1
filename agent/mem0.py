@@ -69,6 +69,7 @@ class Mem0():
         Only genuine user/assistant dialogue turns are submitted; system prompts,
         tool calls, and tool responses are filtered out before extraction."""
         filtered = self._filter_messages(messages)
+        print(f"[Mem0] Inserting {len(filtered)} filtered messages into long-term memory.")
         if filtered:
             mem.add(filtered, user_id=self._episodic_id)
 
