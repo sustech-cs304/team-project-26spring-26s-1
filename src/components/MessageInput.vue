@@ -1,20 +1,33 @@
 <template>
     <div class="w-100">
-        <v-textarea :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)"
-            placeholder="输入消息…" variant="outlined" rounded="lg" rows="3" auto-grow max-rows="8" hide-details
-            class="w-100" @keydown.enter.exact.prevent="send">
-            <template #append-inner>
-                <v-btn icon="mdi-send" size="small" :color="modelValue.trim() ? 'primary' : undefined"
-                    :disabled="!modelValue.trim()" variant="text" :ripple="false" @click="send" />
-            </template>
-        </v-textarea>
-        <v-card-subtitle class="pa-0 mt-2">按 Enter 发送 · Shift+Enter 换行</v-card-subtitle>
+        <v-sheet rounded="xl" color="surface" elevation="1" class="px-4  pb-2" style="cursor: text;"
+            @click="focusTextarea">
+            <ImagePreview v-if="images.length" v-model="images" class="pt-4 pb-0" />
+            <v-textarea ref="textareaRef" :model-value="modelValue"
+                @update:model-value="emit('update:modelValue', $event)" placeholder="发送消息，或输入 / 使用命令…" variant="plain"
+                rows="1" auto-grow max-rows="6" hide-details @keydown.enter.exact.prevent="send" @paste="onPaste">
+            </v-textarea>
+            <!-- Toolbar -->
+            <v-row align="center" density="compact" class="mt-1">
+                <!-- 左侧：上传文件 -->
+                <v-btn icon="mdi-plus" size="small" flat :ripple="false" :disabled="loading" @click="triggerUpload" />
+                <input ref="fileInput" type="file" accept="image/*" multiple class="d-none" @change="onFileChange" />
+                <v-spacer />
+                <!-- 右侧：语音 + 发送 -->
+                <v-btn icon="mdi-microphone-outline" size="small" flat :ripple="false" :disabled="loading" />
+                <v-btn icon="mdi-arrow-up" size="small" :color="canSend ? 'primary' : 'surface-variant'"
+                    :variant="canSend ? 'flat' : 'tonal'" :disabled="!canSend" :ripple="false" @click="send" />
+            </v-row>
+        </v-sheet>
     </div>
 </template>
 
 <script setup lang="ts">
+    import ImagePreview from '@/components/ImagePreview.vue'
+
     const props = defineProps<{
         modelValue: string
+        loading?: boolean
     }>()
 
     const emit = defineEmits<{
@@ -22,8 +35,64 @@
         (e: 'send'): void
     }>()
 
+    const images = ref<string[]>([])
+    const fileInput = ref<HTMLInputElement | null>(null)
+    const textareaRef = ref<{ $el: HTMLElement } | null>(null)
+
+    const focusTextarea = (e: MouseEvent) => {
+        const target = e.target as HTMLElement
+        if (target.closest('button, input, a, [role="button"]')) return
+        const textarea = textareaRef.value?.$el?.querySelector('textarea')
+        textarea?.focus()
+    }
+
+    const canSend = computed(() =>
+        (props.modelValue.trim() || images.value.length > 0) && !props.loading
+    )
+
+    const triggerUpload = () => {
+        fileInput.value?.click()
+    }
+
+    const onFileChange = (e: Event) => {
+        const files = (e.target as HTMLInputElement).files
+        if (!files) return
+        for (const file of files) {
+            if (!file.type.startsWith('image/')) continue
+            const reader = new FileReader()
+            reader.onload = (ev) => {
+                const result = ev.target?.result
+                if (typeof result === 'string') {
+                    images.value = [...images.value, result]
+                }
+            }
+            reader.readAsDataURL(file)
+        }
+        // 清空 input 以允许重复选同一文件
+        if (fileInput.value) fileInput.value.value = ''
+    }
+
+    const onPaste = (e: ClipboardEvent) => {
+        const items = e.clipboardData?.items
+        if (!items) return
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                const file = item.getAsFile()
+                if (!file) continue
+                const reader = new FileReader()
+                reader.onload = (ev) => {
+                    const result = ev.target?.result
+                    if (typeof result === 'string') {
+                        images.value = [...images.value, result]
+                    }
+                }
+                reader.readAsDataURL(file)
+            }
+        }
+    }
+
     const send = () => {
-        if (!props.modelValue.trim()) return
+        if (!canSend.value) return
         emit('send')
     }
 </script>

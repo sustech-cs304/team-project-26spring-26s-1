@@ -1,18 +1,21 @@
 <template>
-    <v-container class="h-100 d-flex flex-column align-center justify-center">
-        <v-sheet width="100%" max-width="700" class="d-flex flex-column align-center" color="transparent">
+    <v-container fluid class="d-flex flex-column h-100 pa-0">
 
-            <!-- Logo & 欢迎语 -->
-            <v-icon size="52" color="primary" class="mb-4">mdi-robot-happy-outline</v-icon>
-            <v-card-title class="text-h6 font-weight-bold pa-0 mb-10">有什么我能帮你的吗？</v-card-title>
-
-            <!-- 破冰提问 -->
-            <ConversationStarters @select="input = $event" />
-
-            <!-- 消息输入框 -->
-            <MessageInput v-model="input" @send="send" />
-
+        <!-- 中间内容区：垂直居中 -->
+        <v-sheet color="transparent" class="flex-grow-1 d-flex flex-column align-center justify-center">
+            <v-container max-width="800" class="px-6 d-flex flex-column align-center">
+                <div class="text-display-small font-weight-bold pa-0 mb-10">有什么我能帮你的吗？</div>
+                <ConversationStarters @select="input = $event" />
+            </v-container>
         </v-sheet>
+
+        <!-- 底部输入区 -->
+        <v-sheet elevation="0" color="transparent">
+            <v-container max-width="800" class="px-6 pb-5 pt-2">
+                <MessageInput v-model="input" @send="send" />
+            </v-container>
+        </v-sheet>
+
     </v-container>
 </template>
 

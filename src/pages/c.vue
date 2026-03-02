@@ -26,9 +26,6 @@
             <v-list nav density="compact">
                 <v-list-item v-for="conv in conversations" :key="conv.id" :subtitle="conv.title" :to="`/c/${conv.id}`"
                     rounded="lg" color="primary" slim prepend-gap="6" :ripple="false" class="conv-item">
-                    <template #prepend>
-                        <v-icon size="x-small">mdi-message-text-outline</v-icon>
-                    </template>
                     <template #append>
                         <v-menu :close-on-content-click="true" location="end">
                             <template #activator="{ props: menuProps }">
@@ -113,7 +110,7 @@
     const conversations = ref([
         { id: '1', title: '对话 1', pinned: false },
         { id: '2', title: '对话 2', pinned: false },
-        { id: '123', title: '对话 123', pinned: false },
+        { id: '123', title: '对话对话对话对话对话对话对话', pinned: false },
     ])
 
     // 重命名

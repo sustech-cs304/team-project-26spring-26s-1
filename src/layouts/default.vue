@@ -33,6 +33,7 @@
                 <nav-icon-item title="Home" icon="mdi-home" to="/" />
                 <nav-icon-item title="Chat" icon="mdi-message-outline"
                     v-bind="route.path.startsWith('/c/') ? {} : { to: '/c/' }" />
+                <nav-icon-item title="Tasks" icon="mdi-format-list-checkbox" to="/tasks" />
                 <nav-icon-item title="Calendar" icon="mdi-calendar" to="/calendar" />
                 <nav-icon-item title="Store" icon="mdi-connection" to="/store" />
                 <nav-icon-item title="Settings" icon="mdi-cog" to="/settings" />
