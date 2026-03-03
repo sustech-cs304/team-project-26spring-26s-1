@@ -55,6 +55,7 @@ from __future__ import annotations
 import shutil
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from openai import OpenAI
 from qdrant_client import QdrantClient
@@ -66,8 +67,10 @@ from .config import (
     SKILLS_SEARCH_TOP_K,
     SKILLS_DIR,
 )
-from .tools import Tools
 from .vectorstore import VectorStore
+
+if TYPE_CHECKING:
+    from .tools import ToolEntry
 
 
 class SkillsStore:
@@ -251,10 +254,12 @@ class SkillsStore:
             "references": references,
         }
 
-        # 3. Upsert into vectorstore (only name + trigger is embedded)
+        # 3. Delete old entry (if any) then insert fresh vector
+        skill_id = self._skill_id(name)
+        self._store.delete_by_id(skill_id)
         vector = self._store.embed([f"{name}: {trigger}"])[0]
         self._store.upsert_records(
-            [{"id": self._skill_id(name), "vector": vector, "payload": payload}],
+            [{"id": skill_id, "vector": vector, "payload": payload}],
             batch_size=1,
         )
 
@@ -400,150 +405,130 @@ class SkillsStore:
         return [e["name"] for e in self._index]
 
     # ------------------------------------------------------------------
-    # Tool registration
+    # Tool entries
     # ------------------------------------------------------------------
 
-    def register_tools(self, tools: Tools) -> None:
-
-        tools.add_tool(
-            {
-                "name": "skills_lookup",
-                "description": (
-                    "Search your skills notebook for a learned workflow that matches the current task. "
-                    "Call this BEFORE attempting any multi-step task — if a matching skill exists, "
-                    "follow its steps rather than re-deriving the procedure from scratch. "
-                    "Uses both semantic similarity and keyword matching on skill names and trigger descriptions. "
-                    "Returns up to 3 matching skills with their step-by-step procedures and notes. "
-                    "If a returned skill lists references, you can read them with skills_read_reference."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": (
-                                "A natural-language description of the task you are about to perform. "
-                                "Be specific about what you want to accomplish. "
-                                "Examples: 'summarize a webpage from a URL', "
-                                "'debug a Python import error', "
-                                "'fetch JSON from a REST API and parse the result'."
-                            ),
-                        }
+    def get_tools(self) -> list[ToolEntry]:
+        """Return skill tool entries for registration with the Tools registry."""
+        return [
+            (
+                {
+                    "name": "skills_lookup",
+                    "description": (
+                        "Search your skills notebook for a learned workflow that matches the current task. "
+                        "Call this BEFORE attempting any multi-step task — if a matching skill exists, "
+                        "follow its steps rather than re-deriving the procedure from scratch. "
+                        "Uses both semantic similarity and keyword matching on skill names and trigger descriptions. "
+                        "Returns up to 3 matching skills with their step-by-step procedures and notes. "
+                        "If a returned skill lists references, you can read them with skills_read_reference."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": (
+                                    "A natural-language description of the task you are about to perform. "
+                                    "Be specific about what you want to accomplish. "
+                                    "Examples: 'summarize a webpage from a URL', "
+                                    "'debug a Python import error', "
+                                    "'fetch JSON from a REST API and parse the result'."
+                                ),
+                            }
+                        },
+                        "required": ["query"],
                     },
-                    "required": ["query"],
                 },
-            },
-            lambda p: self._format(self.lookup(p["query"])),
-        )
-
-        tools.add_tool(
-            {
-                "name": "skills_save",
-                "description": (
-                    "Save a reusable workflow to your skills notebook after successfully completing "
-                    "a non-trivial multi-step task that required tool usage, trial-and-error, or "
-                    "non-obvious sequencing. Write it clearly enough that your future self can follow "
-                    "it without rediscovering the steps. "
-                    "The skill is written to skills/<name>/SKILL.md on disk AND indexed into the "
-                    "vectorstore simultaneously. "
-                    "Saving a skill with an existing name overwrites the previous entry — use this "
-                    "to refine a skill after discovering a better approach."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": (
-                                "Short, unique snake_case identifier for this skill. "
-                                "Examples: 'scrape_and_summarize', 'debug_python_traceback', "
-                                "'fetch_json_api', 'patch_file_safely'."
-                            ),
-                        },
-                        "trigger": {
-                            "type": "string",
-                            "description": (
-                                "A concise description of WHEN to apply this skill — "
-                                "the task type or user request that should activate it. "
-                                "Examples: 'user asks to summarize a webpage by URL', "
-                                "'user reports a Python error with a traceback', "
-                                "'need to call a REST API and parse the JSON response'."
-                            ),
-                        },
-                        "steps": {
-                            "type": "string",
-                            "description": (
-                                "Numbered step-by-step procedure. Include the specific tool calls "
-                                "used at each step, key parameters, and any intermediate checks. "
-                                "Example:\n"
-                                "1. run_shell('curl -s <url>') to fetch raw HTML\n"
-                                "2. run_python to strip tags with BeautifulSoup\n"
-                                "3. Summarize the cleaned text in ≤200 words"
-                            ),
-                        },
-                        "notes": {
-                            "type": "string",
-                            "description": (
-                                "Optional. Edge cases, known failure modes, and workarounds discovered "
-                                "during execution. Examples: 'If curl returns 403, retry with -A Mozilla/5.0', "
-                                "'BeautifulSoup may need html.parser if lxml is not installed'."
-                            ),
-                        },
-                    },
-                    "required": ["name", "trigger", "steps"],
-                },
-            },
-            lambda p: (
-                self.save(p["name"], p["trigger"], p["steps"], p.get("notes", ""))
-                or f"Skill '{p['name']}' saved to skills/{p['name']}/SKILL.md and vectorstore."
+                lambda p: self._format(self.lookup(p["query"])),
             ),
-        )
-
-        tools.add_tool(
-            {
-                "name": "skills_read_reference",
-                "description": (
-                    "Read the contents of a reference file belonging to a skill. "
-                    "Use this after skills_lookup returns a skill that lists reference files. "
-                    "References contain detailed documentation on specific sub-topics."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "skill_name": {
-                            "type": "string",
-                            "description": "The skill name (directory name under skills/).",
+            (
+                {
+                    "name": "skills_save",
+                    "description": (
+                        "Save a reusable workflow to your skills notebook after successfully completing "
+                        "a non-trivial multi-step task that required tool usage, trial-and-error, or "
+                        "non-obvious sequencing. Write it clearly enough that your future self can follow "
+                        "it without rediscovering the steps. "
+                        "The skill is written to skills/<name>/SKILL.md on disk AND indexed into the "
+                        "vectorstore simultaneously. "
+                        "Saving a skill with an existing name overwrites the previous entry — use this "
+                        "to refine a skill after discovering a better approach."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": (
+                                    "Short, unique snake_case identifier for this skill. "
+                                    "Examples: 'scrape_and_summarize', 'debug_python_traceback', "
+                                    "'fetch_json_api', 'patch_file_safely'."
+                                ),
+                            },
+                            "trigger": {
+                                "type": "string",
+                                "description": (
+                                    "A concise description of WHEN to apply this skill — "
+                                    "the task type or user request that should activate it. "
+                                    "Examples: 'user asks to summarize a webpage by URL', "
+                                    "'user reports a Python error with a traceback', "
+                                    "'need to call a REST API and parse the JSON response'."
+                                ),
+                            },
+                            "steps": {
+                                "type": "string",
+                                "description": (
+                                    "Numbered step-by-step procedure. Include the specific tool calls "
+                                    "used at each step, key parameters, and any intermediate checks. "
+                                    "Example:\n"
+                                    "1. run_shell('curl -s <url>') to fetch raw HTML\n"
+                                    "2. run_python to strip tags with BeautifulSoup\n"
+                                    "3. Summarize the cleaned text in ≤200 words"
+                                ),
+                            },
+                            "notes": {
+                                "type": "string",
+                                "description": (
+                                    "Optional. Edge cases, known failure modes, and workarounds discovered "
+                                    "during execution. Examples: 'If curl returns 403, retry with -A Mozilla/5.0', "
+                                    "'BeautifulSoup may need html.parser if lxml is not installed'."
+                                ),
+                            },
                         },
-                        "ref_path": {
-                            "type": "string",
-                            "description": (
-                                "Relative path to the reference file within the skill directory. "
-                                "Example: 'references/request-mocking.md'."
-                            ),
-                        },
+                        "required": ["name", "trigger", "steps"],
                     },
-                    "required": ["skill_name", "ref_path"],
                 },
-            },
-            lambda p: self.read_reference(p["skill_name"], p["ref_path"]),
-        )
-
-        tools.add_tool(
-            {
-                "name": "skills_rebuild",
-                "description": (
-                    "Rebuild the skills vectorstore from the on-disk skills/ directory. "
-                    "Use this after manually editing, adding, or removing SKILL.md files "
-                    "to bring the vectorstore back in sync with the filesystem. "
-                    "This clears the existing vectorstore and re-indexes all skills."
+                lambda p: (
+                    self.save(p["name"], p["trigger"], p["steps"], p.get("notes", ""))
+                    or f"Skill '{p['name']}' saved to skills/{p['name']}/SKILL.md and vectorstore."
                 ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                },
-            },
-            lambda p: (
-                f"Rebuilt vectorstore: {self.rebuild_vectorstore()} skill(s) indexed "
-                f"from {self._skills_dir}."
             ),
-        )
+            (
+                {
+                    "name": "skills_read_reference",
+                    "description": (
+                        "Read the contents of a reference file belonging to a skill. "
+                        "Use this after skills_lookup returns a skill that lists reference files. "
+                        "References contain detailed documentation on specific sub-topics."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "skill_name": {
+                                "type": "string",
+                                "description": "The skill name (directory name under skills/).",
+                            },
+                            "ref_path": {
+                                "type": "string",
+                                "description": (
+                                    "Relative path to the reference file within the skill directory. "
+                                    "Example: 'references/request-mocking.md'."
+                                ),
+                            },
+                        },
+                        "required": ["skill_name", "ref_path"],
+                    },
+                },
+                lambda p: self.read_reference(p["skill_name"], p["ref_path"]),
+            ),
+        ]

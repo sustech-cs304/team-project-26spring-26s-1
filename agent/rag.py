@@ -1,14 +1,6 @@
-"""
-RAG knowledge-base interface.
-
-Wraps a local qdrant collection containing externally-ingested document chunks
-and exposes a semantic-search agent tool over that collection.
-
-The knowledge base is populated out-of-band via the `agent-ingest` CLI tool
-and is completely separate from the mem0 long-term memory store.
-"""
-
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from openai import OpenAI
 
@@ -20,8 +12,10 @@ from .config import (
     RAG_EMBED_DIMS,
     RAG_SEARCH_TOP_K,
 )
-from .tools import Tools
 from .vectorstore import VectorStore
+
+if TYPE_CHECKING:
+    from .tools import ToolEntry
 
 
 class KnowledgeBase:
@@ -40,10 +34,6 @@ class KnowledgeBase:
             embed_dims=RAG_EMBED_DIMS,
         )
 
-    def close(self) -> None:
-        """No-op: the shared QdrantClient is closed by the caller (main.py)."""
-        pass
-
     def search(self, query: str, top_k: int = RAG_SEARCH_TOP_K) -> list[dict]:
         """Return the *top_k* most semantically relevant document chunks for *query*."""
         results = self._store.search(query, top_k)
@@ -56,8 +46,8 @@ class KnowledgeBase:
             for r in results
         ]
 
-    def register_tools(self, tools: Tools) -> None:
-        """Register the knowledge_base_search tool with the agent's tool registry."""
+    def get_tools(self) -> list[ToolEntry]:
+        """Return knowledge-base tool entries for registration."""
 
         schema = {
             "name": "knowledge_base_search",
@@ -114,4 +104,4 @@ class KnowledgeBase:
                 lines.append(f"[{i}] (score={r['score']}){source}\n{r['text']}")
             return "\n\n".join(lines)
 
-        tools.add_tool(schema, _run)
+        return [(schema, _run)]

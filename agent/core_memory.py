@@ -1,13 +1,23 @@
+from __future__ import annotations
+
 import json
-from .tools import Tools
+from typing import TYPE_CHECKING
+
 from .config import tokenizer, CORE_MEMORY_PATH
+
+if TYPE_CHECKING:
+    from .mem0 import Mem0
+    from .tools import ToolEntry
+
 
 class CoreMemory:
     """
     A class to represent the core memory of the agent.
     Entries are persisted to disk so they survive process restarts.
     """
-    def __init__(self):
+
+    def __init__(self, mem0: Mem0 | None = None) -> None:
+        self._mem0 = mem0
         CORE_MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
         if CORE_MEMORY_PATH.exists():
             try:
@@ -15,7 +25,7 @@ class CoreMemory:
             except Exception:
                 self.memory = {}
         else:
-            self.memory: dict[str, str] = {}
+            self.memory = {}
 
     def _save(self) -> None:
         CORE_MEMORY_PATH.write_text(
@@ -27,7 +37,14 @@ class CoreMemory:
         """Return the number of tokens in the formatted core memory string, using cl100k_base encoding."""
         return len(tokenizer.encode(self.format_memory()))
         
-    def register_tools(self, tools: Tools):
+    def get_tools(self) -> list[ToolEntry]:
+        """Return tool entries for registration with the Tools registry."""
+        entries = [self._insert_tool(), self._modify_tool()]
+        if self._mem0 is not None:
+            entries.append(self._archive_tool())
+        return entries
+
+    def _insert_tool(self) -> ToolEntry:
         tool_insert = {
             "name": "core_memory_insert",
             "description": (
@@ -70,8 +87,9 @@ class CoreMemory:
                 self.memory[params["key"]] = self.memory.get(params["key"], "") + params["statement"]
             self._save()
             return "Statement inserted into core memory." if params["statement"] else "Statement erased from core memory."
-        tools.add_tool(tool_insert, tool_func_insert)
-        
+        return (tool_insert, tool_func_insert)
+
+    def _modify_tool(self) -> ToolEntry:
         tool_modify = {
             "name": "core_memory_modify",
             "description": (
@@ -116,10 +134,11 @@ class CoreMemory:
             self.memory[params["key"]] = self.memory[params["key"]].replace(params["old_substring"], params["new_substring"])
             self._save()
             return "Statement modified in core memory."
-        tools.add_tool(tool_modify, tool_func_modify)
+        return (tool_modify, tool_func_modify)
 
-    def register_archive_tool(self, tools: Tools, mem0_instance) -> None:
-        """Register the core_memory_archive tool, which requires access to the Mem0 instance."""
+    def _archive_tool(self) -> ToolEntry:
+        assert self._mem0 is not None
+        mem0 = self._mem0
         tool_archive = {
             "name": "core_memory_archive",
             "description": (
@@ -152,9 +171,9 @@ class CoreMemory:
                 return f"Key '{key}' does not exist in core memory."
             value = self.memory.pop(key)
             self._save()
-            mem0_instance.archive_fact(f"{key}: {value}", fraction="core_archive")
+            mem0.archive_fact(f"{key}: {value}", fraction="core_archive")
             return f"Key '{key}' archived to long-term memory (core_archive) and removed from core memory."
-        tools.add_tool(tool_archive, tool_func_archive)
+        return (tool_archive, tool_func_archive)
 
     def format_memory(self) -> str:
         """

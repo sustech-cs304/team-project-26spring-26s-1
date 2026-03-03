@@ -1,14 +1,17 @@
 from mem0 import Memory
-from .tools import Tools
 from .config import (
     MEM0_CONFIG,
     ARCHIVE_CANDIDATE_THRESHOLD,
     UTILITY_MODEL,
     jinja_env,
 )
+from typing import TYPE_CHECKING
 from openai import OpenAI
 import atexit
 import json
+
+if TYPE_CHECKING:
+    from .tools import ToolEntry
 
 _tmpl_conflict = jinja_env.get_template("conflict_resolution.j2")
 
@@ -116,10 +119,11 @@ class Mem0():
 
         mem.add(fact, user_id=ns, infer=False)
 
-    def register_tools(self, tools: Tools):
-        """Register long-term memory tools for the agent."""
+    def get_tools(self) -> list[ToolEntry]:
+        """Return long-term memory tool entries for registration."""
+        return [self._query_tool(), self._insert_tool()]
 
-        # --- Query tool ---
+    def _query_tool(self) -> ToolEntry:
         tool_query = {
             "name": "long_term_memory_query",
             "description": (
@@ -175,9 +179,9 @@ class Mem0():
                     results_str += "\n"
             results_str = results_str.strip()
             return results_str if results_str else "No relevant facts found."
-        tools.add_tool(tool_query, tool_func_query)
+        return (tool_query, tool_func_query)
 
-        # --- Direct insert tool ---
+    def _insert_tool(self) -> ToolEntry:
         tool_insert = {
             "name": "long_term_memory_insert",
             "description": (
@@ -208,4 +212,4 @@ class Mem0():
         def tool_func_insert(params: dict) -> str:
             self.archive_fact(params["fact"], fraction="core_archive")
             return "Fact written directly to long-term archive (core_archive)."
-        tools.add_tool(tool_insert, tool_func_insert)
+        return (tool_insert, tool_func_insert)

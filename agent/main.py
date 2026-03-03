@@ -21,8 +21,6 @@ from prompt_toolkit.history import InMemoryHistory
 
 
 def _shutdown(
-    longterm_memory: Mem0,
-    messages: list,
     code_runner: CodeRunner,
     agent_qdrant: QdrantClient,
 ) -> None:
@@ -46,28 +44,28 @@ def _shutdown(
 
 def main() -> None:
     tools = Tools()
-    core_memory = CoreMemory()
-    core_memory.register_tools(tools)
 
     agent_client   = openai.OpenAI(base_url=AGENT_API_BASE_URL,   api_key=AGENT_API_KEY)
     utility_client = openai.OpenAI(base_url=UTILITY_API_BASE_URL, api_key=UTILITY_API_KEY)
     embed_client   = openai.OpenAI(base_url=EMBED_API_BASE_URL,   api_key=EMBED_API_KEY)
 
     longterm_memory = Mem0(user_id=USER_ID, client=utility_client, model=UTILITY_MODEL)
-    longterm_memory.register_tools(tools)
-    core_memory.register_archive_tool(tools, longterm_memory)
+    tools.register("longterm_memory", longterm_memory.get_tools())
+
+    core_memory = CoreMemory(mem0=longterm_memory)
+    tools.register("core_memory", core_memory.get_tools())
 
     AGENT_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
     agent_qdrant = QdrantClient(path=str(AGENT_QDRANT_PATH))
 
     knowledge_base = KnowledgeBase(client=embed_client, qdrant=agent_qdrant)
-    knowledge_base.register_tools(tools)
+    tools.register("knowledge_base", knowledge_base.get_tools())
 
     skills_store = SkillsStore(client=embed_client, qdrant=agent_qdrant)
-    skills_store.register_tools(tools)
+    tools.register("skills", skills_store.get_tools())
 
     code_runner = CodeRunner(client=utility_client)
-    code_runner.register_tools(tools)
+    tools.register("code_runner", code_runner.get_tools())
 
     ctx = ContextManager(core_memory=core_memory, tools=tools, client=agent_client, model=AGENT_MODEL)
 
@@ -138,7 +136,7 @@ def main() -> None:
         # Always runs — whether we exited normally, via Ctrl-C, or due to an
         # unexpected exception. Flushes memory and closes qdrant clients while
         # the interpreter is still in a fully valid state.
-        _shutdown(longterm_memory, messages, code_runner, agent_qdrant)
+        _shutdown(code_runner, agent_qdrant)
 
 
 if __name__ == "__main__":

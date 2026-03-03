@@ -2,9 +2,9 @@
 Shared Qdrant vector store and embedding utilities.
 
 A VectorStore instance owns exactly one QdrantClient (one RocksDB file lock)
-and one named collection within it. This is the primitive building block for
-any semantic-search capability in the agent: RAG knowledge base, a future
-skills store, etc.
+and one named collection within it.  This is the primitive building block for
+any semantic-search capability in the agent: RAG knowledge base, skills store,
+etc.
 
 IMPORTANT — one path, one owner:
     Local Qdrant uses RocksDB, which places an exclusive file lock on the
@@ -28,7 +28,7 @@ class VectorStore:
     """Thin wrapper around a local Qdrant collection with OpenAI embeddings.
 
     Handles client lifecycle, collection creation, embedding, search, and
-    batched upsert so that higher-level modules (rag.py, future skills.py, …)
+    batched upsert so that higher-level modules (rag.py, skills.py, …)
     contain zero Qdrant boilerplate.
     """
 
@@ -117,31 +117,16 @@ class VectorStore:
             for hit in hits
         ]
 
-    def scroll_all(self) -> list[dict]:
-        """Return the payload of every point stored in the collection.
-
-        Paginates automatically; safe for large collections. Used by
-        SkillsStore to build its in-memory BM25 keyword index at startup.
-        """
-        payloads: list[dict] = []
-        offset = None
-        while True:
-            results, next_offset = self._qdrant.scroll(
-                collection_name=self._collection,
-                limit=256,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False,
-            )
-            payloads.extend(p.payload for p in results)
-            if next_offset is None:
-                break
-            offset = next_offset
-        return payloads
-
     # ------------------------------------------------------------------
     # Write
     # ------------------------------------------------------------------
+
+    def delete_by_id(self, point_id: str) -> None:
+        """Delete a single point by its ID.  Silently succeeds if the ID does not exist."""
+        self._qdrant.delete(
+            collection_name=self._collection,
+            points_selector=[point_id],
+        )
 
     def clear_collection(self) -> None:
         """Delete and recreate the collection, removing all stored vectors."""

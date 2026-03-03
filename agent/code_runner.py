@@ -45,7 +45,10 @@ from .config import (
     CODE_SECURITY_REVIEW,
     CODE_SECURITY_AUTORUN_LOW,
 )
-from .tools import Tools
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .tools import ToolEntry
 
 try:
     import podman as _podman_mod
@@ -427,7 +430,7 @@ class CodeRunner:
     # Tool registration
     # ------------------------------------------------------------------
 
-    def register_tools(self, tools: Tools) -> None:
+    def get_tools(self) -> list[ToolEntry]:
         _sandbox_note = (
             " Executes inside a Podman sandbox container; the workspace "
             "directory is bind-mounted so files written there are visible on the host."
@@ -436,174 +439,172 @@ class CodeRunner:
             "and the user must confirm before execution proceeds."
         )
 
-        tools.add_tool(
-            {
-                "name": "run_python",
-                "description": (
-                    "Execute a Python code snippet in a stateless subprocess and return "
-                    "all stdout and stderr. Each call is an independent `python3 -c` "
-                    "invocation — no variables, imports, or definitions persist between "
-                    "calls. Ideal for data processing, calculations, file parsing, or "
-                    "any computation. If a task needs multiple steps, either write them "
-                    "all in one snippet or use write_file + run_shell to run a script."
-                    + _sandbox_note
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "code": {
-                            "type": "string",
-                            "description": (
-                                "Valid Python source code to execute. Multi-line code is "
-                                "fully supported. Use print() to produce visible output — "
-                                "bare expression values are NOT automatically displayed. "
-                                "Each call starts with a clean interpreter state."
-                            ),
-                        }
+        return [
+            (
+                {
+                    "name": "run_python",
+                    "description": (
+                        "Execute a Python code snippet in a stateless subprocess and return "
+                        "all stdout and stderr. Each call is an independent `python3 -c` "
+                        "invocation — no variables, imports, or definitions persist between "
+                        "calls. Ideal for data processing, calculations, file parsing, or "
+                        "any computation. If a task needs multiple steps, either write them "
+                        "all in one snippet or use write_file + run_shell to run a script."
+                        + _sandbox_note
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": (
+                                    "Valid Python source code to execute. Multi-line code is "
+                                    "fully supported. Use print() to produce visible output — "
+                                    "bare expression values are NOT automatically displayed. "
+                                    "Each call starts with a clean interpreter state."
+                                ),
+                            }
+                        },
+                        "required": ["code"],
                     },
-                    "required": ["code"],
                 },
-            },
-            lambda p: self.run_python(p["code"]),
-        )
-
-        tools.add_tool(
-            {
-                "name": "run_shell",
-                "description": (
-                    "Execute a bash command or pipeline in a stateless shell invocation "
-                    "and return combined stdout and stderr. Each call is an independent "
-                    "`bash -c` process — no state (environment variables, working "
-                    "directory, or functions) persists between calls. When directory "
-                    "context matters, chain the cd and the command: "
-                    "'cd /path/to/dir && git log --oneline -10'. Use this for filesystem "
-                    "operations, running programs, package installation, git, build "
-                    "tools, and anything more naturally expressed as a shell command "
-                    "than Python."
-                    + _sandbox_note
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": (
-                                "A bash command, pipeline, or multi-line script. "
-                                "Examples: 'ls -la', 'cd /repo && git log --oneline -10', "
-                                "'pip install requests', 'find . -name \"*.py\" | wc -l'. "
-                                "Avoid commands requiring interactive TTY input — they will "
-                                "block until the timeout is reached. Each call starts in "
-                                "the process working directory; use cd && … to change dirs."
-                            ),
-                        }
+                lambda p: self.run_python(p["code"]),
+            ),
+            (
+                {
+                    "name": "run_shell",
+                    "description": (
+                        "Execute a bash command or pipeline in a stateless shell invocation "
+                        "and return combined stdout and stderr. Each call is an independent "
+                        "`bash -c` process — no state (environment variables, working "
+                        "directory, or functions) persists between calls. When directory "
+                        "context matters, chain the cd and the command: "
+                        "'cd /path/to/dir && git log --oneline -10'. Use this for filesystem "
+                        "operations, running programs, package installation, git, build "
+                        "tools, and anything more naturally expressed as a shell command "
+                        "than Python."
+                        + _sandbox_note
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": (
+                                    "A bash command, pipeline, or multi-line script. "
+                                    "Examples: 'ls -la', 'cd /repo && git log --oneline -10', "
+                                    "'pip install requests', 'find . -name \"*.py\" | wc -l'. "
+                                    "Avoid commands requiring interactive TTY input — they will "
+                                    "block until the timeout is reached. Each call starts in "
+                                    "the process working directory; use cd && … to change dirs."
+                                ),
+                            }
+                        },
+                        "required": ["command"],
                     },
-                    "required": ["command"],
                 },
-            },
-            lambda p: self.run_shell(p["command"]),
-        )
-
-        tools.add_tool(
-            {
-                "name": "read_file",
-                "description": (
-                    "Read the text contents of a file and return them as a string. "
-                    "Optionally restrict to a line range to avoid loading large files "
-                    "entirely — lines are 1-indexed and both ends are inclusive. "
-                    "Use this to inspect source code, configuration files, logs, "
-                    "or any text-based file on the filesystem."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Absolute or relative path to the file.",
+                lambda p: self.run_shell(p["command"]),
+            ),
+            (
+                {
+                    "name": "read_file",
+                    "description": (
+                        "Read the text contents of a file and return them as a string. "
+                        "Optionally restrict to a line range to avoid loading large files "
+                        "entirely — lines are 1-indexed and both ends are inclusive. "
+                        "Use this to inspect source code, configuration files, logs, "
+                        "or any text-based file on the filesystem."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "Absolute or relative path to the file.",
+                            },
+                            "start_line": {
+                                "type": "integer",
+                                "description": "First line to read (1-based, inclusive). Omit to start from line 1.",
+                            },
+                            "end_line": {
+                                "type": "integer",
+                                "description": "Last line to read (1-based, inclusive). Omit to read to end of file.",
+                            },
                         },
-                        "start_line": {
-                            "type": "integer",
-                            "description": "First line to read (1-based, inclusive). Omit to start from line 1.",
-                        },
-                        "end_line": {
-                            "type": "integer",
-                            "description": "Last line to read (1-based, inclusive). Omit to read to end of file.",
-                        },
+                        "required": ["path"],
                     },
-                    "required": ["path"],
                 },
-            },
-            lambda p: self.read_file(p["path"], p.get("start_line"), p.get("end_line")),
-        )
-
-        tools.add_tool(
-            {
-                "name": "write_file",
-                "description": (
-                    "Write content to a file, creating it (and any missing parent "
-                    "directories) if it does not exist, or overwriting it completely "
-                    "if it does. The write is atomic — the old file is never partially "
-                    "overwritten. Use this to create new scripts, config files, or save "
-                    "generated text. For targeted edits to existing files, prefer "
-                    "patch_file to avoid accidentally discarding unchanged content."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Absolute or relative path to write to.",
+                lambda p: self.read_file(p["path"], p.get("start_line"), p.get("end_line")),
+            ),
+            (
+                {
+                    "name": "write_file",
+                    "description": (
+                        "Write content to a file, creating it (and any missing parent "
+                        "directories) if it does not exist, or overwriting it completely "
+                        "if it does. The write is atomic — the old file is never partially "
+                        "overwritten. Use this to create new scripts, config files, or save "
+                        "generated text. For targeted edits to existing files, prefer "
+                        "patch_file to avoid accidentally discarding unchanged content."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "Absolute or relative path to write to.",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "Complete text content to write. Replaces any existing content.",
+                            },
                         },
-                        "content": {
-                            "type": "string",
-                            "description": "Complete text content to write. Replaces any existing content.",
-                        },
+                        "required": ["path", "content"],
                     },
-                    "required": ["path", "content"],
                 },
-            },
-            lambda p: self.write_file(p["path"], p["content"]),
-        )
-
-        tools.add_tool(
-            {
-                "name": "patch_file",
-                "description": (
-                    "Apply a unified diff to a file using the patch(1) utility. "
-                    "Preferred over write_file for editing existing files — patch "
-                    "is line-number anchored, tolerates minor context shifts (e.g. "
-                    "after previous edits moved lines), and makes the change intent "
-                    "explicit. Supply the diff in standard unified format as produced "
-                    "by `diff -u original modified`. The `--- / +++` header lines are "
-                    "optional; a bare hunk starting with `@@ ... @@` is accepted. "
-                    "Multiple hunks in one diff are supported."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path to the file to patch.",
+                lambda p: self.write_file(p["path"], p["content"]),
+            ),
+            (
+                {
+                    "name": "patch_file",
+                    "description": (
+                        "Apply a unified diff to a file using the patch(1) utility. "
+                        "Preferred over write_file for editing existing files — patch "
+                        "is line-number anchored, tolerates minor context shifts (e.g. "
+                        "after previous edits moved lines), and makes the change intent "
+                        "explicit. Supply the diff in standard unified format as produced "
+                        "by `diff -u original modified`. The `--- / +++` header lines are "
+                        "optional; a bare hunk starting with `@@ ... @@` is accepted. "
+                        "Multiple hunks in one diff are supported."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "Path to the file to patch.",
+                            },
+                            "diff": {
+                                "type": "string",
+                                "description": (
+                                    "Unified diff to apply. Example:\n"
+                                    "@@ -10,6 +10,7 @@\n"
+                                    " def foo():\n"
+                                    "-    return 1\n"
+                                    "+    # updated\n"
+                                    "+    return 2\n"
+                                    " \n"
+                                    "Include 3 or more lines of unchanged context around "
+                                    "each change so patch can locate the hunk precisely."
+                                ),
+                            },
                         },
-                        "diff": {
-                            "type": "string",
-                            "description": (
-                                "Unified diff to apply. Example:\n"
-                                "@@ -10,6 +10,7 @@\n"
-                                " def foo():\n"
-                                "-    return 1\n"
-                                "+    # updated\n"
-                                "+    return 2\n"
-                                " \n"
-                                "Include 3 or more lines of unchanged context around "
-                                "each change so patch can locate the hunk precisely."
-                            ),
-                        },
+                        "required": ["path", "diff"],
                     },
-                    "required": ["path", "diff"],
                 },
-            },
-            lambda p: self.patch_file(p["path"], p["diff"]),
-        )
+                lambda p: self.patch_file(p["path"], p["diff"]),
+            ),
+        ]
 
 
 
