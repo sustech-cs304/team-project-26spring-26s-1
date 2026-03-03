@@ -10,13 +10,20 @@
             <!-- Toolbar -->
             <v-row align="center" density="compact" class="mt-1">
                 <!-- 左侧：上传文件 -->
-                <v-btn icon="mdi-plus" size="small" flat :ripple="false" :disabled="loading" @click="triggerUpload" />
+                <v-btn icon="mdi-plus" size="small" variant="text" :ripple="false" :disabled="loading"
+                    @click="triggerUpload" />
                 <input ref="fileInput" type="file" accept="image/*" multiple class="d-none" @change="onFileChange" />
                 <v-spacer />
-                <!-- 右侧：语音 + 发送 -->
-                <v-btn icon="mdi-microphone-outline" size="small" flat :ripple="false" :disabled="loading" />
-                <v-btn icon="mdi-arrow-up" size="small" :color="canSend ? 'primary' : 'surface-variant'"
-                    :variant="canSend ? 'flat' : 'tonal'" :disabled="!canSend" :ripple="false" @click="send" />
+                <v-scale-transition mode="out-in">
+                    <v-btn v-if="loading" key="stop" icon="mdi-stop" size="small" color="primary" variant="tonal"
+                        :ripple="false" @click="$emit('stop')" />
+                    <v-btn v-else-if="!hasContent && !isRecording" key="mic" icon="mdi-microphone-outline" size="small"
+                        variant="text" :ripple="false" @click="toggleRecording" />
+                    <v-btn v-else-if="isRecording" key="recording" icon="mdi-microphone" size="small" color="error"
+                        variant="flat" :ripple="false" @click="toggleRecording" />
+                    <v-btn v-else key="send" icon="mdi-send" size="small" variant="flat" :ripple="false"
+                        @click="send" />
+                </v-scale-transition>
             </v-row>
         </v-sheet>
     </div>
@@ -33,6 +40,7 @@
     const emit = defineEmits<{
         (e: 'update:modelValue', value: string): void
         (e: 'send'): void
+        (e: 'stop'): void
     }>()
 
     const images = ref<string[]>([])
@@ -46,9 +54,17 @@
         textarea?.focus()
     }
 
-    const canSend = computed(() =>
-        (props.modelValue.trim() || images.value.length > 0) && !props.loading
+    const hasContent = computed(() =>
+        !!(props.modelValue.trim() || images.value.length > 0)
     )
+
+    const canSend = computed(() => hasContent.value && !props.loading)
+
+    const isRecording = ref(false)
+
+    const toggleRecording = () => {
+        isRecording.value = !isRecording.value
+    }
 
     const triggerUpload = () => {
         fileInput.value?.click()

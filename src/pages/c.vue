@@ -8,14 +8,14 @@
                 <v-list-item title="新对话" @click="newConversation" rounded="lg" slim prepend-gap="6" :ripple="false"
                     to="/c">
                     <template #prepend>
-                        <v-icon size="x-small">mdi-chat-plus-outline</v-icon>
+                        <v-icon size="small">mdi-chat-plus-outline</v-icon>
                     </template>
                 </v-list-item>
                 <!-- 搜索对话按钮 -->
                 <v-list-item title="搜索对话历史" @click="searchConversations" link rounded="lg" slim prepend-gap="6"
                     :ripple="false">
                     <template #prepend>
-                        <v-icon size="x-small">mdi-text-box-search-outline</v-icon>
+                        <v-icon size="small">mdi-text-box-search-outline</v-icon>
                     </template>
                 </v-list-item>
             </v-list>
@@ -24,7 +24,7 @@
                 <v-card-subtitle>历史对话</v-card-subtitle>
             </div>
             <v-list nav density="compact">
-                <v-list-item v-for="conv in conversations" :key="conv.id" :subtitle="conv.title" :to="`/c/${conv.id}`"
+                <v-list-item v-for="conv in conversations" :key="conv.id" :title="conv.title" :to="`/c/${conv.id}`"
                     rounded="lg" color="primary" slim prepend-gap="6" :ripple="false" class="conv-item">
                     <template #append>
                         <v-menu :close-on-content-click="true" location="end">
@@ -79,8 +79,8 @@
         <v-app-bar flat height="48" color="transparent">
             <template #prepend>
                 <v-btn :icon="drawer ? 'mdi-menu-open' : 'mdi-menu'" variant="text" @click="drawer = !drawer"
-                    :ripple="false" size="x-small" />
-                <v-btn icon="mdi-chat-plus-outline" @click="newConversation" size="x-small" variant="text"
+                    :ripple="false" size="small" />
+                <v-btn icon="mdi-chat-plus-outline" @click="newConversation" size="small" variant="text"
                     v-if="!isStartPage" :ripple="false"></v-btn>
             </template>
             <v-btn @click="currentConversation && renameConversation(currentConversation)" text :ripple="false"
@@ -91,7 +91,7 @@
                 </template>
             </v-btn>
             <template #append>
-                <v-btn icon="mdi-share" size="x-small" variant="text" :ripple="false" v-if="!isStartPage"></v-btn>
+                <v-btn icon="mdi-share" size="small" variant="text" :ripple="false" v-if="!isStartPage"></v-btn>
             </template>
         </v-app-bar>
 

@@ -5,7 +5,7 @@
         <v-sheet color="transparent" class="flex-grow-1 d-flex flex-column align-center justify-center">
             <v-container max-width="800" class="px-6 d-flex flex-column align-center">
                 <div class="text-display-small font-weight-bold pa-0 mb-10">有什么我能帮你的吗？</div>
-                <ConversationStarters @select="input = $event" />
+                <ConversationStarters @select="startConversation" />
             </v-container>
         </v-sheet>
 
@@ -26,9 +26,17 @@
     const router = useRouter()
     const input = ref('')
 
+    const startConversation = (prompt: string) => {
+        const uuid = crypto.randomUUID()
+        router.push({
+            path: `/c/${uuid}`,
+            state: { prompt }
+        })
+    }
+
     const send = () => {
-        if (!input.value.trim()) return
-        // TODO: 创建新对话并携带初始消息跳转
-        router.push('/c/new')
+        const text = input.value.trim()
+        if (!text) return
+        startConversation(text)
     }
 </script>

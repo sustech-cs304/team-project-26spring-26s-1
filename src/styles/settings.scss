@@ -8,6 +8,8 @@
 // @use 'vuetify/settings' with (
 //   $color-pack: false
 // );
+@use 'vuetify/settings' with ($tooltip-font-size: 0.75rem, $tooltip-line-height: 1.6, $tooltip-padding: 2px 8px);
+
 
 * {
     scrollbar-width: thin;
