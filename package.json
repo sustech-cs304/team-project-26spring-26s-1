@@ -14,6 +14,8 @@
     "@fontsource/roboto": "^5.2.9",
     "@mdi/font": "7.4.47",
     "@tauri-apps/api": "^2.0.0",
+    "axios": "^1.13.6",
+    "lodash": "^4.17.23",
     "pinia": "^3.0.4",
     "vue": "^3.5.26",
     "vue-i18n": "^11.2.7",
@@ -23,6 +25,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.0",
     "@tsconfig/node22": "^22.0.5",
+    "@types/lodash": "^4.17.24",
     "@types/node": "^22.0.5",
     "@vitejs/plugin-vue": "^6.0.3",
     "@vue/tsconfig": "^0.8.1",
