@@ -1,83 +1,12 @@
-from .mem0 import Mem0
-from .core_memory import CoreMemory
-from .tools import Tools
-from .context_manager import ContextManager
-from .rag import KnowledgeBase
-from .skills import SkillsStore
-from .code_runner import CodeRunner
-from .config import (
-    AGENT_MODEL,
-    AGENT_API_BASE_URL, AGENT_API_KEY,
-    UTILITY_MODEL, UTILITY_API_BASE_URL, UTILITY_API_KEY,
-    EMBED_API_BASE_URL, EMBED_API_KEY,
-    AGENT_QDRANT_PATH,
-    USER_ID,
-)
-import openai
-import json
-from qdrant_client import QdrantClient
+from .loop import AgentLoop
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
 
-def _shutdown(
-    code_runner: CodeRunner,
-    agent_qdrant: QdrantClient,
-) -> None:
-    """Explicit teardown: flush memory then close all qdrant handles.
-
-    Called from the finally block so it always runs, even on KeyboardInterrupt
-    or an unexpected exception. Closing the qdrant clients here — while all
-    library modules are still alive — avoids the crash that occurs when Python's
-    GC triggers QdrantClient.__del__ during interpreter teardown after modules
-    have already been nulled out.
-    """
-    try:
-        code_runner.cleanup()
-    except Exception:
-        pass
-    try:
-        agent_qdrant.close()
-    except Exception:
-        pass
-
-
 def main() -> None:
-    tools = Tools()
-
-    agent_client   = openai.OpenAI(base_url=AGENT_API_BASE_URL,   api_key=AGENT_API_KEY)
-    utility_client = openai.OpenAI(base_url=UTILITY_API_BASE_URL, api_key=UTILITY_API_KEY)
-    embed_client   = openai.OpenAI(base_url=EMBED_API_BASE_URL,   api_key=EMBED_API_KEY)
-
-    longterm_memory = Mem0(user_id=USER_ID, client=utility_client, model=UTILITY_MODEL)
-    tools.register("longterm_memory", longterm_memory.get_tools())
-
-    core_memory = CoreMemory(mem0=longterm_memory)
-    tools.register("core_memory", core_memory.get_tools())
-
-    AGENT_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
-    agent_qdrant = QdrantClient(path=str(AGENT_QDRANT_PATH))
-
-    knowledge_base = KnowledgeBase(client=embed_client, qdrant=agent_qdrant)
-    tools.register("knowledge_base", knowledge_base.get_tools())
-
-    skills_store = SkillsStore(client=embed_client, qdrant=agent_qdrant)
-    tools.register("skills", skills_store.get_tools())
-
-    code_runner = CodeRunner(client=utility_client)
-    tools.register("code_runner", code_runner.get_tools())
-
-    ctx = ContextManager(core_memory=core_memory, tools=tools, client=agent_client, model=AGENT_MODEL)
-
-    messages = [{"role": "system", "content": ctx.build_system_message()}]
+    loop = AgentLoop()
+    messages = loop.new_context()
     session = PromptSession(history=InMemoryHistory())
-
-    def call_openai_api(msgs: list[dict]):
-        return agent_client.chat.completions.create(
-            model=AGENT_MODEL,
-            messages=msgs,
-            tools=tools.openai_format(),
-        )
 
     try:
         while True:
@@ -90,42 +19,24 @@ def main() -> None:
                     continue
                 if user_input.lower() in ["exit", "reset"]:
                     break
-                messages.append({"role": "user", "content": user_input})
 
-                while True:
-                    messages[0]["content"] = ctx.build_system_message()
-                    response = call_openai_api(messages)
-                    if response.choices[0].message.tool_calls:
-                        print(f"Assistant: {response.choices[0].message.content}")
-                        messages.append(response.choices[0].message.model_dump())
-                        for tool_call in response.choices[0].message.tool_calls:
-                            tool_arguments = json.loads(tool_call.function.arguments)
-                            tool_call_str = f"Calling tool: {tool_call.function.name} with arguments {tool_arguments}"
-                            print(tool_call_str)
-                            tool_response = tools.run_tool(tool_call.function.name, tool_arguments)
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": tool_call_str + ": " + tool_response
-                            })
-                            print(f"Tool response: {tool_response}")
-                    else:
-                        assistant_response = response.choices[0].message.content or ""
-                        print(f"Assistant: {assistant_response}")
-                        messages.append(response.choices[0].message.model_dump())
-                        break
+                result = loop.step(messages, user_input)
+                messages = result.messages
 
-                ctx.run_eviction()
-                ctx.run_fold(messages)
+                for tc in result.tool_calls:
+                    print(f"Calling tool: {tc.name} with arguments {tc.arguments}")
+                    print(f"Tool response: {tc.result}")
+
+                print(f"Assistant: {result.response}")
 
             if user_input.lower() == "exit":
                 print("Exiting.")
-                longterm_memory.insert_memory(messages)
+                loop.save_memory(messages)
                 break
             elif user_input.lower() == "reset":
                 print("Resetting the conversation.")
-                longterm_memory.insert_memory(messages)
-                messages = [{"role": "system", "content": ctx.build_system_message()}]
+                loop.save_memory(messages)
+                messages = loop.new_context()
                 continue
 
     except KeyboardInterrupt:
@@ -133,10 +44,7 @@ def main() -> None:
         print("\nInterrupted. Exiting.")
 
     finally:
-        # Always runs — whether we exited normally, via Ctrl-C, or due to an
-        # unexpected exception. Flushes memory and closes qdrant clients while
-        # the interpreter is still in a fully valid state.
-        _shutdown(code_runner, agent_qdrant)
+        loop.shutdown()
 
 
 if __name__ == "__main__":
