@@ -9,12 +9,17 @@ description = "A simple RAG agent."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "aiosqlite>=0.20",
+    "fastapi>=0.115",
     "jinja2>=3.1.6",
     "langchain>=1.2.10",
     "mem0ai>=1.0.4",
     "prompt-toolkit>=3.0.52",
+    "python-multipart>=0.0.18",
     "qdrant-client>=1.9",
+    "sqlalchemy[asyncio]>=2.0",
     "tiktoken>=0.12.0",
+    "uvicorn[standard]>=0.34",
 ]
 
 [project.optional-dependencies]
@@ -29,3 +34,5 @@ agent = ["templates/*.j2"]
 agent = "agent.main:main"
 agent-ingest = "agent.ingest:main"
 agent-skill = "agent.skill_cli:main"
+agent-mem0 = "agent.mem0_inspect:main"
+agent-api = "agent.api.server:main"
