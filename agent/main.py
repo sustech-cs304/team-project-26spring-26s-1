@@ -1,12 +1,13 @@
 from .config import Config
-from .loop import AgentLoop
+from .loop import AgentLoop, ReasoningEvent, TextDeltaEvent, ToolCallStartEvent, ToolResultEvent, DoneEvent
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 import asyncio
 
-def main() -> None:
+
+async def _run() -> None:
     config = Config.from_yaml()
-    loop = asyncio.run(AgentLoop.create(config=config))
+    loop = await AgentLoop.create(config=config)
     messages = loop.new_context()
     session = PromptSession(history=InMemoryHistory())
 
@@ -14,7 +15,7 @@ def main() -> None:
         while True:
             while True:
                 try:
-                    user_input = session.prompt("User: ")
+                    user_input = await session.prompt_async("User: ")
                 except KeyboardInterrupt:
                     # Ctrl-C mid-line: clear the line and let the user try again
                     print()
@@ -22,22 +23,38 @@ def main() -> None:
                 if user_input.lower() in ["exit", "reset"]:
                     break
 
-                result = asyncio.run(loop.step(messages, user_input))
-                messages = result.messages
-
-                for tc in result.tool_calls:
-                    print(f"Calling tool: {tc.name} with arguments {tc.arguments}")
-                    print(f"Tool response: {tc.result}")
-
-                print(f"Assistant: {result.response}")
+                reasoning_started = False
+                async for event in loop.step(messages, user_input):
+                    if isinstance(event, ReasoningEvent):
+                        if not reasoning_started:
+                            print("--- Reasoning ---")
+                            reasoning_started = True
+                        print(event.delta, end="", flush=True)
+                    elif isinstance(event, TextDeltaEvent):
+                        if reasoning_started:
+                            print("\n--- End Reasoning ---")
+                            reasoning_started = False
+                        print(event.delta, end="", flush=True)
+                    elif isinstance(event, ToolCallStartEvent):
+                        if reasoning_started:
+                            print("\n--- End Reasoning ---")
+                            reasoning_started = False
+                        print(f"\nCalling tool: {event.name} with arguments {event.arguments}")
+                    elif isinstance(event, ToolResultEvent):
+                        print(f"Tool response: {event.result}")
+                    elif isinstance(event, DoneEvent):
+                        if reasoning_started:
+                            print("\n--- End Reasoning ---")
+                        messages = event.messages
+                        print()  # newline after streamed text
 
             if user_input.lower() == "exit":
                 print("Exiting.")
-                asyncio.run(loop.save_memory(messages))
+                await loop.save_memory(messages)
                 break
             elif user_input.lower() == "reset":
                 print("Resetting the conversation.")
-                asyncio.run(loop.save_memory(messages))
+                await loop.save_memory(messages)
                 messages = loop.new_context()
                 continue
 
@@ -46,7 +63,11 @@ def main() -> None:
         print("\nInterrupted. Exiting.")
 
     finally:
-        asyncio.run(loop.shutdown())
+        await loop.shutdown()
+
+
+def main() -> None:
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

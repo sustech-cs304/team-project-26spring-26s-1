@@ -1,22 +1,31 @@
 """Reusable agent loop extracted from the CLI entry-point.
 
 The ``AgentLoop`` class owns every tool / service instance and exposes a
-single ``step()`` method that takes a conversation context (message list),
-appends the user turn, runs the model (with tool-call follow-ups), performs
-eviction / fold maintenance, and returns the *updated* context together with
-the assistant's final text response.
+streaming ``step()`` async-generator that takes a conversation context
+(message list), appends the user turn, runs the model (with tool-call
+follow-ups), performs eviction / fold maintenance, and **yields**
+``StreamEvent`` objects as they occur.
 
 This design is intentionally stateless with respect to any single
 conversation — all mutable state lives in the ``messages`` list that the
-caller passes in and gets back.  The loop can therefore serve many
-concurrent conversations simply by maintaining one ``messages`` list per
-conversation.
+caller passes in.  The loop can therefore serve many concurrent
+conversations simply by maintaining one ``messages`` list per conversation.
+
+Streaming event types
+---------------------
+* ``ReasoningEvent``   – a chunk of the model's internal reasoning / thinking
+* ``TextDeltaEvent``   – a chunk of the assistant's visible reply
+* ``ToolCallStartEvent`` – a tool invocation is about to start
+* ``ToolResultEvent``  – a tool invocation completed
+* ``DoneEvent``        – the turn is finished; carries the full updated
+  message list and aggregated metadata
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from typing import AsyncGenerator, Union
 
 import openai
 from qdrant_client import AsyncQdrantClient
@@ -31,7 +40,63 @@ from .skills import SkillsStore
 from .tools import Tools
 
 
-# ── Value objects returned by step() ─────────────────────────────────────────
+# ── Streaming events yielded by step() ───────────────────────────────────────
+
+
+@dataclass
+class ReasoningEvent:
+    """A chunk of the model's chain-of-thought / thinking trace."""
+
+    delta: str
+
+
+@dataclass
+class TextDeltaEvent:
+    """A chunk of the assistant's visible reply text."""
+
+    delta: str
+
+
+@dataclass
+class ToolCallStartEvent:
+    """Emitted when a tool invocation begins."""
+
+    name: str
+    arguments: dict
+
+
+@dataclass
+class ToolResultEvent:
+    """Emitted when a tool invocation completes."""
+
+    name: str
+    arguments: dict
+    result: str
+
+
+@dataclass
+class DoneEvent:
+    """Final event — the turn is complete."""
+
+    response: str
+    """The full assistant text reply (concatenated from all TextDeltaEvents)."""
+
+    messages: list[dict]
+    """The updated conversation context (including the new turns)."""
+
+    tool_calls: list[ToolResultEvent] = field(default_factory=list)
+    """Ordered list of tool calls that were executed during this step."""
+
+    reasoning: str = ""
+    """Full concatenated reasoning trace."""
+
+
+StreamEvent = Union[
+    ReasoningEvent, TextDeltaEvent, ToolCallStartEvent, ToolResultEvent, DoneEvent
+]
+
+
+# ── Legacy compat ────────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -45,7 +110,7 @@ class ToolCallRecord:
 
 @dataclass
 class StepResult:
-    """Everything produced by a single ``AgentLoop.step()`` call."""
+    """Aggregated result — available via :meth:`AgentLoop.step_full`."""
 
     response: str
     """The assistant's final text reply."""
@@ -55,6 +120,9 @@ class StepResult:
 
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     """Ordered list of tool calls that were executed during this step."""
+
+    reasoning: list[str] = field(default_factory=list)
+    """Reasoning / thinking traces emitted by the model during this step."""
 
 
 # ── The loop itself ──────────────────────────────────────────────────────────
@@ -172,33 +240,27 @@ class AgentLoop:
             pass
 
     # ------------------------------------------------------------------
-    # Core loop
+    # Core loop  (streaming async generator)
     # ------------------------------------------------------------------
 
-    async def _call_model(self, messages: list[dict]):
-        """Single OpenAI chat-completion call."""
-        return await self.agent_client.chat.completions.create(
-            model=self.config.agent_model,
-            messages=messages,  # type: ignore[arg-type]
-            tools=self.tools.openai_format(),  # type: ignore[arg-type]
-        )
-
-    async def step(self, messages: list[dict], user_input: str) -> StepResult:
-        """Run one full user→assistant turn (including any tool-call loops).
+    async def step(
+        self, messages: list[dict], user_input: str
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """Run one full user→assistant turn, **streaming** events as they happen.
 
         Parameters
         ----------
         messages:
             The current conversation context.  **Not mutated** — a new list is
-            returned inside the ``StepResult``.
+            built internally and delivered inside the final ``DoneEvent``.
         user_input:
             The latest message from the user.
 
-        Returns
-        -------
-        StepResult
-            Contains the assistant's final text, the updated message list, and
-            a log of every tool call executed.
+        Yields
+        ------
+        StreamEvent
+            ``ReasoningEvent`` / ``TextDeltaEvent`` / ``ToolCallStartEvent`` /
+            ``ToolResultEvent`` during the turn, then a final ``DoneEvent``.
         """
         # Work on a shallow copy so the caller's list is not mutated.
         messages = list(messages)
@@ -207,43 +269,159 @@ class AgentLoop:
         messages[0]["content"] = self.ctx_manager.build_system_message()
         messages.append({"role": "user", "content": user_input})
 
-        tool_call_log: list[ToolCallRecord] = []
+        tool_call_log: list[ToolResultEvent] = []
+        reasoning_parts: list[str] = []
+        assistant_text = ""
 
         # Agent loop: keep going while the model wants to call tools.
         while True:
             messages[0]["content"] = self.ctx_manager.build_system_message()
-            response = await self._call_model(messages)
-            choice = response.choices[0]
 
-            if choice.message.tool_calls:
-                messages.append(choice.message.model_dump())
-                for tc in choice.message.tool_calls:
-                    args = json.loads(tc.function.arguments)  # type: ignore[union-attr]
-                    result = await self.tools.run_tool(tc.function.name, args)  # type: ignore[union-attr]
-                    tool_call_log.append(
-                        ToolCallRecord(name=tc.function.name, arguments=args, result=result)  # type: ignore[union-attr]
+            # ── streaming completion request ─────────────────────────
+            stream = await self.agent_client.chat.completions.create(
+                model=self.config.agent_model,
+                messages=messages,  # type: ignore[arg-type]
+                tools=self.tools.openai_format(),  # type: ignore[arg-type]
+                stream=True,
+            )
+
+            # Accumulators for this single completion
+            current_reasoning = ""
+            current_content = ""
+            tool_calls_in_progress: dict[int, dict] = {}  # index → {id, name, arguments_str}
+
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta is None:
+                    continue
+
+                # Reasoning / thinking stream
+                reasoning_piece = getattr(delta, "reasoning_content", None) or ""
+                if reasoning_piece:
+                    current_reasoning += reasoning_piece
+                    yield ReasoningEvent(delta=reasoning_piece)
+
+                # Content text stream
+                if delta.content:
+                    current_content += delta.content
+                    yield TextDeltaEvent(delta=delta.content)
+
+                # Tool call chunks (streamed incrementally)
+                if delta.tool_calls:
+                    for tc_chunk in delta.tool_calls:
+                        idx = tc_chunk.index
+                        if idx not in tool_calls_in_progress:
+                            tool_calls_in_progress[idx] = {
+                                "id": tc_chunk.id or "",
+                                "name": (tc_chunk.function.name if tc_chunk.function and tc_chunk.function.name else ""),
+                                "arguments_str": "",
+                            }
+                        entry = tool_calls_in_progress[idx]
+                        if tc_chunk.id:
+                            entry["id"] = tc_chunk.id
+                        if tc_chunk.function:
+                            if tc_chunk.function.name:
+                                entry["name"] = tc_chunk.function.name
+                            if tc_chunk.function.arguments:
+                                entry["arguments_str"] += tc_chunk.function.arguments
+
+                finish_reason = chunk.choices[0].finish_reason if chunk.choices else None
+
+            # ── Post-stream processing ───────────────────────────────
+
+            if current_reasoning:
+                reasoning_parts.append(current_reasoning)
+
+            if tool_calls_in_progress:
+                # Build an assistant message with tool_calls for the context
+                tc_entries = []
+                for idx in sorted(tool_calls_in_progress):
+                    entry = tool_calls_in_progress[idx]
+                    tc_entries.append(
+                        {
+                            "id": entry["id"],
+                            "type": "function",
+                            "function": {
+                                "name": entry["name"],
+                                "arguments": entry["arguments_str"],
+                            },
+                        }
                     )
+                assistant_msg: dict = {
+                    "role": "assistant",
+                    "content": current_content or None,
+                    "tool_calls": tc_entries,
+                }
+                messages.append(assistant_msg)
+
+                # Execute each tool and yield events
+                for idx in sorted(tool_calls_in_progress):
+                    entry = tool_calls_in_progress[idx]
+                    args = json.loads(entry["arguments_str"])
+
+                    yield ToolCallStartEvent(name=entry["name"], arguments=args)
+
+                    result = await self.tools.run_tool(entry["name"], args)
+
+                    evt = ToolResultEvent(name=entry["name"], arguments=args, result=result)
+                    tool_call_log.append(evt)
+                    yield evt
+
                     tool_call_str = (
-                        f"Calling tool: {tc.function.name} with arguments {args}"  # type: ignore[union-attr]
+                        f"Calling tool: {entry['name']} with arguments {args}"
                     )
                     messages.append(
                         {
                             "role": "tool",
-                            "tool_call_id": tc.id,
+                            "tool_call_id": entry["id"],
                             "content": f"{tool_call_str}: {result}",
                         }
                     )
             else:
-                assistant_text = choice.message.content or ""
-                messages.append(choice.message.model_dump())
+                # No tool calls → final assistant reply
+                assistant_text = current_content
+                messages.append({"role": "assistant", "content": assistant_text})
                 break
 
         # Maintenance passes (operate on the list in-place).
         await self.ctx_manager.run_eviction()
         await self.ctx_manager.run_fold(messages)
 
-        return StepResult(
+        yield DoneEvent(
             response=assistant_text,
             messages=messages,
             tool_calls=tool_call_log,
+            reasoning="".join(reasoning_parts),
+        )
+
+    # ------------------------------------------------------------------
+    # Convenience: non-streaming wrapper
+    # ------------------------------------------------------------------
+
+    async def step_full(self, messages: list[dict], user_input: str) -> StepResult:
+        """Run one turn and return an aggregated ``StepResult`` (non-streaming).
+
+        This is a thin wrapper around :meth:`step` for callers that do not
+        need incremental streaming.
+        """
+        tool_calls: list[ToolCallRecord] = []
+        reasoning_parts: list[str] = []
+        done: DoneEvent | None = None
+
+        async for event in self.step(messages, user_input):
+            if isinstance(event, ToolResultEvent):
+                tool_calls.append(
+                    ToolCallRecord(name=event.name, arguments=event.arguments, result=event.result)
+                )
+            elif isinstance(event, ReasoningEvent):
+                reasoning_parts.append(event.delta)
+            elif isinstance(event, DoneEvent):
+                done = event
+
+        assert done is not None
+        return StepResult(
+            response=done.response,
+            messages=done.messages,
+            tool_calls=tool_calls,
+            reasoning=reasoning_parts if reasoning_parts else [],
         )
