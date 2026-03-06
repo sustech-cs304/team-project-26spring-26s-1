@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from .config import tokenizer, CORE_MEMORY_PATH
+from .config import Config
 
 if TYPE_CHECKING:
     from .mem0 import Mem0
@@ -16,26 +16,29 @@ class CoreMemory:
     Entries are persisted to disk so they survive process restarts.
     """
 
-    def __init__(self, mem0: Mem0 | None = None) -> None:
+    def __init__(self, config: Config, mem0: Mem0 | None = None) -> None:
+        self._config = config
         self._mem0 = mem0
-        CORE_MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        if CORE_MEMORY_PATH.exists():
+        self._path = config.core_memory_path
+
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        if self._path.exists():
             try:
-                self.memory: dict[str, str] = json.loads(CORE_MEMORY_PATH.read_text(encoding="utf-8"))
+                self.memory: dict[str, str] = json.loads(self._path.read_text(encoding="utf-8"))
             except Exception:
                 self.memory = {}
         else:
             self.memory = {}
 
     def _save(self) -> None:
-        CORE_MEMORY_PATH.write_text(
+        self._path.write_text(
             json.dumps(self.memory, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
     def token_count(self) -> int:
         """Return the number of tokens in the formatted core memory string, using cl100k_base encoding."""
-        return len(tokenizer.encode(self.format_memory()))
+        return len(self._config.tokenizer.encode(self.format_memory()))
         
     def get_tools(self) -> list[ToolEntry]:
         """Return tool entries for registration with the Tools registry."""
@@ -165,13 +168,13 @@ class CoreMemory:
                 "required": ["key"]
             }
         }
-        def tool_func_archive(params: dict) -> str:
+        async def tool_func_archive(params: dict) -> str:
             key = params["key"]
             if key not in self.memory:
                 return f"Key '{key}' does not exist in core memory."
             value = self.memory.pop(key)
             self._save()
-            mem0.archive_fact(f"{key}: {value}", fraction="core_archive")
+            await mem0.archive_fact(f"{key}: {value}", fraction="core_archive")
             return f"Key '{key}' archived to long-term memory (core_archive) and removed from core memory."
         return (tool_archive, tool_func_archive)
 

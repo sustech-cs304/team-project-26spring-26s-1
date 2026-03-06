@@ -2,16 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 
-from .config import (
-    RAG_COLLECTION_NAME,
-    RAG_EMBED_MODEL,
-    RAG_EMBED_DIMS,
-    RAG_SEARCH_TOP_K,
-)
+from .config import Config
 from .vectorstore import VectorStore
 
 if TYPE_CHECKING:
@@ -25,18 +20,21 @@ class KnowledgeBase:
     exist. Use the `agent-ingest` CLI to populate it with document chunks.
     """
 
-    def __init__(self, client: OpenAI, qdrant: QdrantClient) -> None:
+    def __init__(self, config: Config, client: AsyncOpenAI, qdrant: AsyncQdrantClient) -> None:
+        self._config = config
         self._store = VectorStore(
             client=client,
             qdrant=qdrant,
-            collection=RAG_COLLECTION_NAME,
-            embed_model=RAG_EMBED_MODEL,
-            embed_dims=RAG_EMBED_DIMS,
+            collection=config.rag_collection_name,
+            embed_model=config.embed_model,
+            embed_dims=config.embed_dims,
         )
 
-    def search(self, query: str, top_k: int = RAG_SEARCH_TOP_K) -> list[dict]:
+    async def search(self, query: str, top_k: int | None = None) -> list[dict]:
         """Return the *top_k* most semantically relevant document chunks for *query*."""
-        results = self._store.search(query, top_k)
+        if top_k is None:
+            top_k = self._config.rag_search_top_k
+        results = await self._store.search(query, top_k)
         return [
             {
                 "score": r["score"],
@@ -48,6 +46,7 @@ class KnowledgeBase:
 
     def get_tools(self) -> list[ToolEntry]:
         """Return knowledge-base tool entries for registration."""
+        default_top_k = self._config.rag_search_top_k
 
         schema = {
             "name": "knowledge_base_search",
@@ -81,7 +80,7 @@ class KnowledgeBase:
                     "top_k": {
                         "type": "integer",
                         "description": (
-                            f"Number of document chunks to retrieve. Default: {RAG_SEARCH_TOP_K}. "
+                            f"Number of document chunks to retrieve. Default: {default_top_k}. "
                             "Increase (e.g. 10–15) for broad research questions where you want more coverage; "
                             "decrease (e.g. 1–3) for precise targeted lookups."
                         ),
@@ -91,10 +90,10 @@ class KnowledgeBase:
             },
         }
 
-        def _run(params: dict) -> str:
-            results = self.search(
+        async def _run(params: dict) -> str:
+            results = await self.search(
                 query=params["query"],
-                top_k=params.get("top_k", RAG_SEARCH_TOP_K),
+                top_k=params.get("top_k", default_top_k),
             )
             if not results:
                 return "Knowledge base search returned no results."

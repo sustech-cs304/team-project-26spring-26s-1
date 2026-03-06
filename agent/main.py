@@ -1,10 +1,12 @@
+from .config import Config
 from .loop import AgentLoop
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
-
+import asyncio
 
 def main() -> None:
-    loop = AgentLoop()
+    config = Config.from_yaml()
+    loop = asyncio.run(AgentLoop.create(config=config))
     messages = loop.new_context()
     session = PromptSession(history=InMemoryHistory())
 
@@ -20,7 +22,7 @@ def main() -> None:
                 if user_input.lower() in ["exit", "reset"]:
                     break
 
-                result = loop.step(messages, user_input)
+                result = asyncio.run(loop.step(messages, user_input))
                 messages = result.messages
 
                 for tc in result.tool_calls:
@@ -31,11 +33,11 @@ def main() -> None:
 
             if user_input.lower() == "exit":
                 print("Exiting.")
-                loop.save_memory(messages)
+                asyncio.run(loop.save_memory(messages))
                 break
             elif user_input.lower() == "reset":
                 print("Resetting the conversation.")
-                loop.save_memory(messages)
+                asyncio.run(loop.save_memory(messages))
                 messages = loop.new_context()
                 continue
 
@@ -44,7 +46,7 @@ def main() -> None:
         print("\nInterrupted. Exiting.")
 
     finally:
-        loop.shutdown()
+        asyncio.run(loop.shutdown())
 
 
 if __name__ == "__main__":

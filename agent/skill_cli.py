@@ -24,29 +24,26 @@ Usage
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
-from openai import OpenAI
-from qdrant_client import QdrantClient
+from openai import AsyncOpenAI
+from qdrant_client import AsyncQdrantClient
 
-from .config import (
-    EMBED_API_BASE_URL,
-    EMBED_API_KEY,
-    AGENT_QDRANT_PATH,
-)
+from .config import Config
 from .skills import SkillsStore
 
 
-def _make_store() -> tuple[SkillsStore, QdrantClient]:
-    """Initialise an embed client + QdrantClient and return a SkillsStore.
+def _make_store(config: Config) -> tuple[SkillsStore, AsyncQdrantClient]:
+    """Initialise an embed client + AsyncQdrantClient and return a SkillsStore.
 
-    The caller is responsible for closing the QdrantClient.
+    The caller is responsible for closing the AsyncQdrantClient.
     """
-    embed_client = OpenAI(base_url=EMBED_API_BASE_URL, api_key=EMBED_API_KEY)
-    AGENT_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
-    qdrant = QdrantClient(path=str(AGENT_QDRANT_PATH))
-    store = SkillsStore(client=embed_client, qdrant=qdrant)
+    embed_client = AsyncOpenAI(base_url=config.embed_api_base_url, api_key=config.embed_api_key)
+    config.agent_qdrant_path.mkdir(parents=True, exist_ok=True)
+    qdrant = AsyncQdrantClient(path=str(config.agent_qdrant_path))
+    store = SkillsStore(config=config, client=embed_client, qdrant=qdrant)
     return store, qdrant
 
 
@@ -54,31 +51,37 @@ def _make_store() -> tuple[SkillsStore, QdrantClient]:
 # Sub-commands
 # ---------------------------------------------------------------------------
 
-def cmd_import(args: argparse.Namespace) -> None:
+def cmd_import(args: argparse.Namespace, config: Config) -> None:
     path = Path(args.file)
     if not path.exists() or not path.is_file():
         print(f"Error: file not found: {path}", file=sys.stderr)
         sys.exit(1)
 
-    store, qdrant = _make_store()
-    try:
-        name = store.import_from_file(path)
-        print(f"Imported skill '{name}' from {path}")
-    finally:
-        qdrant.close()
+    async def _run() -> None:
+        store, qdrant = _make_store(config)
+        try:
+            name = await store.import_from_file(path)
+            print(f"Imported skill '{name}' from {path}")
+        finally:
+            await qdrant.close()
+
+    asyncio.run(_run())
 
 
-def cmd_install(args: argparse.Namespace) -> None:
+def cmd_install(args: argparse.Namespace, config: Config) -> None:
     directory = Path(args.directory)
     if not directory.is_dir():
         print(f"Error: directory not found: {directory}", file=sys.stderr)
         sys.exit(1)
 
-    store, qdrant = _make_store()
-    try:
-        imported = store.install_from_dir(directory)
-    finally:
-        qdrant.close()
+    async def _run() -> list[str]:
+        store, qdrant = _make_store(config)
+        try:
+            return await store.install_from_dir(directory)
+        finally:
+            await qdrant.close()
+
+    imported = asyncio.run(_run())
 
     if imported:
         print(f"Imported {len(imported)} skill(s): {', '.join(imported)}")
@@ -86,22 +89,27 @@ def cmd_install(args: argparse.Namespace) -> None:
         print("No SKILL.md files found.")
 
 
-def cmd_rebuild(args: argparse.Namespace) -> None:
-    store, qdrant = _make_store()
-    try:
-        count = store.rebuild_vectorstore()
-    finally:
-        qdrant.close()
+def cmd_rebuild(args: argparse.Namespace, config: Config) -> None:
+    async def _run() -> int:
+        store, qdrant = _make_store(config)
+        try:
+            return await store.rebuild_vectorstore()
+        finally:
+            await qdrant.close()
 
+    count = asyncio.run(_run())
     print(f"Rebuilt vectorstore: {count} skill(s) indexed from skills/.")
 
 
-def cmd_list(args: argparse.Namespace) -> None:
-    store, qdrant = _make_store()
-    try:
-        names = store.list_skills()
-    finally:
-        qdrant.close()
+def cmd_list(args: argparse.Namespace, config: Config) -> None:
+    async def _run() -> list[str]:
+        store, qdrant = _make_store(config)
+        try:
+            return store.list_skills()
+        finally:
+            await qdrant.close()
+
+    names = asyncio.run(_run())
 
     if names:
         for name in sorted(names):
@@ -116,6 +124,8 @@ def cmd_list(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    config = Config.from_yaml()
+
     parser = argparse.ArgumentParser(
         prog="agent-skill",
         description="Manage skills in the VS Code agent convention (skills/<name>/SKILL.md).",
@@ -156,7 +166,7 @@ def main() -> None:
         "install": cmd_install,
         "rebuild": cmd_rebuild,
         "list":    cmd_list,
-    }[args.command](args)
+    }[args.command](args, config)
 
 
 if __name__ == "__main__":

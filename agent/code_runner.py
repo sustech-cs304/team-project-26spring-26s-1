@@ -35,16 +35,9 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
-from .config import (
-    UTILITY_MODEL,
-    SANDBOX_ENABLED,
-    SANDBOX_IMAGE,
-    SANDBOX_WORKDIR_NAME,
-    CODE_SECURITY_REVIEW,
-    CODE_SECURITY_AUTORUN_LOW,
-)
+from .config import Config
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -73,19 +66,19 @@ class CodeRunner:
 
     def __init__(
         self,
-        client: OpenAI,
-        sandbox: bool = SANDBOX_ENABLED,
-        image: str = SANDBOX_IMAGE,
+        config: Config,
+        client: AsyncOpenAI,
     ) -> None:
+        self._config  = config
         self._client  = client
-        self._sandbox = sandbox
-        self._image   = image
-        self._workdir = Path.cwd() / SANDBOX_WORKDIR_NAME
+        self._sandbox = config.sandbox_enabled
+        self._image   = config.sandbox_image
+        self._workdir = Path.cwd() / config.sandbox_workdir_name
         self._workdir.mkdir(parents=True, exist_ok=True)
 
         self._container: object = None  # podman container handle
 
-        if sandbox:
+        if self._sandbox:
             self._start_container()
 
     # ------------------------------------------------------------------
@@ -164,13 +157,13 @@ class CodeRunner:
     # Security review (local mode only)
     # ------------------------------------------------------------------
 
-    def _security_review(self, snippet: str, language: str) -> bool:
+    async def _security_review(self, snippet: str, language: str) -> bool:
         """Ask UTILITY_MODEL to assess risk then get explicit user consent.
 
         Returns True if execution should proceed, False if the user declines.
         Skipped entirely in sandbox mode or when CODE_SECURITY_REVIEW is False.
         """
-        if self._sandbox or not CODE_SECURITY_REVIEW:
+        if self._sandbox or not self._config.code_security_review:
             return True
 
         prompt = (
@@ -187,8 +180,8 @@ class CodeRunner:
             "privilege escalation"
         )
         try:
-            resp = self._client.chat.completions.create(
-                model=UTILITY_MODEL,
+            resp = await self._client.chat.completions.create(
+                model=self._config.utility_model,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
             )
@@ -200,7 +193,7 @@ class CodeRunner:
         concerns = str(review.get("concerns", "")).strip()
         safe     = bool(review.get("safe_to_run", False))
 
-        if risk == "low" and safe and CODE_SECURITY_AUTORUN_LOW:
+        if risk == "low" and safe and self._config.code_security_autorun_low:
             return True
 
         print(f"\n[Security Review] Risk: {risk.upper()}")
@@ -216,8 +209,8 @@ class CodeRunner:
     # Python execution
     # ------------------------------------------------------------------
 
-    def run_python(self, snippet: str) -> str:
-        if not self._security_review(snippet, "python"):
+    async def run_python(self, snippet: str) -> str:
+        if not await self._security_review(snippet, "python"):
             return "[Execution cancelled by user.]"
         if self._sandbox:
             raw = self._exec_in_container(["python3", "-c", snippet])
@@ -246,8 +239,8 @@ class CodeRunner:
     # Shell execution
     # ------------------------------------------------------------------
 
-    def run_shell(self, command: str) -> str:
-        if not self._security_review(command, "bash"):
+    async def run_shell(self, command: str) -> str:
+        if not await self._security_review(command, "bash"):
             return "[Execution cancelled by user.]"
         if self._sandbox:
             raw = self._exec_in_container(["bash", "-c", command])
@@ -439,6 +432,12 @@ class CodeRunner:
             "and the user must confirm before execution proceeds."
         )
 
+        async def _run_python_tool(p: dict) -> str:
+            return await self.run_python(p["code"])
+
+        async def _run_shell_tool(p: dict) -> str:
+            return await self.run_shell(p["command"])
+
         return [
             (
                 {
@@ -468,7 +467,7 @@ class CodeRunner:
                         "required": ["code"],
                     },
                 },
-                lambda p: self.run_python(p["code"]),
+                _run_python_tool,
             ),
             (
                 {
@@ -503,7 +502,7 @@ class CodeRunner:
                         "required": ["command"],
                     },
                 },
-                lambda p: self.run_shell(p["command"]),
+                _run_shell_tool,
             ),
             (
                 {

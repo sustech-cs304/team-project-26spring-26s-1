@@ -1,22 +1,9 @@
 import json
-from openai import OpenAI
+from openai import AsyncOpenAI
 
-from .config import (
-    CORE_MEMORY_TOKEN_LIMIT,
-    CONTEXT_TOKEN_LIMIT,
-    FOLD_TRIGGER_RATIO,
-    FOLD_FRACTION,
-    SANDBOX_ENABLED,
-    jinja_env,
-    tokenizer,
-)
+from .config import Config
 from .core_memory import CoreMemory
 from .tools import Tools
-
-_tmpl_system   = jinja_env.get_template("system_message.j2")
-_tmpl_eviction = jinja_env.get_template("eviction_prompt.j2")
-_tmpl_extract  = jinja_env.get_template("fold_extract.j2")
-_tmpl_summary  = jinja_env.get_template("fold_summary.j2")
 
 
 class ContextManager:
@@ -33,19 +20,27 @@ class ContextManager:
 
     def __init__(
         self,
+        config: Config,
         core_memory: CoreMemory,
         tools: Tools,
-        client: OpenAI,
+        client: AsyncOpenAI,
         model: str,
     ) -> None:
+        self._config            = config
         self.core_memory        = core_memory
         self.tools              = tools
         self.client             = client
         self.model              = model
-        self.core_memory_limit  = CORE_MEMORY_TOKEN_LIMIT
-        self.context_limit      = CONTEXT_TOKEN_LIMIT
-        self.fold_trigger_ratio = FOLD_TRIGGER_RATIO
-        self.fold_fraction      = FOLD_FRACTION
+        self.core_memory_limit  = config.core_memory_token_limit
+        self.context_limit      = config.context_token_limit
+        self.fold_trigger_ratio = config.fold_trigger_ratio
+        self.fold_fraction      = config.fold_fraction
+
+        # ── Templates (moved from module level) ──────────────────────
+        self._tmpl_system   = config.jinja_env.get_template("system_message.j2")
+        self._tmpl_eviction = config.jinja_env.get_template("eviction_prompt.j2")
+        self._tmpl_extract  = config.jinja_env.get_template("fold_extract.j2")
+        self._tmpl_summary  = config.jinja_env.get_template("fold_summary.j2")
 
     # ------------------------------------------------------------------
     # System message
@@ -53,10 +48,10 @@ class ContextManager:
 
     def build_system_message(self) -> str:
         """Render the system prompt with the current core memory contents."""
-        return _tmpl_system.render(
+        return self._tmpl_system.render(
             core_memory=self.core_memory.format_memory(),
             token_limit=self.core_memory_limit,
-            sandbox=SANDBOX_ENABLED,
+            sandbox=self._config.sandbox_enabled,
         )
 
     # ------------------------------------------------------------------
@@ -69,7 +64,7 @@ class ContextManager:
         for m in messages:
             content = m.get("content") or ""
             if isinstance(content, str):
-                total += len(tokenizer.encode(content))
+                total += len(self._config.tokenizer.encode(content))
             total += 4  # per-message role/structure overhead
         return total
 
@@ -77,7 +72,7 @@ class ContextManager:
     # Core memory eviction
     # ------------------------------------------------------------------
 
-    def run_eviction(self) -> None:
+    async def run_eviction(self) -> None:
         """
         Out-of-band core memory eviction pass. When core memory exceeds its
         token budget, repeatedly asks the model to archive the lowest-priority
@@ -97,12 +92,12 @@ class ContextManager:
         for _ in range(len(self.core_memory.memory)):
             if self.core_memory.token_count() <= self.core_memory_limit:
                 break
-            prompt = _tmpl_eviction.render(
+            prompt = self._tmpl_eviction.render(
                 token_count=self.core_memory.token_count(),
                 token_limit=self.core_memory_limit,
                 core_memory=self.core_memory.format_memory(),
             )
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 tools=archive_tool,
@@ -113,14 +108,14 @@ class ContextManager:
             for tool_call in response.choices[0].message.tool_calls:
                 if tool_call.function.name == "core_memory_archive":
                     args = json.loads(tool_call.function.arguments)
-                    result = self.tools.run_tool("core_memory_archive", args)
+                    result = await self.tools.run_tool("core_memory_archive", args)
                     print(f"[Memory eviction] core_memory_archive({args}): {result}")
 
     # ------------------------------------------------------------------
     # Conversation history fold
     # ------------------------------------------------------------------
 
-    def run_fold(self, messages: list[dict]) -> None:
+    async def run_fold(self, messages: list[dict]) -> None:
         """
         Out-of-band hybrid context fold. Triggered when the history token count
         exceeds FOLD_TRIGGER_RATIO * CONTEXT_TOKEN_LIMIT.
@@ -172,22 +167,22 @@ class ContextManager:
             t for t in self.tools.openai_format()
             if t["function"]["name"] == "long_term_memory_insert"
         ]
-        extract_response = self.client.chat.completions.create(
+        extract_response = await self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": "user", "content": _tmpl_extract.render(dialogue=dialogue)}],
+            messages=[{"role": "user", "content": self._tmpl_extract.render(dialogue=dialogue)}],
             tools=insert_tool,
         )
         if extract_response.choices[0].message.tool_calls:
             for tool_call in extract_response.choices[0].message.tool_calls:
                 if tool_call.function.name == "long_term_memory_insert":
                     args = json.loads(tool_call.function.arguments)
-                    result = self.tools.run_tool("long_term_memory_insert", args)
+                    result = await self.tools.run_tool("long_term_memory_insert", args)
                     print(f"[Context fold] long_term_memory_insert({args}): {result}")
 
         # Step 2: summarise
-        summary_response = self.client.chat.completions.create(
+        summary_response = await self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": "user", "content": _tmpl_summary.render(dialogue=dialogue)}],
+            messages=[{"role": "user", "content": self._tmpl_summary.render(dialogue=dialogue)}],
         )
         summary_text = (summary_response.choices[0].message.content or "").strip()
 

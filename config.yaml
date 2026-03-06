@@ -1,0 +1,60 @@
+# ───────────────────────────────────────────────────────────────────
+# Agent configuration
+# ───────────────────────────────────────────────────────────────────
+# API keys fall back to environment variables (AGENT_API_KEY,
+# UTILITY_API_KEY, EMBED_API_KEY) when set to null here.
+
+api:
+  agent:
+    base_url: "https://coding.dashscope.aliyuncs.com/v1"
+    api_key: null          # env: AGENT_API_KEY
+    model: "qwen3.5-plus"
+
+  utility:
+    base_url: "https://api.siliconflow.cn/v1"
+    api_key: null          # env: UTILITY_API_KEY
+    model: "zai-org/GLM-4.6"
+
+  embed:
+    base_url: "https://api.siliconflow.cn/v1"
+    api_key: null          # env: EMBED_API_KEY
+    model: "BAAI/bge-m3"
+    dims: 1024
+
+paths:
+  data_dir: "data"
+  skills_dir: "skills"
+
+user:
+  id: "user_123"
+
+core_memory:
+  token_limit: 400
+
+context:
+  token_limit: 32768
+  fold_trigger_ratio: 0.70
+  fold_fraction: 0.50
+
+archive:
+  candidate_threshold: 0.70
+
+rag:
+  collection_name: "knowledge_base"
+  chunk_size: 200
+  chunk_overlap: 2
+  embed_batch_size: 32
+  search_top_k: 5
+
+skills:
+  collection_name: "skills"
+  search_top_k: 3
+
+sandbox:
+  enabled: "auto"          # "auto" = detect podman; true / false to force
+  image: "localhost/code_runner"
+  workdir_name: "sandbox_workspace"
+
+security:
+  code_review: true
+  autorun_low: true

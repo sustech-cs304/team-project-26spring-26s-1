@@ -20,14 +20,14 @@ import sys
 import json
 from datetime import datetime
 
-from .config import MEM0_CONFIG, USER_ID
+from .config import Config
 
 
 # ── helpers ────────────────────────────────────────────────────────────
-def _init_mem():
+def _init_mem(config: Config):
     """Lazy-init mem0 so import-time errors surface clearly."""
     from mem0 import Memory
-    return Memory.from_config(MEM0_CONFIG)
+    return Memory.from_config(config.mem0_config)
 
 
 def _fraction_ids(user_id: str) -> dict[str, str]:
@@ -201,10 +201,12 @@ Commands:
 
 # ── main ───────────────────────────────────────────────────────────────
 def main() -> None:
+    config = Config.from_yaml()
+
     parser = argparse.ArgumentParser(
         description="Inspect the agent's mem0 long-term memory store.",
     )
-    parser.add_argument("--user", default=USER_ID, help=f"User ID (default: {USER_ID})")
+    parser.add_argument("--user", default=config.user_id, help=f"User ID (default: {config.user_id})")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show extra metadata")
 
     sub = parser.add_subparsers(dest="command")
@@ -227,7 +229,7 @@ def main() -> None:
     fracs = _fraction_ids(args.user)
 
     print(f"Connecting to mem0 store (user={args.user})...")
-    mem = _init_mem()
+    mem = _init_mem(config)
 
     if args.command is None:
         cmd_interactive(mem, fracs)

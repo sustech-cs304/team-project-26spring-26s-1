@@ -1,55 +1,74 @@
-from mem0 import Memory
-from .config import (
-    MEM0_CONFIG,
-    ARCHIVE_CANDIDATE_THRESHOLD,
-    UTILITY_MODEL,
-    jinja_env,
-)
-from typing import TYPE_CHECKING
-from openai import OpenAI
+from __future__ import annotations
+
 import atexit
 import json
+from typing import TYPE_CHECKING
+
+from mem0 import AsyncMemory
+from openai import AsyncOpenAI
+
+from .config import Config
 
 if TYPE_CHECKING:
     from .tools import ToolEntry
 
-_tmpl_conflict = jinja_env.get_template("conflict_resolution.j2")
 
-mem = Memory.from_config(MEM0_CONFIG)
-
-def _close_mem0() -> None:
-    """Explicitly close all qdrant clients held inside the module-level mem object.
-
-    Called by atexit so that the flush happens while all library modules are
-    still intact — well before Python starts nulling out module globals during
-    interpreter teardown, which is when the GC-triggered __del__ path breaks.
-    """
-    for store_attr in ("vector_store", "_telemetry_vector_store"):
-        try:
-            store = getattr(mem, store_attr, None)
-            if store is not None:
-                client = getattr(store, "client", None)
-                if client is not None:
-                    client.close()
-        except Exception:
-            pass
-
-atexit.register(_close_mem0)
-
-class Mem0():
-    def __init__(self, user_id: str | None = None, client: OpenAI | None = None, model: str = UTILITY_MODEL):
-        self.user_id = user_id
+class Mem0:
+    def __init__(
+        self,
+        config: Config,
+        client: AsyncOpenAI | None = None,
+        *,
+        _mem: AsyncMemory,
+    ) -> None:
+        self._config = config
         self._client = client
-        self._model  = model
+        self._model = config.utility_model
+        self.user_id = config.user_id
+        self._mem: AsyncMemory = _mem
+
+        # ── Derived resources (plain / sync only) ────────────────────
+        self._tmpl_conflict = config.jinja_env.get_template("conflict_resolution.j2")
+
         # Each fraction gets its own user_id namespace so that mem0's internal
         # conflict-resolution agent — which operates across all memories for a
         # given user_id — cannot modify or delete entries from the other fraction.
-        self._episodic_id = f"{user_id}_episodic"    if user_id else "episodic"
-        self._archive_id  = f"{user_id}_core_archive" if user_id else "core_archive"
+        uid = config.user_id
+        self._episodic_id = f"{uid}_episodic" if uid else "episodic"
+        self._archive_id = f"{uid}_core_archive" if uid else "core_archive"
+
+    @classmethod
+    async def create(cls, config: Config, client: AsyncOpenAI | None = None) -> "Mem0":
+        """Async factory — use this instead of direct instantiation.
+
+        Initialises the underlying ``AsyncMemory`` backend (which opens a
+        Qdrant connection) and registers the atexit cleanup handler before
+        returning a fully ready instance.
+        """
+        mem = await AsyncMemory.from_config(config.mem0_config)
+        instance = cls(config, client, _mem=mem)
+        # Register an atexit handler so the qdrant clients held by _mem are
+        # flushed while library modules are still intact.
+        atexit.register(instance._close_mem0)
+        return instance
 
     # Lower candidate retrieval threshold — we cast a wider net and let the
     # LLM agent make the final keep/delete decision rather than relying on score alone.
-    _CANDIDATE_THRESHOLD: float = ARCHIVE_CANDIDATE_THRESHOLD
+    @property
+    def _CANDIDATE_THRESHOLD(self) -> float:
+        return self._config.archive_candidate_threshold
+
+    def _close_mem0(self) -> None:
+        """Explicitly close all qdrant clients held inside ``self._mem``."""
+        for store_attr in ("vector_store", "_telemetry_vector_store"):
+            try:
+                store = getattr(self._mem, store_attr, None)
+                if store is not None:
+                    client = getattr(store, "client", None)
+                    if client is not None:
+                        client.close()
+            except Exception:
+                pass
     def _filter_messages(self, messages: list[dict]) -> list[dict]:
         """
         Strip everything that is not genuine conversational content before archival:
@@ -67,14 +86,14 @@ class Mem0():
             and m["content"].strip()
         ]
 
-    def insert_memory(self, messages: list[dict]) -> None:
+    async def insert_memory(self, messages: list[dict]) -> None:
         """Archive a conversation session into the episodic long-term memory store.
         Only genuine user/assistant dialogue turns are submitted; system prompts,
         tool calls, and tool responses are filtered out before extraction."""
         filtered = self._filter_messages(messages)
         print(f"[Mem0] Inserting {len(filtered)} filtered messages into long-term memory.")
         if filtered:
-            mem.add(filtered, user_id=self._episodic_id)
+            await self._mem.add(filtered, user_id=self._episodic_id)
 
     # Similarity score threshold above which an existing entry is considered
     # a conflict with an incoming verbatim write and will be deleted first.
@@ -82,7 +101,7 @@ class Mem0():
     # paraphrases while avoiding false positives on related-but-distinct facts.
     _CONFLICT_THRESHOLD: float = 0.82
 
-    def archive_fact(self, fact: str, fraction: str = "core_archive") -> None:
+    async def archive_fact(self, fact: str, fraction: str = "core_archive") -> None:
         """Directly store a verbatim fact string into the archive without LLM extraction.
 
         Runs a two-stage conflict resolution pass before writing:
@@ -95,7 +114,7 @@ class Mem0():
         ns = self._archive_id if fraction == "core_archive" else self._episodic_id
 
         # Stage 1: retrieve candidates above the lower threshold
-        existing = mem.search(fact, user_id=ns)
+        existing = await self._mem.search(fact, user_id=ns)
         candidates = [
             item for item in existing.get("results", [])
             if item.get("score", 0) >= self._CANDIDATE_THRESHOLD
@@ -103,8 +122,8 @@ class Mem0():
 
         # Stage 2: LLM agent decides which candidates to delete
         if candidates and self._client and self._model:
-            prompt = _tmpl_conflict.render(new_fact=fact, candidates=candidates)
-            response = self._client.chat.completions.create(
+            prompt = self._tmpl_conflict.render(new_fact=fact, candidates=candidates)
+            response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
@@ -113,11 +132,11 @@ class Mem0():
             try:
                 decision = json.loads(raw)
                 for entry_id in decision.get("delete_ids", []):
-                    mem.delete(entry_id)
+                    await self._mem.delete(entry_id)
             except (json.JSONDecodeError, KeyError):
                 pass  # if parsing fails, write anyway — better a duplicate than a silent drop
 
-        mem.add(fact, user_id=ns, infer=False)
+        await self._mem.add(fact, user_id=ns, infer=False)
 
     def get_tools(self) -> list[ToolEntry]:
         """Return long-term memory tool entries for registration."""
@@ -163,7 +182,7 @@ class Mem0():
                 "required": ["query"]
             }
         }
-        def tool_func_query(params: dict) -> str:
+        async def tool_func_query(params: dict) -> str:
             fraction = params.get("fraction", "all")
             if fraction == "core_archive":
                 namespaces = [self._archive_id]
@@ -173,7 +192,7 @@ class Mem0():
                 namespaces = [self._archive_id, self._episodic_id]
             results_str = ""
             for ns in namespaces:
-                results = mem.search(params["query"], user_id=ns)
+                results = await self._mem.search(params["query"], user_id=ns)
                 results_str += "\n".join([item["memory"] for item in results["results"]])
                 if results["results"]:
                     results_str += "\n"
@@ -209,7 +228,7 @@ class Mem0():
                 "required": ["fact"]
             }
         }
-        def tool_func_insert(params: dict) -> str:
-            self.archive_fact(params["fact"], fraction="core_archive")
+        async def tool_func_insert(params: dict) -> str:
+            await self.archive_fact(params["fact"], fraction="core_archive")
             return "Fact written directly to long-term archive (core_archive)."
         return (tool_insert, tool_func_insert)

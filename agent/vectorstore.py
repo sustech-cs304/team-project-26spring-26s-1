@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import uuid
 
-from openai import OpenAI
-from qdrant_client import QdrantClient
+from openai import AsyncOpenAI
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
 
@@ -34,8 +34,8 @@ class VectorStore:
 
     def __init__(
         self,
-        client: OpenAI,
-        qdrant: QdrantClient,
+        client: AsyncOpenAI,
+        qdrant: AsyncQdrantClient,
         collection: str,
         embed_model: str,
         embed_dims: int,
@@ -45,35 +45,38 @@ class VectorStore:
         self._collection = collection
         self._embed_model = embed_model
         self._embed_dims = embed_dims
-        self._ensure_collection()
+        self._collection_ready = False
 
     # ------------------------------------------------------------------
     # Lifecycle — the QdrantClient is caller-owned; VectorStore does not
     # close it. The caller is responsible for close() and atexit.
     # ------------------------------------------------------------------
 
-    def _ensure_collection(self) -> None:
-        existing = {c.name for c in self._qdrant.get_collections().collections}
+    async def _ensure_collection(self) -> None:
+        if self._collection_ready:
+            return
+        existing = {c.name for c in (await self._qdrant.get_collections()).collections}
         if self._collection not in existing:
-            self._qdrant.create_collection(
+            await self._qdrant.create_collection(
                 collection_name=self._collection,
                 vectors_config=VectorParams(size=self._embed_dims, distance=Distance.COSINE),
             )
+        self._collection_ready = True
 
     # ------------------------------------------------------------------
     # Embedding
     # ------------------------------------------------------------------
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed *texts* in a single API call.
 
         For large text lists use embed_batched to avoid hitting per-request
         token/item limits.
         """
-        response = self._client.embeddings.create(model=self._embed_model, input=texts)
+        response = await self._client.embeddings.create(model=self._embed_model, input=texts)
         return [r.embedding for r in response.data]
 
-    def embed_batched(
+    async def embed_batched(
         self,
         texts: list[str],
         batch_size: int,
@@ -87,7 +90,7 @@ class VectorStore:
         total = len(texts)
         for i in range(0, total, batch_size):
             batch = texts[i : i + batch_size]
-            response = self._client.embeddings.create(model=self._embed_model, input=batch)
+            response = await self._client.embeddings.create(model=self._embed_model, input=batch)
             embeddings.extend(r.embedding for r in response.data)
             if progress:
                 done = min(i + batch_size, total)
@@ -100,18 +103,19 @@ class VectorStore:
     # Search
     # ------------------------------------------------------------------
 
-    def search(self, query: str, top_k: int) -> list[dict]:
+    async def search(self, query: str, top_k: int) -> list[dict]:
         """Return the *top_k* most similar points for *query*.
 
         Each result is a dict: ``{"score": float, "payload": dict}``.
         The caller is responsible for interpreting payload fields.
         """
-        vec = self.embed([query])[0]
-        hits = self._qdrant.query_points(
+        await self._ensure_collection()
+        vec = (await self.embed([query]))[0]
+        hits = (await self._qdrant.query_points(
             collection_name=self._collection,
             query=vec,
             limit=top_k,
-        ).points
+        )).points
         return [
             {"score": round(hit.score, 4), "payload": hit.payload}
             for hit in hits
@@ -121,19 +125,21 @@ class VectorStore:
     # Write
     # ------------------------------------------------------------------
 
-    def delete_by_id(self, point_id: str) -> None:
+    async def delete_by_id(self, point_id: str) -> None:
         """Delete a single point by its ID.  Silently succeeds if the ID does not exist."""
-        self._qdrant.delete(
+        await self._ensure_collection()
+        await self._qdrant.delete(
             collection_name=self._collection,
             points_selector=[point_id],
         )
 
-    def clear_collection(self) -> None:
+    async def clear_collection(self) -> None:
         """Delete and recreate the collection, removing all stored vectors."""
-        self._qdrant.delete_collection(collection_name=self._collection)
-        self._ensure_collection()
+        await self._qdrant.delete_collection(collection_name=self._collection)
+        self._collection_ready = False
+        await self._ensure_collection()
 
-    def upsert_records(
+    async def upsert_records(
         self,
         records: list[dict],
         batch_size: int,
@@ -156,9 +162,10 @@ class VectorStore:
             )
             for r in records
         ]
+        await self._ensure_collection()
         total = len(points)
         for i in range(0, total, batch_size):
-            self._qdrant.upsert(
+            await self._qdrant.upsert(
                 collection_name=self._collection,
                 points=points[i : i + batch_size],
             )

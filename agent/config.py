@@ -1,215 +1,245 @@
 """
-Central configuration for the agent.
+Central configuration for the agent, loaded from a YAML file.
 
-All tuneable parameters live here. Changing a value here takes effect
-everywhere in the codebase without touching individual modules.
+Usage::
+
+    cfg = Config.from_yaml()               # loads ./config.yaml (or defaults)
+    cfg = Config.from_yaml("custom.yaml")  # loads a custom path
+    cfg = Config()                          # pure-default config (no file)
+
+Every module that needs configuration receives a ``Config`` instance via its
+constructor — there are no module-level constants to import.
 """
 
+from __future__ import annotations
+
 import os
-
-from jinja2 import Environment, FileSystemLoader
+from dataclasses import dataclass, field
 from pathlib import Path
+
 import tiktoken
+import yaml
+from jinja2 import Environment, FileSystemLoader
 
-# ---------------------------------------------------------------------------
-# API
-# ---------------------------------------------------------------------------
 
-# Main agentic loop
-AGENT_API_BASE_URL: str = "https://coding.dashscope.aliyuncs.com/v1"
-AGENT_API_KEY: str | None = os.getenv("AGENT_API_KEY")
-AGENT_MODEL: str = "qwen3.5-plus"
+@dataclass
+class Config:
+    """Typed configuration object.  Instantiate via :meth:`from_yaml`."""
 
-# Lightweight model for cheap background maintenance tasks: mem0 internal LLM,
-# security review of agent-generated code, conflict resolution, etc.
-UTILITY_API_BASE_URL: str = "https://api.siliconflow.cn/v1"
-UTILITY_API_KEY: str | None = os.getenv("UTILITY_API_KEY")
-UTILITY_MODEL: str = "zai-org/GLM-4.6"
+    # ── API: main agentic loop ───────────────────────────────────────
+    agent_api_base_url: str = "https://coding.dashscope.aliyuncs.com/v1"
+    agent_api_key: str | None = None
+    agent_model: str = "qwen3.5-plus"
 
-# Embedding model — used by both mem0's vector store and the RAG knowledge base.
-# Must be the same model for both so that stored and query vectors are compatible.
-EMBED_API_BASE_URL: str = "https://api.siliconflow.cn/v1"
-EMBED_API_KEY: str | None = os.getenv("EMBED_API_KEY")
-EMBED_MODEL: str = "BAAI/bge-m3"
-EMBED_DIMS: int = 1024
+    # ── API: lightweight utility model ───────────────────────────────
+    utility_api_base_url: str = "https://api.siliconflow.cn/v1"
+    utility_api_key: str | None = None
+    utility_model: str = "zai-org/GLM-4.6"
 
-# ---------------------------------------------------------------------------
-# Database paths
-# ---------------------------------------------------------------------------
+    # ── API: embedding model ─────────────────────────────────────────
+    embed_api_base_url: str = "https://api.siliconflow.cn/v1"
+    embed_api_key: str | None = None
+    embed_model: str = "BAAI/bge-m3"
+    embed_dims: int = 1024
 
-# Root directory that contains all persistent data stores. Can be overridden
-# to an absolute path if you want the databases to live outside the project.
-DATA_DIR: Path = Path.cwd() / "data"
+    # ── Paths ────────────────────────────────────────────────────────
+    data_dir: Path = field(default_factory=lambda: Path.cwd() / "data")
+    skills_dir: Path = field(default_factory=lambda: Path.cwd() / "skills")
 
-# mem0's qdrant vector store (persistent local storage)
-MEM0_QDRANT_PATH: Path = DATA_DIR / "mem0_qdrant"
+    # ── User identity ────────────────────────────────────────────────
+    user_id: str = "user_123"
 
-# Shared Qdrant database for all agent-owned vector stores (RAG, skills, …).
-# One QdrantClient is opened per process and shared across all VectorStore
-# instances — see main.py. ingest.py opens its own short-lived client on
-# this same path because it runs as a separate process.
-AGENT_QDRANT_PATH: Path = DATA_DIR / "agent_qdrant"
+    # ── Core memory ──────────────────────────────────────────────────
+    core_memory_token_limit: int = 400
 
-# Core memory persistence file — survives process restarts
-CORE_MEMORY_PATH: Path = DATA_DIR / "core_memory.json"
+    # ── Context / history management ─────────────────────────────────
+    context_token_limit: int = 32_768
+    fold_trigger_ratio: float = 0.70
+    fold_fraction: float = 0.50
 
-# ---------------------------------------------------------------------------
-# mem0 backend
-# ---------------------------------------------------------------------------
+    # ── Archive conflict resolution ──────────────────────────────────
+    archive_candidate_threshold: float = 0.70
 
-MEM0_CONFIG: dict = {
-    "llm": {
-        "provider": "openai",
-        "config": {
-            "openai_base_url": UTILITY_API_BASE_URL,
-            "api_key": UTILITY_API_KEY,
-            "model": UTILITY_MODEL,
-        },
-    },
-    "embedder": {
-        "provider": "openai",
-        "config": {
-            "openai_base_url": EMBED_API_BASE_URL,
-            "api_key": EMBED_API_KEY,
-            "model": EMBED_MODEL,
-            "embedding_dims": EMBED_DIMS,
-        },
-    },
-    "vector_store": {
-        "provider": "qdrant",
-        "config": {
-            "embedding_model_dims": EMBED_DIMS,
-            "path": str(MEM0_QDRANT_PATH),
-            "on_disk": True,
-        },
-    },
-}
+    # ── RAG knowledge base ───────────────────────────────────────────
+    rag_collection_name: str = "knowledge_base"
+    rag_chunk_size: int = 200
+    rag_chunk_overlap: int = 2
+    rag_embed_batch_size: int = 32
+    rag_search_top_k: int = 5
 
-# ---------------------------------------------------------------------------
-# User identity
-# ---------------------------------------------------------------------------
+    # ── Skills store ─────────────────────────────────────────────────
+    skills_collection_name: str = "skills"
+    skills_search_top_k: int = 3
 
-USER_ID: str = "user_123"
+    # ── Code execution sandbox ───────────────────────────────────────
+    sandbox_enabled: bool | None = None  # None → auto-detect at init time
+    sandbox_image: str = "localhost/code_runner"
+    sandbox_workdir_name: str = "sandbox_workspace"
 
-# ---------------------------------------------------------------------------
-# Core memory
-# ---------------------------------------------------------------------------
+    # ── Code execution security (local mode) ─────────────────────────
+    code_security_review: bool = True
+    code_security_autorun_low: bool = True
 
-# Maximum tokens allowed in core memory before eviction is triggered
-CORE_MEMORY_TOKEN_LIMIT: int = 400
+    # ── Derived resources (populated by __post_init__) ───────────────
+    jinja_env: Environment = field(init=False, repr=False)
+    tokenizer: tiktoken.Encoding = field(init=False, repr=False)
 
-# ---------------------------------------------------------------------------
-# Context / history management
-# ---------------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
-# Model context window size (tokens). Raise for models with larger windows.
-CONTEXT_TOKEN_LIMIT: int = 32_768
+    def __post_init__(self) -> None:
+        # Resolve API keys from environment when not provided
+        if self.agent_api_key is None:
+            self.agent_api_key = os.getenv("AGENT_API_KEY")
+        if self.utility_api_key is None:
+            self.utility_api_key = os.getenv("UTILITY_API_KEY")
+        if self.embed_api_key is None:
+            self.embed_api_key = os.getenv("EMBED_API_KEY")
 
-# Fold is triggered when history token count reaches this fraction of CONTEXT_TOKEN_LIMIT
-FOLD_TRIGGER_RATIO: float = 0.70
+        # Auto-detect podman when sandbox_enabled was not explicitly set
+        if self.sandbox_enabled is None:
+            self.sandbox_enabled = self._detect_podman()
 
-# Proportion of non-system messages to compress per fold pass
-FOLD_FRACTION: float = 0.50
+        # Shared Jinja2 template environment
+        templates_dir = Path(__file__).parent / "templates"
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(templates_dir),
+            trim_blocks=True,
+            lstrip_blocks=True,
+            keep_trailing_newline=False,
+        )
 
-# ---------------------------------------------------------------------------
-# Archive conflict resolution
-# ---------------------------------------------------------------------------
+        # Shared tokenizer (cl100k_base — GPT-4 / Qwen family)
+        self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
-# Cosine similarity floor for retrieving conflict candidates before the LLM
-# agent makes the final keep/delete decision. Cast a wide net here.
-ARCHIVE_CANDIDATE_THRESHOLD: float = 0.70
+    # ── Derived path properties ──────────────────────────────────────
 
-# ---------------------------------------------------------------------------
-# RAG knowledge base
-# ---------------------------------------------------------------------------
+    @property
+    def mem0_qdrant_path(self) -> Path:
+        return self.data_dir / "mem0_qdrant"
 
-# Name of the qdrant collection used for externally-ingested documents
-RAG_COLLECTION_NAME: str = "knowledge_base"
+    @property
+    def agent_qdrant_path(self) -> Path:
+        return self.data_dir / "agent_qdrant"
 
-# Aliases for the central embedding constants — kept for backwards compatibility
-# with rag.py and ingest.py which import these names.
-RAG_EMBED_MODEL: str = EMBED_MODEL
-RAG_EMBED_DIMS: int = EMBED_DIMS
+    @property
+    def core_memory_path(self) -> Path:
+        return self.data_dir / "core_memory.json"
 
-# Ingestion chunking — word count per chunk; overlap is in *sentences* (not words)
-RAG_CHUNK_SIZE: int = 200
-RAG_CHUNK_OVERLAP: int = 2
+    # ── mem0 backend configuration dict ──────────────────────────────
 
-# Number of texts sent per embedding API call during ingestion (batching)
-RAG_EMBED_BATCH_SIZE: int = 32
+    @property
+    def mem0_config(self) -> dict:
+        return {
+            "llm": {
+                "provider": "openai",
+                "config": {
+                    "openai_base_url": self.utility_api_base_url,
+                    "api_key": self.utility_api_key,
+                    "model": self.utility_model,
+                },
+            },
+            "embedder": {
+                "provider": "openai",
+                "config": {
+                    "openai_base_url": self.embed_api_base_url,
+                    "api_key": self.embed_api_key,
+                    "model": self.embed_model,
+                    "embedding_dims": self.embed_dims,
+                },
+            },
+            "vector_store": {
+                "provider": "qdrant",
+                "config": {
+                    "embedding_model_dims": self.embed_dims,
+                    "path": str(self.mem0_qdrant_path),
+                    "on_disk": True,
+                },
+            },
+        }
 
-# Default number of document chunks returned by the knowledge_base_search tool
-RAG_SEARCH_TOP_K: int = 5
+    # ── Helpers ──────────────────────────────────────────────────────
 
-# ---------------------------------------------------------------------------
-# Skills store
-# ---------------------------------------------------------------------------
+    @staticmethod
+    def _detect_podman() -> bool:
+        """Return True if podman-py is installed and the daemon is reachable."""
+        try:
+            import podman as _pm  # noqa: F401
+            _pm.PodmanClient().version()
+            return True
+        except Exception:
+            print(
+                "Code execution sandbox disabled: "
+                "podman-py not installed or daemon not running."
+            )
+            return False
 
-# Name of the qdrant collection used for agent-learned skill workflows.
-# Lives in the shared agent_qdrant database alongside knowledge_base.
-SKILLS_COLLECTION_NAME: str = "skills"
+    # ── Factory ──────────────────────────────────────────────────────
 
-# Number of skills returned by skills_lookup
-SKILLS_SEARCH_TOP_K: int = 3
+    @classmethod
+    def from_yaml(cls, path: str | Path = "config.yaml") -> Config:
+        """Load configuration from *path*, falling back to defaults.
 
-# Root directory for on-disk skill files (VS Code agent convention).
-# Each skill lives in skills/<name>/SKILL.md with optional references/ subdir.
-SKILLS_DIR: Path = Path.cwd() / "skills"
+        API keys that are ``null`` in the YAML (or absent) are resolved from
+        the ``AGENT_API_KEY`` / ``UTILITY_API_KEY`` / ``EMBED_API_KEY``
+        environment variables automatically.
+        """
+        path = Path(path)
+        if not path.exists():
+            return cls()
 
-# ---------------------------------------------------------------------------
-# Code execution sandbox
-# ---------------------------------------------------------------------------
+        with open(path, encoding="utf-8") as fh:
+            raw: dict = yaml.safe_load(fh) or {}
 
-def _detect_podman() -> bool:
-    """Return True if podman-py is installed and the podman daemon is reachable."""
-    try:
-        import podman as _pm  # noqa: F401
-        _pm.PodmanClient().version()
-        return True
-    except Exception:
-        print("Code execution sandbox disabled: podman-py not installed or daemon not running.")
-        return False
+        kwargs: dict = {}
 
-# Automatically True when podman-py is installed and the daemon is running.
-# Override to False to force local mode even when podman is available.
-SANDBOX_ENABLED: bool = _detect_podman()
+        # ── API sections ─────────────────────────────────────────────
+        api = raw.get("api", {})
+        for group, prefix in [("agent", "agent"), ("utility", "utility"), ("embed", "embed")]:
+            section = api.get(group, {})
+            if "base_url" in section:
+                kwargs[f"{prefix}_api_base_url"] = section["base_url"]
+            if "api_key" in section and section["api_key"] is not None:
+                kwargs[f"{prefix}_api_key"] = section["api_key"]
+            if "model" in section:
+                kwargs[f"{prefix}_model"] = section["model"]
+            if group == "embed" and "dims" in section:
+                kwargs["embed_dims"] = section["dims"]
 
-# Podman image to use for the sandbox container
-SANDBOX_IMAGE: str = "localhost/code_runner"
+        # ── Paths ────────────────────────────────────────────────────
+        paths_sec = raw.get("paths", {})
+        for yaml_key, field_name in [("data_dir", "data_dir"), ("skills_dir", "skills_dir")]:
+            if yaml_key in paths_sec:
+                p = Path(paths_sec[yaml_key])
+                kwargs[field_name] = p if p.is_absolute() else Path.cwd() / p
 
-# Subdirectory of cwd that is bind-mounted into the container as /workspace.
-# Host and container share this directory so files written inside the container
-# are immediately accessible on the host and vice versa.
-SANDBOX_WORKDIR_NAME: str = "sandbox_workspace"
+        # ── Simple 1:1 mappings ──────────────────────────────────────
+        _MAP: dict[tuple[str, str], str] = {
+            ("user", "id"):                       "user_id",
+            ("core_memory", "token_limit"):        "core_memory_token_limit",
+            ("context", "token_limit"):            "context_token_limit",
+            ("context", "fold_trigger_ratio"):     "fold_trigger_ratio",
+            ("context", "fold_fraction"):          "fold_fraction",
+            ("archive", "candidate_threshold"):    "archive_candidate_threshold",
+            ("rag", "collection_name"):            "rag_collection_name",
+            ("rag", "chunk_size"):                 "rag_chunk_size",
+            ("rag", "chunk_overlap"):              "rag_chunk_overlap",
+            ("rag", "embed_batch_size"):           "rag_embed_batch_size",
+            ("rag", "search_top_k"):               "rag_search_top_k",
+            ("skills", "collection_name"):         "skills_collection_name",
+            ("skills", "search_top_k"):            "skills_search_top_k",
+            ("sandbox", "image"):                  "sandbox_image",
+            ("sandbox", "workdir_name"):           "sandbox_workdir_name",
+            ("security", "code_review"):           "code_security_review",
+            ("security", "autorun_low"):           "code_security_autorun_low",
+        }
+        for (section, key), field_name in _MAP.items():
+            val = raw.get(section, {}).get(key)
+            if val is not None:
+                kwargs[field_name] = val
 
-# ---------------------------------------------------------------------------
-# Code execution security (local / non-sandbox mode only)
-# ---------------------------------------------------------------------------
+        # ── sandbox.enabled: "auto"/null → None (auto-detect) ───────
+        sandbox_raw = raw.get("sandbox", {}).get("enabled")
+        if sandbox_raw is not None and sandbox_raw != "auto":
+            kwargs["sandbox_enabled"] = bool(sandbox_raw)
 
-# When True (and sandbox is False), UTILITY_MODEL reviews every Python/shell
-# snippet before execution and the user must give explicit consent.
-CODE_SECURITY_REVIEW: bool = True
-
-# When True, snippets rated "low" risk are auto-approved without prompting.
-# Set False to require explicit consent for every execution.
-CODE_SECURITY_AUTORUN_LOW: bool = True
-
-# ---------------------------------------------------------------------------
-# Shared Jinja2 environment
-# ---------------------------------------------------------------------------
-
-TEMPLATES_DIR: Path = Path(__file__).parent / "templates"
-
-jinja_env: Environment = Environment(
-    loader=FileSystemLoader(TEMPLATES_DIR),
-    trim_blocks=True,
-    lstrip_blocks=True,
-    keep_trailing_newline=False,
-)
-
-# ---------------------------------------------------------------------------
-# Shared tokenizer
-# ---------------------------------------------------------------------------
-
-# cl100k_base is used by the GPT-4 / Qwen family and gives accurate token counts
-tokenizer = tiktoken.get_encoding("cl100k_base")
+        return cls(**kwargs)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Callable
+import inspect
+from typing import Any, Callable, Coroutine, Union
 
-ToolEntry = tuple[dict, Callable[[dict], str]]
+ToolFunc = Union[Callable[[dict], str], Callable[[dict], Coroutine[Any, Any, str]]]
+ToolEntry = tuple[dict, ToolFunc]
 
 
 class Tools:
@@ -62,10 +64,16 @@ class Tools:
     # Execution
     # ------------------------------------------------------------------
 
-    def run_tool(self, tool_name: str, params: dict) -> str:
-        """Execute a tool by name and return its string result."""
+    async def run_tool(self, tool_name: str, params: dict) -> str:
+        """Execute a tool by name and return its string result.
+
+        Supports both sync and async tool callables.
+        """
         entry = self._tools.get(tool_name)
         if entry is None:
             raise ValueError(f"Tool {tool_name} not found.")
         _, func = entry
-        return func(params)
+        result = func(params)
+        if inspect.isawaitable(result):
+            return await result
+        return result  # type: ignore[return-value]

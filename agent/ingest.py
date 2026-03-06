@@ -20,26 +20,17 @@ manually delete via qdrant tooling if a refresh is needed.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import re
 import sys
 import uuid
 from pathlib import Path
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 
-from .config import (
-    EMBED_API_BASE_URL,
-    EMBED_API_KEY,
-    AGENT_QDRANT_PATH,
-    RAG_COLLECTION_NAME,
-    RAG_EMBED_MODEL,
-    RAG_EMBED_DIMS,
-    RAG_CHUNK_SIZE,
-    RAG_CHUNK_OVERLAP,
-    RAG_EMBED_BATCH_SIZE,
-)
+from .config import Config
 from .vectorstore import VectorStore
 
 
@@ -120,23 +111,35 @@ def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
 # Ingestion
 # ---------------------------------------------------------------------------
 
-def ingest_file(
+async def ingest_file(
     filepath: Path,
+    config: Config | None = None,
     source: str | None = None,
-    chunk_size: int = RAG_CHUNK_SIZE,
-    chunk_overlap: int = RAG_CHUNK_OVERLAP,
-    batch_size: int = RAG_EMBED_BATCH_SIZE,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+    batch_size: int | None = None,
 ) -> None:
     """Read a plain-text file, chunk, embed in batches, and upsert into the RAG KB.
 
     Args:
         filepath:      Path to the .txt file.
+        config:        Agent configuration (defaults loaded from YAML if omitted).
         source:        Human-readable label stored alongside each chunk as metadata.
                        Defaults to the filename if not provided.
         chunk_size:    Words per chunk.
         chunk_overlap: Word overlap between consecutive chunks.
         batch_size:    Texts per embedding API call.
     """
+    if config is None:
+        config = Config.from_yaml()
+
+    if chunk_size is None:
+        chunk_size = config.rag_chunk_size
+    if chunk_overlap is None:
+        chunk_overlap = config.rag_chunk_overlap
+    if batch_size is None:
+        batch_size = config.rag_embed_batch_size
+
     if not filepath.exists():
         print(f"Error: file not found: {filepath}", file=sys.stderr)
         sys.exit(1)
@@ -160,20 +163,20 @@ def ingest_file(
         f"(chunk_size={chunk_size} words, overlap={chunk_overlap} sentences)"
     )
 
-    embed_client = OpenAI(base_url=EMBED_API_BASE_URL, api_key=EMBED_API_KEY)
-    AGENT_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
-    qdrant = QdrantClient(path=str(AGENT_QDRANT_PATH))
+    embed_client = AsyncOpenAI(base_url=config.embed_api_base_url, api_key=config.embed_api_key)
+    config.agent_qdrant_path.mkdir(parents=True, exist_ok=True)
+    qdrant = AsyncQdrantClient(path=str(config.agent_qdrant_path))
     try:
         store = VectorStore(
             client=embed_client,
             qdrant=qdrant,
-            collection=RAG_COLLECTION_NAME,
-            embed_model=RAG_EMBED_MODEL,
-            embed_dims=RAG_EMBED_DIMS,
+            collection=config.rag_collection_name,
+            embed_model=config.embed_model,
+            embed_dims=config.embed_dims,
         )
 
-        print(f"Embedding via {RAG_EMBED_MODEL} …")
-        vectors = store.embed_batched(chunks, batch_size=batch_size, progress=True)
+        print(f"Embedding via {config.embed_model} …")
+        vectors = await store.embed_batched(chunks, batch_size=batch_size, progress=True)
 
         records = [
             {
@@ -184,10 +187,10 @@ def ingest_file(
             for idx, (chunk, vec) in enumerate(zip(chunks, vectors))
         ]
 
-        print(f"Upserting {len(records)} points into '{RAG_COLLECTION_NAME}' …")
-        store.upsert_records(records, batch_size=batch_size, progress=True)
+        print(f"Upserting {len(records)} points into '{config.rag_collection_name}' …")
+        await store.upsert_records(records, batch_size=batch_size, progress=True)
     finally:
-        qdrant.close()
+        await qdrant.close()
 
     print(f"Done. Inserted {len(records)} chunks from '{source_label}'.")
 
@@ -197,6 +200,8 @@ def ingest_file(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    config = Config.from_yaml()
+
     parser = argparse.ArgumentParser(
         prog="agent-ingest",
         description="Insert a plain-text file into the agent's RAG knowledge base.",
@@ -216,33 +221,34 @@ def main() -> None:
     parser.add_argument(
         "--chunk-size",
         type=int,
-        default=RAG_CHUNK_SIZE,
+        default=config.rag_chunk_size,
         metavar="N",
-        help=f"Words per chunk (default: {RAG_CHUNK_SIZE}).",
+        help=f"Words per chunk (default: {config.rag_chunk_size}).",
     )
     parser.add_argument(
         "--chunk-overlap",
         type=int,
-        default=RAG_CHUNK_OVERLAP,
+        default=config.rag_chunk_overlap,
         metavar="N",
-        help=f"Sentences of overlap carried into the next chunk (default: {RAG_CHUNK_OVERLAP}).",
+        help=f"Sentences of overlap carried into the next chunk (default: {config.rag_chunk_overlap}).",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=RAG_EMBED_BATCH_SIZE,
+        default=config.rag_embed_batch_size,
         metavar="N",
-        help=f"Texts per embedding API call (default: {RAG_EMBED_BATCH_SIZE}).",
+        help=f"Texts per embedding API call (default: {config.rag_embed_batch_size}).",
     )
 
     args = parser.parse_args()
-    ingest_file(
+    asyncio.run(ingest_file(
         filepath=args.file,
+        config=config,
         source=args.source,
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
         batch_size=args.batch_size,
-    )
+    ))
 
 
 if __name__ == "__main__":

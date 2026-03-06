@@ -16,6 +16,7 @@ dependencies = [
     "mem0ai>=1.0.4",
     "prompt-toolkit>=3.0.52",
     "python-multipart>=0.0.18",
+    "pyyaml>=6.0",
     "qdrant-client>=1.9",
     "sqlalchemy[asyncio]>=2.0",
     "tiktoken>=0.12.0",

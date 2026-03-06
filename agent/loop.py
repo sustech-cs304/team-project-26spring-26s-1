@@ -19,21 +19,10 @@ import json
 from dataclasses import dataclass, field
 
 import openai
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 
 from .code_runner import CodeRunner
-from .config import (
-    AGENT_API_BASE_URL,
-    AGENT_API_KEY,
-    AGENT_MODEL,
-    AGENT_QDRANT_PATH,
-    EMBED_API_BASE_URL,
-    EMBED_API_KEY,
-    USER_ID,
-    UTILITY_API_BASE_URL,
-    UTILITY_API_KEY,
-    UTILITY_MODEL,
-)
+from .config import Config
 from .context_manager import ContextManager
 from .core_memory import CoreMemory
 from .mem0 import Mem0
@@ -76,8 +65,8 @@ class AgentLoop:
 
     Typical lifecycle::
 
-        loop = AgentLoop()          # one-time setup
-        ctx  = loop.new_context()   # per-conversation
+        loop = await AgentLoop.create()  # one-time async setup
+        ctx  = loop.new_context()        # per-conversation
 
         result = loop.step(ctx, "Hello!")
         ctx = result.messages       # carry forward
@@ -85,56 +74,79 @@ class AgentLoop:
         result = loop.step(ctx, "What is 2 + 2?")
         ctx = result.messages
 
-        loop.save_memory(ctx)       # persist long-term memory
-        loop.shutdown()             # clean up resources
+        await loop.save_memory(ctx)       # persist long-term memory
+        await loop.shutdown()             # clean up resources
     """
 
-    def __init__(self) -> None:
+    def __init__(self, config: Config | None = None) -> None:
+        self.config = config or Config.from_yaml()
+        cfg = self.config
+
         # ── OpenAI clients ───────────────────────────────────────────
-        self.agent_client = openai.OpenAI(
-            base_url=AGENT_API_BASE_URL, api_key=AGENT_API_KEY
+        self.agent_client = openai.AsyncOpenAI(
+            base_url=cfg.agent_api_base_url, api_key=cfg.agent_api_key
         )
-        self.utility_client = openai.OpenAI(
-            base_url=UTILITY_API_BASE_URL, api_key=UTILITY_API_KEY
+        self.utility_client = openai.AsyncOpenAI(
+            base_url=cfg.utility_api_base_url, api_key=cfg.utility_api_key
         )
-        self.embed_client = openai.OpenAI(
-            base_url=EMBED_API_BASE_URL, api_key=EMBED_API_KEY
+        self.embed_client = openai.AsyncOpenAI(
+            base_url=cfg.embed_api_base_url, api_key=cfg.embed_api_key
         )
 
         # ── Tool registry ────────────────────────────────────────────
         self.tools = Tools()
 
-        self.longterm_memory = Mem0(
-            user_id=USER_ID, client=self.utility_client, model=UTILITY_MODEL
+        cfg.agent_qdrant_path.mkdir(parents=True, exist_ok=True)
+        self.agent_qdrant = AsyncQdrantClient(path=str(cfg.agent_qdrant_path))
+
+        # Type declarations for attributes initialised by create().
+        # Assignments happen there after async resources are ready.
+        self.longterm_memory: Mem0
+        self.core_memory: CoreMemory
+        self.knowledge_base: KnowledgeBase
+        self.skills_store: SkillsStore
+        self.code_runner: CodeRunner
+        self.ctx_manager: ContextManager
+
+    @classmethod
+    async def create(cls, config: Config | None = None) -> "AgentLoop":
+        """Async factory — use this instead of direct instantiation.
+
+        Awaits the initialisation of async-backed resources (Mem0 / Qdrant)
+        and wires all tools before returning a fully ready instance.
+        """
+        instance = cls(config)
+        cfg = instance.config
+
+        instance.longterm_memory = await Mem0.create(config=cfg, client=instance.utility_client)
+        instance.tools.register("longterm_memory", instance.longterm_memory.get_tools())
+
+        instance.core_memory = CoreMemory(config=cfg, mem0=instance.longterm_memory)
+        instance.tools.register("core_memory", instance.core_memory.get_tools())
+
+        instance.knowledge_base = KnowledgeBase(
+            config=cfg, client=instance.embed_client, qdrant=instance.agent_qdrant
         )
-        self.tools.register("longterm_memory", self.longterm_memory.get_tools())
+        instance.tools.register("knowledge_base", instance.knowledge_base.get_tools())
 
-        self.core_memory = CoreMemory(mem0=self.longterm_memory)
-        self.tools.register("core_memory", self.core_memory.get_tools())
-
-        AGENT_QDRANT_PATH.mkdir(parents=True, exist_ok=True)
-        self.agent_qdrant = QdrantClient(path=str(AGENT_QDRANT_PATH))
-
-        self.knowledge_base = KnowledgeBase(
-            client=self.embed_client, qdrant=self.agent_qdrant
+        instance.skills_store = SkillsStore(
+            config=cfg, client=instance.embed_client, qdrant=instance.agent_qdrant
         )
-        self.tools.register("knowledge_base", self.knowledge_base.get_tools())
+        instance.tools.register("skills", instance.skills_store.get_tools())
 
-        self.skills_store = SkillsStore(
-            client=self.embed_client, qdrant=self.agent_qdrant
-        )
-        self.tools.register("skills", self.skills_store.get_tools())
-
-        self.code_runner = CodeRunner(client=self.utility_client)
-        self.tools.register("code_runner", self.code_runner.get_tools())
+        instance.code_runner = CodeRunner(config=cfg, client=instance.utility_client)
+        instance.tools.register("code_runner", instance.code_runner.get_tools())
 
         # ── Context manager ──────────────────────────────────────────
-        self.ctx_manager = ContextManager(
-            core_memory=self.core_memory,
-            tools=self.tools,
-            client=self.agent_client,
-            model=AGENT_MODEL,
+        instance.ctx_manager = ContextManager(
+            config=cfg,
+            core_memory=instance.core_memory,
+            tools=instance.tools,
+            client=instance.agent_client,
+            model=cfg.agent_model,
         )
+
+        return instance
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -144,18 +156,18 @@ class AgentLoop:
         """Return a fresh conversation context (system message only)."""
         return [{"role": "system", "content": self.ctx_manager.build_system_message()}]
 
-    def save_memory(self, messages: list[dict]) -> None:
+    async def save_memory(self, messages: list[dict]) -> None:
         """Persist the conversation into long-term memory."""
-        self.longterm_memory.insert_memory(messages)
+        await self.longterm_memory.insert_memory(messages)
 
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Release heavyweight resources (qdrant handles, sandbox, …)."""
         try:
             self.code_runner.cleanup()
         except Exception:
             pass
         try:
-            self.agent_qdrant.close()
+            await self.agent_qdrant.close()
         except Exception:
             pass
 
@@ -163,15 +175,15 @@ class AgentLoop:
     # Core loop
     # ------------------------------------------------------------------
 
-    def _call_model(self, messages: list[dict]):
+    async def _call_model(self, messages: list[dict]):
         """Single OpenAI chat-completion call."""
-        return self.agent_client.chat.completions.create(
-            model=AGENT_MODEL,
+        return await self.agent_client.chat.completions.create(
+            model=self.config.agent_model,
             messages=messages,  # type: ignore[arg-type]
             tools=self.tools.openai_format(),  # type: ignore[arg-type]
         )
 
-    def step(self, messages: list[dict], user_input: str) -> StepResult:
+    async def step(self, messages: list[dict], user_input: str) -> StepResult:
         """Run one full user→assistant turn (including any tool-call loops).
 
         Parameters
@@ -200,14 +212,14 @@ class AgentLoop:
         # Agent loop: keep going while the model wants to call tools.
         while True:
             messages[0]["content"] = self.ctx_manager.build_system_message()
-            response = self._call_model(messages)
+            response = await self._call_model(messages)
             choice = response.choices[0]
 
             if choice.message.tool_calls:
                 messages.append(choice.message.model_dump())
                 for tc in choice.message.tool_calls:
                     args = json.loads(tc.function.arguments)  # type: ignore[union-attr]
-                    result = self.tools.run_tool(tc.function.name, args)  # type: ignore[union-attr]
+                    result = await self.tools.run_tool(tc.function.name, args)  # type: ignore[union-attr]
                     tool_call_log.append(
                         ToolCallRecord(name=tc.function.name, arguments=args, result=result)  # type: ignore[union-attr]
                     )
@@ -227,8 +239,8 @@ class AgentLoop:
                 break
 
         # Maintenance passes (operate on the list in-place).
-        self.ctx_manager.run_eviction()
-        self.ctx_manager.run_fold(messages)
+        await self.ctx_manager.run_eviction()
+        await self.ctx_manager.run_fold(messages)
 
         return StepResult(
             response=assistant_text,

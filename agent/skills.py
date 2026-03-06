@@ -57,16 +57,10 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from openai import OpenAI
-from qdrant_client import QdrantClient
+from openai import AsyncOpenAI
+from qdrant_client import AsyncQdrantClient
 
-from .config import (
-    EMBED_MODEL,
-    EMBED_DIMS,
-    SKILLS_COLLECTION_NAME,
-    SKILLS_SEARCH_TOP_K,
-    SKILLS_DIR,
-)
+from .config import Config
 from .vectorstore import VectorStore
 
 if TYPE_CHECKING:
@@ -80,15 +74,16 @@ class SkillsStore:
     provides fast semantic search and is kept in sync by :meth:`save`.
     """
 
-    def __init__(self, client: OpenAI, qdrant: QdrantClient) -> None:
+    def __init__(self, config: Config, client: AsyncOpenAI, qdrant: AsyncQdrantClient) -> None:
+        self._config = config
         self._store = VectorStore(
             client=client,
             qdrant=qdrant,
-            collection=SKILLS_COLLECTION_NAME,
-            embed_model=EMBED_MODEL,
-            embed_dims=EMBED_DIMS,
+            collection=config.skills_collection_name,
+            embed_model=config.embed_model,
+            embed_dims=config.embed_dims,
         )
-        self._skills_dir: Path = SKILLS_DIR
+        self._skills_dir: Path = config.skills_dir
         self._skills_dir.mkdir(parents=True, exist_ok=True)
 
         # In-memory index for BM25 keyword fallback.
@@ -222,7 +217,7 @@ class SkillsStore:
     # Public API
     # ------------------------------------------------------------------
 
-    def save(self, name: str, trigger: str, steps: str, notes: str = "") -> None:
+    async def save(self, name: str, trigger: str, steps: str, notes: str = "") -> None:
         """Persist a skill to both disk and vectorstore simultaneously.
 
         Creates/updates ``skills/<name>/SKILL.md`` on disk and upserts
@@ -256,9 +251,9 @@ class SkillsStore:
 
         # 3. Delete old entry (if any) then insert fresh vector
         skill_id = self._skill_id(name)
-        self._store.delete_by_id(skill_id)
-        vector = self._store.embed([f"{name}: {trigger}"])[0]
-        self._store.upsert_records(
+        await self._store.delete_by_id(skill_id)
+        vector = (await self._store.embed([f"{name}: {trigger}"]))[0]
+        await self._store.upsert_records(
             [{"id": skill_id, "vector": vector, "payload": payload}],
             batch_size=1,
         )
@@ -270,7 +265,7 @@ class SkillsStore:
                 return
         self._index.append(dict(payload))
 
-    def rebuild_vectorstore(self) -> int:
+    async def rebuild_vectorstore(self) -> int:
         """Rebuild the vectorstore from the ``skills/`` directory on disk.
 
         Clears the existing vectorstore collection and re-indexes all
@@ -283,14 +278,14 @@ class SkillsStore:
         self._index = self._load_index_from_disk()
 
         # Clear and rebuild
-        self._store.clear_collection()
+        await self._store.clear_collection()
 
         if not self._index:
             return 0
 
         # Embed all skills and upsert in one batch
         texts = [f"{s['name']}: {s['trigger']}" for s in self._index]
-        vectors = self._store.embed_batched(texts, batch_size=32, progress=True)
+        vectors = await self._store.embed_batched(texts, batch_size=32, progress=True)
 
         records = [
             {
@@ -300,16 +295,18 @@ class SkillsStore:
             }
             for skill, vec in zip(self._index, vectors)
         ]
-        self._store.upsert_records(records, batch_size=64)
+        await self._store.upsert_records(records, batch_size=64)
         return len(records)
 
-    def lookup(self, query: str, top_k: int = SKILLS_SEARCH_TOP_K) -> list[dict]:
+    async def lookup(self, query: str, top_k: int | None = None) -> list[dict]:
         """Hybrid lookup: semantic union keyword, semantic hits ranked first."""
+        if top_k is None:
+            top_k = self._config.skills_search_top_k
         results: list[dict] = []
         seen: set[str] = set()
 
         # Stage 1 — semantic search over trigger-space vectors
-        for hit in self._store.search(query, top_k=top_k + 2):
+        for hit in await self._store.search(query, top_k=top_k + 2):
             name = hit["payload"].get("name", "")
             if name and name not in seen:
                 seen.add(name)
@@ -354,7 +351,7 @@ class SkillsStore:
         except Exception as exc:
             return f"Error reading {ref_path}: {exc}"
 
-    def import_from_file(self, path: Path) -> str:
+    async def import_from_file(self, path: Path) -> str:
         """Import a single SKILL.md (and its sibling ``references/``) into
         the skills store.
 
@@ -380,10 +377,10 @@ class SkillsStore:
             shutil.copytree(src_refs, dst_refs)
 
         # Write vectorstore + refresh in-memory index
-        self.save(skill["name"], skill["trigger"], skill["steps"], skill["notes"])
+        await self.save(skill["name"], skill["trigger"], skill["steps"], skill["notes"])
         return name
 
-    def install_from_dir(self, directory: Path) -> list[str]:
+    async def install_from_dir(self, directory: Path) -> list[str]:
         """Recursively import every SKILL.md found under *directory*.
 
         Copies each skill's directory into the ``skills/`` folder and
@@ -394,7 +391,7 @@ class SkillsStore:
         imported: list[str] = []
         for skill_file in sorted(directory.rglob("SKILL.md")):
             try:
-                name = self.import_from_file(skill_file)
+                name = await self.import_from_file(skill_file)
                 imported.append(name)
             except Exception as exc:
                 print(f"[skills] Warning: could not import {skill_file}: {exc}")
@@ -410,6 +407,14 @@ class SkillsStore:
 
     def get_tools(self) -> list[ToolEntry]:
         """Return skill tool entries for registration with the Tools registry."""
+
+        async def _lookup_tool(p: dict) -> str:
+            return self._format(await self.lookup(p["query"]))
+
+        async def _save_tool(p: dict) -> str:
+            await self.save(p["name"], p["trigger"], p["steps"], p.get("notes", ""))
+            return f"Skill '{p['name']}' saved to skills/{p['name']}/SKILL.md and vectorstore."
+
         return [
             (
                 {
@@ -439,7 +444,7 @@ class SkillsStore:
                         "required": ["query"],
                     },
                 },
-                lambda p: self._format(self.lookup(p["query"])),
+                _lookup_tool,
             ),
             (
                 {
@@ -498,10 +503,7 @@ class SkillsStore:
                         "required": ["name", "trigger", "steps"],
                     },
                 },
-                lambda p: (
-                    self.save(p["name"], p["trigger"], p["steps"], p.get("notes", ""))
-                    or f"Skill '{p['name']}' saved to skills/{p['name']}/SKILL.md and vectorstore."
-                ),
+                _save_tool,
             ),
             (
                 {
