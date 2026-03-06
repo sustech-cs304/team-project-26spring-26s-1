@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 import openai
 from qdrant_client import AsyncQdrantClient
 
-from .code_runner import CodeRunner
+from .code_runner import CodeRunnerBase, create_code_runner
 from .config import Config
 from .context_manager import ContextManager
 from .core_memory import CoreMemory
@@ -105,7 +105,7 @@ class AgentLoop:
         self.core_memory: CoreMemory
         self.knowledge_base: KnowledgeBase
         self.skills_store: SkillsStore
-        self.code_runner: CodeRunner
+        self.code_runner: CodeRunnerBase
         self.ctx_manager: ContextManager
 
     @classmethod
@@ -134,7 +134,7 @@ class AgentLoop:
         )
         instance.tools.register("skills", instance.skills_store.get_tools())
 
-        instance.code_runner = CodeRunner(config=cfg, client=instance.utility_client)
+        instance.code_runner = create_code_runner(config=cfg, client=instance.utility_client)
         instance.tools.register("code_runner", instance.code_runner.get_tools())
 
         # ── Context manager ──────────────────────────────────────────
