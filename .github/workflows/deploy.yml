@@ -9,6 +9,13 @@ jobs:
   deploy:
     runs-on: self-hosted
     steps:
+      - name: Debug Node
+        run: |
+          which node
+          which npm
+          node -v
+          npm -v
+          
       - name: Checkout code
         uses: actions/checkout@v4
 
