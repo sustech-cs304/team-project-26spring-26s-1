@@ -1,331 +1,506 @@
-<template>
-    <v-container fluid class="d-flex flex-column h-100 pa-0">
+﻿<template>
+    <v-container fluid class="d-flex flex-column pa-0" style="height:100%;overflow:hidden;">
 
-        <!-- 统计栏 -->
-        <v-sheet class="px-6 py-4 border-b flex-shrink-0" color="transparent">
+        <!-- ── 统计栏 ── -->
+        <v-sheet class="px-5 py-2 border-b flex-shrink-0" color="transparent">
             <div class="d-flex align-center justify-space-between">
-                <!-- 左侧统计指标 -->
-                <div class="d-flex align-center ga-4">
-                    <!-- Total -->
-                    <div class="d-flex align-center ga-2">
-                        <span class="text-subtitle-2 font-weight-bold" style="font-variant-numeric: tabular-nums;">
-                            {{ tasks.length }}
-                        </span>
+                <div class="d-flex align-center ga-3">
+                    <div class="d-flex align-center ga-1">
+                        <span class="text-subtitle-2 font-weight-bold" style="font-variant-numeric:tabular-nums;">{{
+                            tasks.length }}</span>
                         <span class="text-caption text-medium-emphasis">Total</span>
                     </div>
-                    <v-divider vertical style="height:16px;" />
-                    <!-- Running -->
-                    <div class="d-flex align-center ga-2">
-                        <span class="status-dot dot-running" />
+                    <v-divider vertical style="height:14px;" />
+                    <div class="d-flex align-center ga-1">
+                        <span class="stat-dot dot-running" />
                         <span class="text-subtitle-2 font-weight-bold text-success">{{ countByStatus('running')
                             }}</span>
                         <span class="text-caption text-medium-emphasis">Running</span>
                     </div>
-                    <v-divider vertical style="height:16px;" />
-                    <!-- Paused -->
-                    <div class="d-flex align-center ga-2">
-                        <span class="status-dot" style="background:rgb(var(--v-theme-warning))" />
+                    <v-divider vertical style="height:14px;" />
+                    <div class="d-flex align-center ga-1">
+                        <span class="stat-dot" style="background:rgb(var(--v-theme-warning))" />
                         <span class="text-subtitle-2 font-weight-bold text-warning">{{ countByStatus('paused') }}</span>
                         <span class="text-caption text-medium-emphasis">Paused</span>
                     </div>
-                    <v-divider vertical style="height:16px;" />
-                    <!-- Failed -->
-                    <div class="d-flex align-center ga-2">
-                        <span class="status-dot" style="background:rgb(var(--v-theme-error))" />
+                    <v-divider vertical style="height:14px;" />
+                    <div class="d-flex align-center ga-1">
+                        <span class="stat-dot" style="background:rgb(var(--v-theme-error))" />
                         <span class="text-subtitle-2 font-weight-bold text-error">{{ countByStatus('failed') }}</span>
                         <span class="text-caption text-medium-emphasis">Failed</span>
                     </div>
                 </div>
-                <!-- 右侧新建按钮 -->
-                <v-btn size="small" color="primary" @click="openCreateDialog">
-                    <v-icon size="14" class="mr-1">mdi-plus</v-icon>
-                    New Task
+                <v-btn size="small" color="primary" @click="openCreate">
+                    <v-icon size="14" class="mr-1">mdi-plus</v-icon>New Task
                 </v-btn>
             </div>
         </v-sheet>
 
-        <!-- 筛选栏 -->
-        <v-sheet class="px-6 py-3 border-b flex-shrink-0" color="transparent">
-            <div class="d-flex flex-wrap align-center ga-2">
-                <!-- 搜索框 -->
-                <div class="flex-grow-1 position-relative" style="min-width:160px;">
-                    <v-icon size="14" class="position-absolute text-medium-emphasis"
-                        style="top:50%;transform:translateY(-50%);left:10px;z-index:1;">
-                        mdi-magnify
-                    </v-icon>
+        <!-- ── 主体分栏 ── -->
+        <div class="d-flex flex-grow-1" style="overflow:hidden;min-height:0;">
+
+            <!-- ══ 左栏：任务列表 ══ -->
+            <div class="d-flex flex-column border-e flex-shrink-0" style="width:360px;overflow:hidden;">
+
+                <!-- 搜索 & 筛选 -->
+                <v-sheet class="px-3 pt-3 pb-2 flex-shrink-0" color="transparent">
                     <v-text-field v-model="search" density="compact" variant="outlined" placeholder="Search tasks..."
-                        hide-details style="font-size:12px;" :style="{ '--v-input-padding-start': '32px' }"
-                        class="search-input" />
-                </div>
-                <!-- 类型筛选 -->
-                <div class="d-flex ga-1">
-                    <button v-for="chip in typeChips" :key="chip.value" class="filter-chip"
-                        :class="{ active: typeFilter === chip.value }" @click="typeFilter = chip.value">
-                        <v-icon v-if="chip.icon" :size="12" class="mr-1">{{ chip.icon }}</v-icon>
-                        {{ chip.label }}
-                    </button>
-                </div>
-                <!-- 状态筛选 -->
-                <div class="d-flex ga-1">
-                    <button v-for="chip in statusChips" :key="chip.value" class="filter-chip"
-                        :class="{ active: statusFilter === chip.value }" @click="statusFilter = chip.value">
-                        <span v-if="chip.color" class="status-dot mr-1"
-                            :class="{ 'dot-running': chip.value === 'running' }"
-                            :style="chip.value !== 'running' ? { background: chip.color } : {}" />
-                        {{ chip.label }}
-                    </button>
-                </div>
-            </div>
-        </v-sheet>
-
-        <!-- 任务列表 -->
-        <v-sheet color="transparent" class="flex-grow-1 overflow-y-auto">
-            <div class="pa-6">
-                <!-- 空状态 -->
-                <div v-if="filteredTasks.length === 0" class="d-flex flex-column align-center justify-center py-16">
-                    <v-icon size="32" style="opacity:0.4;" class="text-medium-emphasis mb-1">mdi-list-status</v-icon>
-                    <span class="text-body-2 text-medium-emphasis mt-1">No tasks found</span>
-                    <span class="text-caption text-disabled mt-3">Try adjusting your filters or create a new task</span>
-                </div>
-
-                <!-- 任务卡片列表 -->
-                <div v-else class="d-flex flex-column ga-3">
-                    <div v-for="task in filteredTasks" :key="task.id" class="task-card"
-                        :class="`task-card--${task.status}`">
-                        <!-- 第一行 -->
-                        <div class="d-flex align-start ga-3">
-                            <!-- 类型图标 -->
-                            <div class="task-type-icon flex-shrink-0" :class="`task-type-icon--${task.status}`">
-                                <v-icon :size="16" :color="typeIconColor(task.type)">{{ typeIcon(task.type) }}</v-icon>
-                            </div>
-                            <!-- 名称区 -->
-                            <div class="flex-grow-1 min-width-0">
-                                <div class="d-flex align-center ga-1 flex-wrap">
-                                    <span class="text-body-2 font-weight-bold text-truncate">{{ task.name }}</span>
-                                    <v-chip :color="statusColor(task.status)" variant="outlined" size="x-small"
-                                        density="compact" style="font-size:9px;height:18px;">
-                                        <span class="status-dot mr-1"
-                                            :class="{ 'dot-running': task.status === 'running' }"
-                                            :style="task.status !== 'running' ? { background: statusColorRaw(task.status) } : {}" />
-                                        {{ task.status }}
-                                    </v-chip>
-                                    <v-chip variant="tonal" size="x-small" density="compact"
-                                        style="font-size:9px;height:18px;">{{ task.type }}</v-chip>
-                                </div>
-                                <div v-if="task.description" class="text-caption text-medium-emphasis mt-1"
-                                    style="line-height:1.625;">
-                                    {{ task.description }}
-                                </div>
-                            </div>
-                            <!-- 操作区 -->
-                            <div class="d-flex align-center ga-1 flex-shrink-0">
-                                <v-switch :model-value="task.status !== 'paused' && task.status !== 'failed'"
-                                    density="compact" hide-details color="success"
-                                    style="transform:scale(0.75);transform-origin:right center;"
-                                    @change="toggleTask(task)" />
-                                <v-menu location="bottom end">
-                                    <template #activator="{ props }">
-                                        <v-btn v-bind="props" icon variant="text" size="x-small" width="28" height="28">
-                                            <v-icon size="16">mdi-dots-horizontal</v-icon>
-                                        </v-btn>
-                                    </template>
-                                    <v-list density="compact" min-width="140">
-                                        <v-list-item v-if="task.status === 'running' || task.status === 'paused'"
-                                            @click="togglePause(task)">
-                                            <template #prepend>
-                                                <v-icon size="14">{{ task.status === 'running' ? 'mdi-pause' :
-                                                    'mdi-play' }}</v-icon>
-                                            </template>
-                                            <v-list-item-title class="text-caption">
-                                                {{ task.status === 'running' ? 'Pause' : 'Resume' }}
-                                            </v-list-item-title>
-                                        </v-list-item>
-                                        <v-list-item @click="openEditDialog(task)">
-                                            <template #prepend><v-icon size="14">mdi-pencil</v-icon></template>
-                                            <v-list-item-title class="text-caption">Edit</v-list-item-title>
-                                        </v-list-item>
-                                        <v-divider />
-                                        <v-list-item @click="openDeleteDialog(task)">
-                                            <template #prepend><v-icon size="14"
-                                                    color="error">mdi-delete</v-icon></template>
-                                            <v-list-item-title
-                                                class="text-caption text-error">Delete</v-list-item-title>
-                                        </v-list-item>
-                                    </v-list>
-                                </v-menu>
-                            </div>
-                        </div>
-
-                        <!-- 第二行：元数据 -->
-                        <div class="d-flex flex-wrap align-center ga-1 mt-2" style="padding-left:48px;">
-                            <!-- 类型专属元数据 -->
-                            <template v-if="task.type === 'recurring' && task.intervalLabel">
-                                <span class="meta-item">
-                                    <v-icon size="12" class="text-medium-emphasis">mdi-refresh</v-icon>
-                                    <span class="text-medium-emphasis" style="font-size:11px;">{{ task.intervalLabel
-                                        }}</span>
-                                </span>
-                            </template>
-                            <template v-if="task.type === 'scheduled' && task.scheduledAt">
-                                <span class="meta-item">
-                                    <v-icon size="12" class="text-medium-emphasis">mdi-clock-outline</v-icon>
-                                    <span class="text-medium-emphasis" style="font-size:11px;">{{ task.scheduledAt
-                                        }}</span>
-                                </span>
-                            </template>
-                            <template v-if="task.type === 'event-triggered' && task.eventSource">
-                                <span class="meta-item">
-                                    <v-icon size="12" class="text-medium-emphasis">mdi-lightning-bolt</v-icon>
-                                    <span class="text-medium-emphasis" style="font-size:11px;">{{ task.eventSource
-                                        }}</span>
-                                </span>
-                            </template>
-                            <template v-if="task.type === 'monitor' && task.monitorTarget">
-                                <span class="meta-item">
-                                    <v-icon size="12" class="text-medium-emphasis">mdi-eye-outline</v-icon>
-                                    <span class="text-medium-emphasis" style="font-size:11px;">{{ task.monitorTarget
-                                        }}</span>
-                                </span>
-                            </template>
-                            <template v-if="task.lastRunAt">
-                                <span class="meta-item">
-                                    <v-icon size="12" class="text-medium-emphasis">mdi-clock-outline</v-icon>
-                                    <span class="text-medium-emphasis" style="font-size:11px;">Last: {{ task.lastRunAt
-                                        }}</span>
-                                </span>
-                            </template>
-                            <template v-if="task.nextRunAt">
-                                <span class="meta-item">
-                                    <v-icon size="12" class="text-medium-emphasis">mdi-timer-outline</v-icon>
-                                    <span class="text-medium-emphasis" style="font-size:11px;">Next: {{ task.nextRunAt
-                                        }}</span>
-                                </span>
-                            </template>
-                            <template v-if="task.runCount != null">
-                                <span class="meta-item">
-                                    <v-icon size="12" class="text-medium-emphasis">mdi-pound</v-icon>
-                                    <span class="text-medium-emphasis" style="font-size:11px;">
-                                        {{ task.runCount }} runs{{ task.failCount ? ` / ${task.failCount} fails` : '' }}
-                                    </span>
-                                </span>
-                            </template>
-                            <!-- 标签 -->
-                            <template v-if="task.tags && task.tags.length">
-                                <v-chip v-for="tag in task.tags" :key="tag" variant="tonal" size="x-small"
-                                    density="compact" style="font-size:9px;height:16px;">{{ tag }}</v-chip>
-                            </template>
-                        </div>
+                        hide-details prepend-inner-icon="mdi-magnify" style="font-size:12px;" class="mb-2" />
+                    <div class="d-flex flex-wrap ga-1 mb-1">
+                        <v-chip v-for="c in typeChips" :key="c.value" :prepend-icon="c.icon || undefined" size="x-small"
+                            :variant="typeFilter === c.value ? 'tonal' : 'text'"
+                            :color="typeFilter === c.value ? 'primary' : undefined" @click="typeFilter = c.value">{{
+                            c.label }}</v-chip>
                     </div>
-                </div>
-            </div>
-        </v-sheet>
+                    <div class="d-flex flex-wrap ga-1">
+                        <v-chip v-for="c in statusChips" :key="c.value" size="x-small"
+                            :variant="statusFilter === c.value ? 'tonal' : 'text'"
+                            :color="statusFilter === c.value ? 'primary' : undefined" @click="statusFilter = c.value">
+                            <template v-if="c.color" #prepend>
+                                <span class="stat-dot mr-1" :class="{ 'dot-running': c.value === 'running' }"
+                                    :style="c.value !== 'running' ? { background: c.color } : {}" />
+                            </template>
+                            {{ c.label }}
+                        </v-chip>
+                    </div>
+                </v-sheet>
 
-        <!-- 新建/编辑弹窗 -->
-        <v-dialog v-model="dialogOpen" max-width="512" scrollable>
-            <v-card rounded="lg" class="border">
-                <v-card-title class="d-flex align-center ga-2 px-4 pt-4 pb-2">
-                    <v-icon size="16" color="primary">{{ editingTask ? 'mdi-pencil' : 'mdi-plus-circle' }}</v-icon>
-                    <span class="text-body-2 font-weight-bold">{{ editingTask ? 'Edit Task' : 'Create New Task'
-                        }}</span>
-                </v-card-title>
                 <v-divider />
-                <v-card-text class="pa-4" style="max-height:70vh;overflow-y:auto;">
-                    <div class="d-flex flex-column ga-4">
-                        <!-- 任务类型选择 -->
-                        <div>
-                            <div class="text-caption text-medium-emphasis mb-2">Task Type</div>
-                            <div class="d-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                                <div v-for="t in taskTypes" :key="t.value" class="type-option"
-                                    :class="{ 'type-option--active': form.type === t.value }"
-                                    @click="form.type = t.value">
-                                    <v-icon :size="16" :color="form.type === t.value ? 'primary' : 'medium-emphasis'">{{
-                                        t.icon
-                                        }}</v-icon>
-                                    <div>
-                                        <div class="text-caption font-weight-bold"
-                                            :class="form.type === t.value ? 'text-primary' : ''">{{ t.label }}</div>
-                                        <div class="text-medium-emphasis" style="font-size:10px;">{{ t.desc }}</div>
+
+                <!-- 列表 -->
+                <div class="flex-grow-1 overflow-y-auto">
+                    <div v-if="filteredTasks.length === 0" class="d-flex flex-column align-center justify-center py-12">
+                        <v-icon size="28" class="text-medium-emphasis mb-2" style="opacity:.4;">mdi-list-status</v-icon>
+                        <span class="text-caption text-medium-emphasis">No tasks found</span>
+                    </div>
+                    <div v-else>
+                        <div v-for="task in filteredTasks" :key="task.id"
+                            class="task-list-item px-3 py-2 cursor-pointer"
+                            :class="{ 'task-list-item--active': selectedTaskId === task.id }"
+                            @click="selectedTaskId = task.id">
+                            <div class="d-flex align-center ga-2">
+                                <v-avatar :color="typeIconColor(task.type)" size="28" rounded="lg">
+                                    <v-icon size="14" color="white">{{ typeIcon(task.type) }}</v-icon>
+                                </v-avatar>
+                                <div class="flex-grow-1 min-width-0">
+                                    <div class="d-flex align-center ga-1 flex-wrap">
+                                        <span class="text-body-2 font-weight-medium text-truncate"
+                                            style="max-width:160px;">{{ task.name
+                                            }}</span>
+                                        <v-chip :color="statusColor(task.status)" variant="outlined" size="x-small"
+                                            density="compact" style="font-size:9px;height:16px;">{{ task.status
+                                            }}</v-chip>
+                                    </div>
+                                    <div v-if="task.description" class="text-caption text-medium-emphasis text-truncate"
+                                        style="font-size:11px;max-width:220px;">
+                                        {{ task.description }}
+                                    </div>
+                                    <template v-if="task.status === 'running' && task.steps.length">
+                                        <div class="d-flex align-center ga-1 mt-1">
+                                            <v-progress-linear :model-value="runningProgress(task)" color="primary"
+                                                height="3" rounded style="max-width:120px;flex-shrink:0;" />
+                                            <span class="text-caption text-medium-emphasis" style="font-size:10px;">
+                                                Step {{ runningStepIndex(task) }}/{{ task.steps.length }}
+                                            </span>
+                                        </div>
+                                    </template>
+                                    <div v-if="task.lastRunAt" class="d-flex align-center ga-1 mt-1">
+                                        <v-icon size="10" class="text-disabled">mdi-history</v-icon>
+                                        <span class="text-caption text-disabled" style="font-size:10px;">{{
+                                            task.lastRunAt }}</span>
                                     </div>
                                 </div>
+                                <v-switch :model-value="task.status !== 'paused' && task.status !== 'failed'"
+                                    density="compact" hide-details color="success"
+                                    style="transform:scale(0.7);transform-origin:right center;flex-shrink:0;"
+                                    @change="toggleTask(task)" @click.stop />
                             </div>
-                        </div>
-                        <!-- 任务名称 -->
-                        <div>
-                            <div class="text-caption text-medium-emphasis mb-1">Task Name</div>
-                            <v-text-field v-model="form.name" density="compact" variant="outlined"
-                                placeholder="e.g. Library Seat Monitor" hide-details />
-                        </div>
-                        <!-- 描述 -->
-                        <div>
-                            <div class="text-caption text-medium-emphasis mb-1">Description</div>
-                            <v-textarea v-model="form.description" density="compact" variant="outlined"
-                                placeholder="Describe what this task does..." hide-details :rows="3" no-resize
-                                style="min-height:72px;" />
-                        </div>
-                        <!-- 类型专属配置 -->
-                        <div class="type-config-block">
-                            <div class="text-caption font-weight-bold text-medium-emphasis mb-2"
-                                style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;">
-                                {{ form.type }} Configuration
-                            </div>
-                            <!-- Recurring -->
-                            <template v-if="form.type === 'recurring'">
-                                <div class="text-caption text-medium-emphasis mb-1">Cron Expression</div>
-                                <v-text-field v-model="form.cron" density="compact" variant="outlined"
-                                    placeholder="0 9 * * *" hide-details class="mb-3"
-                                    style="font-family:monospace;font-size:12px;" />
-                                <div class="text-caption text-medium-emphasis mb-1">Readable Description</div>
-                                <v-text-field v-model="form.intervalLabel" density="compact" variant="outlined"
-                                    placeholder="Every day at 09:00" hide-details />
-                            </template>
-                            <!-- Scheduled -->
-                            <template v-else-if="form.type === 'scheduled'">
-                                <div class="text-caption text-medium-emphasis mb-1">Execute At</div>
-                                <v-text-field v-model="form.scheduledAt" type="datetime-local" density="compact"
-                                    variant="outlined" hide-details />
-                            </template>
-                            <!-- Event -->
-                            <template v-else-if="form.type === 'event-triggered'">
-                                <div class="text-caption text-medium-emphasis mb-1">Event Source</div>
-                                <v-select v-model="form.eventSource" density="compact" variant="outlined"
-                                    :items="eventSources" hide-details class="mb-3" />
-                                <div class="text-caption text-medium-emphasis mb-1">Trigger Condition</div>
-                                <v-text-field v-model="form.triggerCondition" density="compact" variant="outlined"
-                                    placeholder="e.g. New email received" hide-details />
-                            </template>
-                            <!-- Monitor -->
-                            <template v-else-if="form.type === 'monitor'">
-                                <div class="text-caption text-medium-emphasis mb-1">Monitor Target</div>
-                                <v-text-field v-model="form.monitorTarget" density="compact" variant="outlined"
-                                    placeholder="e.g. Library Floor 3 Area A" hide-details class="mb-3" />
-                                <div class="text-caption text-medium-emphasis mb-1">Poll Interval</div>
-                                <v-select v-model="form.pollInterval" density="compact" variant="outlined"
-                                    :items="pollIntervals" hide-details />
-                            </template>
-                        </div>
-                        <!-- 标签 -->
-                        <div>
-                            <div class="text-caption text-medium-emphasis mb-2">Tags</div>
-                            <div class="d-flex flex-wrap align-center ga-1">
-                                <v-chip v-for="(tag, i) in form.tags" :key="tag" variant="tonal" size="x-small" closable
-                                    style="font-size:10px;" @click:close="form.tags.splice(i, 1)">{{ tag }}</v-chip>
-                                <input v-model="tagInput" class="tag-input" placeholder="Add tag..."
-                                    @keydown.enter.prevent="addTag" />
-                            </div>
+                            <v-divider class="mt-2" />
                         </div>
                     </div>
-                </v-card-text>
-                <v-divider />
-                <v-card-actions class="px-4 py-3 ga-2 justify-end">
-                    <v-btn variant="outlined" size="small" @click="dialogOpen = false">Cancel</v-btn>
-                    <v-btn color="primary" size="small" :disabled="!form.name.trim()" @click="saveTask">
-                        {{ editingTask ? 'Save Changes' : 'Create Task' }}
-                    </v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
+                </div>
+            </div>
 
-        <!-- 删除确认弹窗 -->
+            <!-- ══ 右栏：详情面板 ══ -->
+            <div class="flex-grow-1 d-flex flex-column" style="overflow:hidden;min-width:0;">
+
+                <!-- 空状态 -->
+                <div v-if="!selectedTask" class="flex-grow-1 d-flex flex-column align-center justify-center">
+                    <v-icon size="48" class="text-medium-emphasis mb-3" style="opacity:.3;">mdi-robot-outline</v-icon>
+                    <span class="text-body-2 text-medium-emphasis">选择一个任务查看详情</span>
+                    <span class="text-caption text-disabled mt-1">Select a task from the list</span>
+                </div>
+
+                <!-- 详情内容 -->
+                <template v-else>
+                    <!-- 详情头部 -->
+                    <v-sheet class="px-5 py-4 border-b flex-shrink-0" color="transparent">
+                        <div class="d-flex align-start ga-3">
+                            <v-avatar :color="typeIconColor(selectedTask.type)" size="40" rounded="lg">
+                                <v-icon size="20" color="white">{{ typeIcon(selectedTask.type) }}</v-icon>
+                            </v-avatar>
+                            <div class="flex-grow-1 min-width-0">
+                                <div class="text-h6 font-weight-bold">{{ selectedTask.name }}</div>
+                                <div v-if="selectedTask.description" class="text-caption text-medium-emphasis mt-1">
+                                    {{ selectedTask.description }}
+                                </div>
+                                <div class="d-flex flex-wrap align-center ga-2 mt-2">
+                                    <v-chip :color="statusColor(selectedTask.status)" variant="tonal" size="x-small">
+                                        <template #prepend>
+                                            <span class="stat-dot mr-1"
+                                                :class="{ 'dot-running': selectedTask.status === 'running' }"
+                                                :style="selectedTask.status !== 'running' ? { background: `rgb(var(--v-theme-${statusColor(selectedTask.status)}))` } : {}" />
+                                        </template>
+                                        {{ selectedTask.status }}
+                                    </v-chip>
+                                    <v-chip variant="tonal" :color="typeIconColor(selectedTask.type)" size="x-small">
+                                        {{ selectedTask.type }}
+                                    </v-chip>
+                                    <v-chip v-if="selectedTask.successRate != null" variant="tonal" color="success"
+                                        size="x-small">
+                                        <v-icon start size="10">mdi-check-circle</v-icon>
+                                        {{ selectedTask.successRate }}% success
+                                    </v-chip>
+                                    <v-chip v-if="selectedTask.averageDuration" variant="tonal" color="info"
+                                        size="x-small">
+                                        <v-icon start size="10">mdi-timer-outline</v-icon>
+                                        avg {{ formatDuration(selectedTask.averageDuration) }}
+                                    </v-chip>
+                                </div>
+                                <template v-if="selectedTask.status === 'running' && selectedTask.steps.length">
+                                    <div class="d-flex align-center ga-2 mt-2">
+                                        <v-progress-linear :model-value="runningProgress(selectedTask)" color="primary"
+                                            height="4" rounded style="max-width:200px;" />
+                                        <span class="text-caption text-medium-emphasis" style="font-size:11px;">
+                                            Step {{ runningStepIndex(selectedTask) }}/{{ selectedTask.steps.length }}
+                                        </span>
+                                    </div>
+                                </template>
+                            </div>
+                            <div class="d-flex align-center ga-2 flex-shrink-0">
+                                <v-btn size="small" color="primary" variant="flat" :loading="!!selectedTask.currentRun"
+                                    @click="runNow(selectedTask)">
+                                    <v-icon size="14" class="mr-1">mdi-play</v-icon>Run Now
+                                </v-btn>
+                                <v-btn size="small" variant="outlined"
+                                    :icon="selectedTask.status === 'running' ? 'mdi-pause' : 'mdi-play'"
+                                    @click="togglePause(selectedTask)" />
+                                <v-btn size="small" variant="outlined" icon="mdi-pencil"
+                                    @click="openEdit(selectedTask)" />
+                                <v-btn size="small" variant="outlined" color="error" icon="mdi-delete"
+                                    @click="openDelete(selectedTask)" />
+                            </div>
+                        </div>
+                    </v-sheet>
+
+                    <!-- Tabs -->
+                    <v-tabs v-model="detailTab" density="compact" class="border-b flex-shrink-0">
+                        <v-tab value="steps" class="text-caption">
+                            <v-icon size="14" class="mr-1">mdi-format-list-numbered</v-icon>Steps
+                        </v-tab>
+                        <v-tab value="runlogs" class="text-caption">
+                            <v-icon size="14" class="mr-1">mdi-history</v-icon>Run Logs
+                            <v-chip v-if="selectedTask.runLogs.length" size="x-small" class="ml-1" variant="tonal">
+                                {{ selectedTask.runLogs.length }}
+                            </v-chip>
+                        </v-tab>
+                        <v-tab value="config" class="text-caption">
+                            <v-icon size="14" class="mr-1">mdi-cog-outline</v-icon>Config
+                        </v-tab>
+                    </v-tabs>
+
+                    <!-- Tab 内容 -->
+                    <div class="flex-grow-1 overflow-y-auto">
+                        <v-tabs-window v-model="detailTab">
+
+                            <!-- ── Tab: Steps ── -->
+                            <v-tabs-window-item value="steps">
+                                <div class="pa-5">
+                                    <div v-if="!selectedTask.steps.length"
+                                        class="d-flex flex-column align-center py-12">
+                                        <v-icon size="32" class="text-medium-emphasis mb-2"
+                                            style="opacity:.4;">mdi-playlist-plus</v-icon>
+                                        <span class="text-caption text-medium-emphasis">暂无步骤定义</span>
+                                    </div>
+                                    <div v-else class="d-flex flex-column">
+                                        <div v-for="(step, idx) in selectedTask.steps" :key="step.id"
+                                            class="d-flex ga-3">
+                                            <!-- 左侧节点 + 连接线 -->
+                                            <div class="d-flex flex-column align-center flex-shrink-0"
+                                                style="width:32px;">
+                                                <v-icon :color="STEP_STATUS_COLOR[step.status]" :size="20"
+                                                    :class="{ 'spin-anim': step.status === 'running' }">{{
+                                                    STEP_STATUS_ICON[step.status]
+                                                    }}</v-icon>
+                                                <div v-if="idx < selectedTask.steps.length - 1" class="mt-1" :style="{
+                                                    width: '2px',
+                                                    flexGrow: 1,
+                                                    minHeight: '24px',
+                                                    background: step.status === 'completed'
+                                                        ? 'rgb(var(--v-theme-success))'
+                                                        : 'rgba(var(--v-border-color), var(--v-border-opacity))',
+                                                    borderLeft: step.status !== 'completed' ? '2px dashed rgba(var(--v-border-color), var(--v-border-opacity))' : 'none',
+                                                }" />
+                                            </div>
+                                            <!-- 右侧内容 -->
+                                            <div class="flex-grow-1 pb-4 min-width-0">
+                                                <div class="d-flex align-center ga-2 flex-wrap">
+                                                    <span class="text-caption text-medium-emphasis font-weight-bold"
+                                                        style="font-size:10px;">
+                                                        Step {{ step.index }}
+                                                    </span>
+                                                    <span class="text-body-2 font-weight-medium">{{ step.name }}</span>
+                                                    <v-chip :color="STEP_STATUS_COLOR[step.status]" variant="tonal"
+                                                        size="x-small" density="compact"
+                                                        style="font-size:9px;height:16px;">{{ step.status }}</v-chip>
+                                                    <span v-if="step.duration" class="text-caption text-medium-emphasis"
+                                                        style="font-size:10px;">
+                                                        {{ formatDuration(step.duration) }}
+                                                    </span>
+                                                    <span v-else-if="step.status === 'running'"
+                                                        class="text-caption text-primary" style="font-size:10px;">
+                                                        运行中...
+                                                    </span>
+                                                </div>
+                                                <div v-if="step.description"
+                                                    class="text-caption text-medium-emphasis mt-1">
+                                                    {{ step.description }}
+                                                </div>
+                                                <div v-if="step.toolName || step.output || step.input || step.errorMessage"
+                                                    class="mt-1">
+                                                    <v-expansion-panels variant="accordion" flat>
+                                                        <v-expansion-panel bg-color="transparent" elevation="0"
+                                                            style="border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:8px;">
+                                                            <v-expansion-panel-title class="pa-2"
+                                                                style="min-height:28px;">
+                                                                <span class="text-caption text-medium-emphasis"
+                                                                    style="font-size:10px;">
+                                                                    <v-icon size="11" class="mr-1">mdi-tools</v-icon>
+                                                                    {{ step.toolName ?? 'details' }}
+                                                                </span>
+                                                            </v-expansion-panel-title>
+                                                            <v-expansion-panel-text class="pa-0">
+                                                                <div class="px-3 pb-3 d-flex flex-column ga-2">
+                                                                    <div v-if="step.input">
+                                                                        <div class="text-caption text-medium-emphasis mb-1"
+                                                                            style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;">
+                                                                            Input</div>
+                                                                        <v-sheet rounded="md" color="surface-variant"
+                                                                            class="pa-2"
+                                                                            style="font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">{{
+                                                                            tryFormat(step.input) }}</v-sheet>
+                                                                    </div>
+                                                                    <div v-if="step.output">
+                                                                        <div class="text-caption text-medium-emphasis mb-1"
+                                                                            style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;">
+                                                                            Output</div>
+                                                                        <v-sheet rounded="md" color="surface-variant"
+                                                                            class="pa-2"
+                                                                            style="font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">{{
+                                                                            tryFormat(step.output) }}</v-sheet>
+                                                                    </div>
+                                                                    <div v-if="step.errorMessage">
+                                                                        <div class="text-caption text-error mb-1"
+                                                                            style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;">
+                                                                            Error</div>
+                                                                        <v-alert type="error" variant="tonal"
+                                                                            density="compact" class="text-caption">
+                                                                            {{ step.errorMessage }}
+                                                                        </v-alert>
+                                                                    </div>
+                                                                </div>
+                                                            </v-expansion-panel-text>
+                                                        </v-expansion-panel>
+                                                    </v-expansion-panels>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </v-tabs-window-item>
+
+                            <!-- ── Tab: Run Logs ── -->
+                            <v-tabs-window-item value="runlogs">
+                                <div class="pa-4">
+                                    <div v-if="!selectedTask.runLogs.length"
+                                        class="d-flex flex-column align-center py-12">
+                                        <v-icon size="32" class="text-medium-emphasis mb-2"
+                                            style="opacity:.4;">mdi-history</v-icon>
+                                        <span class="text-caption text-medium-emphasis">暂无执行记录</span>
+                                    </div>
+                                    <div v-else class="d-flex flex-column ga-2">
+                                        <v-expansion-panels v-model="expandedLog" variant="accordion">
+                                            <v-expansion-panel v-for="log in selectedTask.runLogs" :key="log.id"
+                                                :value="log.id" rounded="lg"
+                                                style="border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));"
+                                                elevation="0">
+                                                <v-expansion-panel-title class="px-3 py-2" style="min-height:44px;">
+                                                    <div class="d-flex align-center ga-2 flex-wrap w-100">
+                                                        <v-icon :color="RUN_STATUS_COLOR[log.status]"
+                                                            :class="{ 'spin-anim': log.status === 'running' }"
+                                                            size="16">{{
+                                                            RUN_STATUS_ICON[log.status] }}</v-icon>
+                                                        <span class="text-body-2 font-weight-bold"
+                                                            style="font-variant-numeric:tabular-nums;">#{{ log.runNumber
+                                                            }}</span>
+                                                        <v-chip size="x-small" variant="tonal"
+                                                            :color="RUN_STATUS_COLOR[log.status]" density="compact"
+                                                            style="font-size:9px;height:16px;">
+                                                            {{ log.status }}
+                                                        </v-chip>
+                                                        <v-chip size="x-small" variant="outlined" density="compact"
+                                                            style="font-size:9px;height:16px;">
+                                                            <v-icon start size="10">{{ log.triggerType === 'manual' ?
+                                                                'mdi-hand-pointing-right' : log.triggerType === 'event'
+                                                                ?
+                                                                'mdi-lightning-bolt' : 'mdi-clock-outline' }}</v-icon>
+                                                            {{ log.triggerType }}
+                                                        </v-chip>
+                                                        <span class="text-caption text-medium-emphasis"
+                                                            style="font-size:10px;">{{
+                                                            log.startedAt }}</span>
+                                                        <v-spacer />
+                                                        <span v-if="log.duration"
+                                                            class="text-caption text-medium-emphasis"
+                                                            style="font-size:10px;">{{ formatDuration(log.duration)
+                                                            }}</span>
+                                                        <v-chip size="x-small" variant="tonal" density="compact"
+                                                            style="font-size:9px;height:16px;">
+                                                            {{ log.stepsCompleted }}/{{ log.stepsTotal }} steps
+                                                        </v-chip>
+                                                    </div>
+                                                </v-expansion-panel-title>
+                                                <v-expansion-panel-text>
+                                                    <div class="pt-1 pb-2">
+                                                        <div v-if="log.summary"
+                                                            class="text-caption text-medium-emphasis mb-2">
+                                                            <v-icon size="12"
+                                                                class="mr-1">mdi-information-outline</v-icon>{{
+                                                            log.summary }}
+                                                        </div>
+                                                        <div v-if="log.errorMessage"
+                                                            class="text-caption text-error mb-2">
+                                                            <v-icon size="12" class="mr-1">mdi-alert-circle</v-icon>{{
+                                                            log.errorMessage }}
+                                                        </div>
+                                                        <div v-if="log.steps && log.steps.length">
+                                                            <v-divider class="mb-2" />
+                                                            <div v-for="s in log.steps" :key="s.id"
+                                                                class="d-flex align-center ga-2 mb-1">
+                                                                <v-icon :color="STEP_STATUS_COLOR[s.status]"
+                                                                    size="13">{{
+                                                                    STEP_STATUS_ICON[s.status] }}</v-icon>
+                                                                <span class="text-caption">{{ s.name }}</span>
+                                                                <span v-if="s.duration"
+                                                                    class="text-caption text-medium-emphasis ml-auto"
+                                                                    style="font-size:10px;">{{
+                                                                    formatDuration(s.duration) }}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div v-else class="text-caption text-disabled"
+                                                            style="font-size:10px;">
+                                                            <v-icon size="10"
+                                                                class="mr-1">mdi-information-outline</v-icon>无步骤快照
+                                                        </div>
+                                                    </div>
+                                                </v-expansion-panel-text>
+                                            </v-expansion-panel>
+                                        </v-expansion-panels>
+                                    </div>
+                                </div>
+                            </v-tabs-window-item>
+
+                            <!-- ── Tab: Config ── -->
+                            <v-tabs-window-item value="config">
+                                <div class="pa-5">
+                                    <v-list density="compact" lines="two">
+                                        <v-list-item
+                                            v-if="selectedTask.type === 'recurring' && selectedTask.intervalLabel">
+                                            <template #prepend><v-icon size="16"
+                                                    class="text-medium-emphasis mr-2">mdi-refresh</v-icon></template>
+                                            <v-list-item-title
+                                                class="text-caption font-weight-bold">Schedule</v-list-item-title>
+                                            <v-list-item-subtitle class="text-caption">{{ selectedTask.intervalLabel
+                                                }}</v-list-item-subtitle>
+                                        </v-list-item>
+                                        <v-list-item
+                                            v-if="selectedTask.type === 'scheduled' && selectedTask.scheduledAt">
+                                            <template #prepend><v-icon size="16"
+                                                    class="text-medium-emphasis mr-2">mdi-clock-outline</v-icon></template>
+                                            <v-list-item-title class="text-caption font-weight-bold">Scheduled
+                                                At</v-list-item-title>
+                                            <v-list-item-subtitle class="text-caption">{{ selectedTask.scheduledAt
+                                                }}</v-list-item-subtitle>
+                                        </v-list-item>
+                                        <v-list-item v-if="selectedTask.eventSource">
+                                            <template #prepend><v-icon size="16"
+                                                    class="text-medium-emphasis mr-2">mdi-lightning-bolt</v-icon></template>
+                                            <v-list-item-title class="text-caption font-weight-bold">Event
+                                                Source</v-list-item-title>
+                                            <v-list-item-subtitle class="text-caption">{{ selectedTask.eventSource
+                                                }}</v-list-item-subtitle>
+                                        </v-list-item>
+                                        <v-list-item v-if="selectedTask.triggerCondition">
+                                            <template #prepend><v-icon size="16"
+                                                    class="text-medium-emphasis mr-2">mdi-filter-outline</v-icon></template>
+                                            <v-list-item-title class="text-caption font-weight-bold">Trigger
+                                                Condition</v-list-item-title>
+                                            <v-list-item-subtitle class="text-caption">{{ selectedTask.triggerCondition
+                                                }}</v-list-item-subtitle>
+                                        </v-list-item>
+                                        <v-list-item v-if="selectedTask.monitorTarget">
+                                            <template #prepend><v-icon size="16"
+                                                    class="text-medium-emphasis mr-2">mdi-eye-outline</v-icon></template>
+                                            <v-list-item-title class="text-caption font-weight-bold">Monitor
+                                                Target</v-list-item-title>
+                                            <v-list-item-subtitle class="text-caption">{{ selectedTask.monitorTarget
+                                                }}</v-list-item-subtitle>
+                                        </v-list-item>
+                                        <v-list-item>
+                                            <template #prepend><v-icon size="16"
+                                                    class="text-medium-emphasis mr-2">mdi-calendar-outline</v-icon></template>
+                                            <v-list-item-title class="text-caption font-weight-bold">Created
+                                                At</v-list-item-title>
+                                            <v-list-item-subtitle class="text-caption">{{ selectedTask.createdAt ?? '—'
+                                                }}</v-list-item-subtitle>
+                                        </v-list-item>
+                                        <v-list-item>
+                                            <template #prepend><v-icon size="16"
+                                                    class="text-medium-emphasis mr-2">mdi-pound</v-icon></template>
+                                            <v-list-item-title class="text-caption font-weight-bold">Run
+                                                Statistics</v-list-item-title>
+                                            <v-list-item-subtitle class="text-caption">
+                                                {{ selectedTask.runCount ?? 0 }} total runs · {{ selectedTask.failCount
+                                                ?? 0 }} failures
+                                            </v-list-item-subtitle>
+                                        </v-list-item>
+                                        <v-list-item v-if="selectedTask.tags && selectedTask.tags.length">
+                                            <template #prepend><v-icon size="16"
+                                                    class="text-medium-emphasis mr-2">mdi-tag-outline</v-icon></template>
+                                            <v-list-item-title
+                                                class="text-caption font-weight-bold">Tags</v-list-item-title>
+                                            <template #append>
+                                                <div class="d-flex flex-wrap ga-1">
+                                                    <v-chip v-for="tag in selectedTask.tags" :key="tag" variant="tonal"
+                                                        size="x-small" density="compact"
+                                                        style="font-size:9px;height:16px;">{{ tag }}</v-chip>
+                                                </div>
+                                            </template>
+                                        </v-list-item>
+                                    </v-list>
+                                </div>
+                            </v-tabs-window-item>
+
+                        </v-tabs-window>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- ══ 弹窗 ══ -->
+        <TaskEditDialog v-model="dialogOpen" :task="editingTask" @submit="saveTask" />
+        <TaskLogDialog v-model="logDialogOpen" :task="logTask" />
+
         <v-dialog v-model="deleteDialogOpen" max-width="360">
             <v-card rounded="lg">
                 <v-card-title class="d-flex align-center ga-2 px-4 pt-4 pb-2">
@@ -333,8 +508,7 @@
                     <span class="text-body-2 font-weight-bold">Delete Task</span>
                 </v-card-title>
                 <v-card-text class="text-body-2 px-4 py-2">
-                    Are you sure you want to delete <strong>{{ deletingTask?.name }}</strong>? This action cannot be
-                    undone.
+                    Are you sure you want to delete <strong>{{ deletingTask?.name }}</strong>? This cannot be undone.
                 </v-card-text>
                 <v-card-actions class="px-4 py-3 ga-2 justify-end">
                     <v-btn variant="outlined" size="small" @click="deleteDialogOpen = false">Cancel</v-btn>
@@ -347,225 +521,184 @@
 </template>
 
 <script setup lang="ts">
-    type TaskStatus = 'running' | 'paused' | 'pending' | 'failed' | 'completed'
-    type TaskType = 'recurring' | 'scheduled' | 'event-triggered' | 'monitor'
+    import TaskEditDialog from '@/components/tasks/TaskEditDialog.vue'
+    import TaskLogDialog from '@/components/tasks/TaskLogDialog.vue'
+    import type { Task, TaskForm, TaskStatus, TaskStep, TaskRunLog } from '@/utils/tasks'
+    import {
+        buildDefaultTasks, formToTaskPatch,
+        typeIcon, typeIconColor, statusColor,
+        STEP_STATUS_COLOR, STEP_STATUS_ICON,
+        RUN_STATUS_COLOR, RUN_STATUS_ICON,
+        formatDuration,
+    } from '@/utils/tasks'
 
-    interface Task {
-        id: number
-        name: string
-        description?: string
-        type: TaskType
-        status: TaskStatus
-        intervalLabel?: string
-        scheduledAt?: string
-        eventSource?: string
-        monitorTarget?: string
-        lastRunAt?: string
-        nextRunAt?: string
-        runCount?: number
-        failCount?: number
-        tags?: string[]
-    }
+    const tasks = ref<Task[]>(buildDefaultTasks())
 
-    const tasks = ref<Task[]>([
-        {
-            id: 1, name: 'Library Seat Monitor', type: 'monitor', status: 'running',
-            description: 'Monitors available seats in the library and notifies when a seat becomes available.',
-            monitorTarget: 'Library Floor 3 Area A / 5 min',
-            lastRunAt: '2024-12-14 14:30', nextRunAt: '2024-12-14 14:35',
-            runCount: 576, failCount: 2, tags: ['library', 'monitor'],
-        },
-        {
-            id: 2, name: 'Daily Report Generator', type: 'recurring', status: 'running',
-            description: 'Generates a daily academic progress report and sends to email.',
-            intervalLabel: 'Every day at 09:00',
-            lastRunAt: '2024-12-14 09:00', nextRunAt: '2024-12-15 09:00',
-            runCount: 45, failCount: 0, tags: ['report'],
-        },
-        {
-            id: 3, name: 'Assignment Deadline Alert', type: 'event-triggered', status: 'paused',
-            description: 'Triggers an alert when a new assignment deadline is detected in Blackboard.',
-            eventSource: 'Blackboard: New assignment detected',
-            lastRunAt: '2024-12-13 16:00', runCount: 12, failCount: 1, tags: ['alert'],
-        },
-        {
-            id: 4, name: 'Exam Schedule Sync', type: 'scheduled', status: 'pending',
-            description: 'Syncs exam schedule from Course System to calendar.',
-            scheduledAt: '2024-12-20 08:00',
-            runCount: 0, tags: ['exam', 'sync'],
-        },
-        {
-            id: 5, name: 'Course Material Downloader', type: 'recurring', status: 'failed',
-            description: 'Downloads new course materials from Blackboard automatically.',
-            intervalLabel: 'Every hour', lastRunAt: '2024-12-14 13:00',
-            runCount: 200, failCount: 5, tags: ['download'],
-        },
-    ])
-
+    // ── 筛选 ──
     const search = ref('')
-    const typeFilter = ref<string>('all')
-    const statusFilter = ref<string>('all')
+    const typeFilter = ref('all')
+    const statusFilter = ref('all')
 
     const typeChips = [
-        { value: 'all', label: 'All Types', icon: '' },
+        { value: 'all', label: 'All', icon: '' },
         { value: 'recurring', label: 'Recurring', icon: 'mdi-refresh' },
         { value: 'scheduled', label: 'Scheduled', icon: 'mdi-clock-outline' },
         { value: 'event-triggered', label: 'Event', icon: 'mdi-lightning-bolt' },
         { value: 'monitor', label: 'Monitor', icon: 'mdi-eye-outline' },
     ]
-
     const statusChips = [
-        { value: 'all', label: 'All Status', color: '' },
+        { value: 'all', label: 'All', color: '' },
         { value: 'running', label: 'Running', color: 'rgb(var(--v-theme-success))' },
         { value: 'paused', label: 'Paused', color: 'rgb(var(--v-theme-warning))' },
         { value: 'pending', label: 'Pending', color: 'rgb(var(--v-theme-info))' },
         { value: 'failed', label: 'Failed', color: 'rgb(var(--v-theme-error))' },
-        { value: 'completed', label: 'Completed', color: '#888' },
+        { value: 'completed', label: 'Done', color: '#888' },
     ]
 
     const filteredTasks = computed(() => tasks.value.filter(t => {
-        const matchSearch = !search.value || t.name.toLowerCase().includes(search.value.toLowerCase())
-        const matchType = typeFilter.value === 'all' || t.type === typeFilter.value
-        const matchStatus = statusFilter.value === 'all' || t.status === statusFilter.value
-        return matchSearch && matchType && matchStatus
+        const q = search.value.toLowerCase()
+        return (!q || t.name.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q))
+            && (typeFilter.value === 'all' || t.type === typeFilter.value)
+            && (statusFilter.value === 'all' || t.status === statusFilter.value)
     }))
 
     const countByStatus = (s: TaskStatus) => tasks.value.filter(t => t.status === s).length
 
-    const typeIcon = (type: TaskType) => ({
-        recurring: 'mdi-refresh',
-        scheduled: 'mdi-clock-outline',
-        'event-triggered': 'mdi-lightning-bolt',
-        monitor: 'mdi-eye-outline',
-    }[type])
+    // ── 选中任务 ──
+    const selectedTaskId = ref<number | null>(null)
+    const selectedTask = computed(() => tasks.value.find(t => t.id === selectedTaskId.value) ?? null)
+    const detailTab = ref('steps')
+    const expandedLog = ref<string | null>(null)
 
-    const typeIconColor = (type: TaskType) => ({
-        recurring: 'primary',
-        scheduled: 'info',
-        'event-triggered': 'warning',
-        monitor: 'success',
-    }[type])
+    watch(selectedTaskId, () => {
+        detailTab.value = 'steps'
+        expandedLog.value = null
+    })
 
-    const statusColor = (s: TaskStatus) => ({
-        running: 'success', paused: 'warning', pending: 'info', failed: 'error', completed: undefined,
-    }[s])
+    // ── 进度计算 ──
+    function runningStepIndex (task: Task): number {
+        const runningIdx = task.steps.findIndex(s => s.status === 'running')
+        if (runningIdx >= 0) return runningIdx + 1
+        const completedCount = task.steps.filter(s => s.status === 'completed').length
+        return Math.min(completedCount + 1, task.steps.length)
+    }
 
-    const statusColorRaw = (s: TaskStatus) => ({
-        paused: 'rgb(var(--v-theme-warning))',
-        pending: 'rgb(var(--v-theme-info))',
-        failed: 'rgb(var(--v-theme-error))',
-        completed: '#888',
-        running: '',
-    }[s] ?? '')
+    function runningProgress (task: Task): number {
+        if (!task.steps.length) return 0
+        const completed = task.steps.filter(s => s.status === 'completed').length
+        return Math.round((completed / task.steps.length) * 100)
+    }
 
-    // 弹窗
+    // ── JSON 格式化 ──
+    function tryFormat (json: string): string {
+        try { return JSON.stringify(JSON.parse(json), null, 2) }
+        catch { return json }
+    }
+
+    // ── Run Now ──
+    let runIdCounter = 10000
+    function runNow (task: Task) {
+        if (task.currentRun) return
+        const runNumber = (task.runCount ?? 0) + 1
+        const runId = `run-${++runIdCounter}`
+        const stepsSnapshot: TaskStep[] = task.steps.map(s => ({
+            ...s, status: 'pending' as const, duration: undefined,
+            startedAt: undefined, completedAt: undefined, output: undefined, errorMessage: undefined,
+        }))
+        const nowStr = () => new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
+        const newLog: TaskRunLog = {
+            id: runId, runNumber,
+            status: 'running',
+            startedAt: nowStr(),
+            stepsCompleted: 0, stepsTotal: task.steps.length,
+            triggerType: 'manual',
+            steps: stepsSnapshot,
+        }
+
+        task.runLogs.unshift(newLog)
+        task.currentRun = newLog
+        task.status = 'running'
+        task.runCount = runNumber
+
+        task.steps.forEach(s => {
+            s.status = 'pending'; s.duration = undefined
+            s.startedAt = undefined; s.completedAt = undefined
+        })
+
+        const startTime = Date.now()
+        let stepIdx = 0
+        const advance = () => {
+            if (stepIdx >= task.steps.length) {
+                newLog.status = 'success'
+                newLog.completedAt = nowStr()
+                newLog.duration = Date.now() - startTime
+                newLog.stepsCompleted = task.steps.length
+                newLog.summary = `All ${task.steps.length} steps completed successfully`
+                task.lastRunDuration = newLog.duration
+                task.lastRunAt = newLog.startedAt
+                task.currentRun = undefined
+                return
+            }
+            const step = task.steps[stepIdx]!
+            step.status = 'running'
+            step.startedAt = nowStr()
+            const delay = 800 + Math.floor(Math.random() * 700)
+            setTimeout(() => {
+                step.status = 'completed'
+                step.duration = delay
+                step.completedAt = nowStr()
+                newLog.stepsCompleted = stepIdx + 1
+                const snap = stepsSnapshot[stepIdx]
+                if (snap) { snap.status = 'completed'; snap.duration = delay }
+                stepIdx++
+                advance()
+            }, delay)
+        }
+        advance()
+    }
+
+    // ── 弹窗 ──
     const dialogOpen = ref(false)
     const editingTask = ref<Task | null>(null)
     const deleteDialogOpen = ref(false)
     const deletingTask = ref<Task | null>(null)
-    const tagInput = ref('')
+    const logDialogOpen = ref(false)
+    const logTask = ref<Task | null>(null)
 
-    const taskTypes: { value: TaskType; icon: string; label: string; desc: string }[] = [
-        { value: 'recurring', icon: 'mdi-refresh', label: 'Recurring', desc: 'Runs on a schedule' },
-        { value: 'scheduled', icon: 'mdi-clock-outline', label: 'Scheduled', desc: 'Runs once at a time' },
-        { value: 'event-triggered', icon: 'mdi-lightning-bolt', label: 'Event', desc: 'Triggered by events' },
-        { value: 'monitor', icon: 'mdi-eye-outline', label: 'Monitor', desc: 'Watches for changes' },
-    ]
+    const openCreate = () => { editingTask.value = null; dialogOpen.value = true }
+    const openEdit = (t: Task) => { editingTask.value = t; dialogOpen.value = true }
+    const openDelete = (t: Task) => { deletingTask.value = t; deleteDialogOpen.value = true }
 
-    const eventSources = ['Email Inbox', 'Blackboard', 'Course System', 'Calendar', 'File System', 'Webhook']
-    const pollIntervals = ['1 min', '2 min', '5 min', '15 min', '30 min', '1 hr']
-
-    const form = ref({
-        type: 'recurring' as TaskType,
-        name: '',
-        description: '',
-        cron: '',
-        intervalLabel: '',
-        scheduledAt: '',
-        eventSource: '',
-        triggerCondition: '',
-        monitorTarget: '',
-        pollInterval: '5 min',
-        tags: [] as string[],
-    })
-
-    const resetForm = () => {
-        form.value = {
-            type: 'recurring', name: '', description: '', cron: '', intervalLabel: '',
-            scheduledAt: '', eventSource: '', triggerCondition: '', monitorTarget: '', pollInterval: '5 min', tags: []
-        }
-        tagInput.value = ''
-    }
-
-    const openCreateDialog = () => {
-        editingTask.value = null
-        resetForm()
-        dialogOpen.value = true
-    }
-
-    const openEditDialog = (task: Task) => {
-        editingTask.value = task
-        form.value = {
-            type: task.type, name: task.name, description: task.description ?? '',
-            cron: '', intervalLabel: task.intervalLabel ?? '', scheduledAt: task.scheduledAt ?? '',
-            eventSource: task.eventSource ?? '', triggerCondition: '', monitorTarget: task.monitorTarget ?? '',
-            pollInterval: '5 min', tags: [...(task.tags ?? [])],
-        }
-        dialogOpen.value = true
-    }
-
-    const openDeleteDialog = (task: Task) => {
-        deletingTask.value = task
-        deleteDialogOpen.value = true
-    }
-
-    const addTag = () => {
-        const t = tagInput.value.trim()
-        if (t && !form.value.tags.includes(t)) form.value.tags.push(t)
-        tagInput.value = ''
-    }
-
-    const saveTask = () => {
+    const saveTask = (form: TaskForm) => {
         if (editingTask.value) {
-            Object.assign(editingTask.value, {
-                name: form.value.name, description: form.value.description,
-                type: form.value.type, intervalLabel: form.value.intervalLabel,
-                scheduledAt: form.value.scheduledAt, eventSource: form.value.eventSource,
-                monitorTarget: form.value.monitorTarget, tags: form.value.tags,
-            })
+            Object.assign(editingTask.value, formToTaskPatch(form))
         } else {
-            tasks.value.push({
-                id: Date.now(), name: form.value.name, description: form.value.description,
-                type: form.value.type, status: 'pending', intervalLabel: form.value.intervalLabel,
-                scheduledAt: form.value.scheduledAt, eventSource: form.value.eventSource,
-                monitorTarget: form.value.monitorTarget, tags: form.value.tags, runCount: 0,
-            })
+            const newTask = {
+                id: Date.now(), status: 'pending' as const, runCount: 0,
+                createdAt: new Date().toISOString().slice(0, 10),
+                steps: [], runLogs: [],
+                ...formToTaskPatch(form),
+            } as Task
+            tasks.value.push(newTask)
         }
-        dialogOpen.value = false
     }
 
     const confirmDelete = () => {
         if (deletingTask.value) {
+            if (selectedTaskId.value === deletingTask.value.id) selectedTaskId.value = null
             tasks.value = tasks.value.filter(t => t.id !== deletingTask.value!.id)
         }
         deleteDialogOpen.value = false
     }
 
-    const togglePause = (task: Task) => {
-        task.status = task.status === 'running' ? 'paused' : 'running'
-    }
-
-    const toggleTask = (task: Task) => {
-        if (task.status === 'paused' || task.status === 'failed') {
-            task.status = 'running'
-        } else {
-            task.status = 'paused'
-        }
+    const togglePause = (t: Task) => { t.status = t.status === 'running' ? 'paused' : 'running' }
+    const toggleTask = (t: Task) => {
+        t.status = (t.status === 'paused' || t.status === 'failed') ? 'running' : 'paused'
     }
 </script>
 
 <style scoped>
-    .status-dot {
+    .stat-dot {
         display: inline-block;
         width: 6px;
         height: 6px;
@@ -592,139 +725,35 @@
         }
     }
 
-    /* 筛选芯片 */
-    .filter-chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 4px 10px;
-        font-size: 11px;
-        font-weight: 500;
-        border-radius: 6px;
-        border: none;
+    .spin-anim {
+        animation: spin 1.2s linear infinite;
+    }
+
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .task-list-item {
+        border-left: 2px solid transparent;
+        transition: background-color 0.15s, border-color 0.15s;
+    }
+
+    .task-list-item:hover {
+        background-color: rgba(var(--v-theme-on-surface), 0.04);
+    }
+
+    .task-list-item--active {
+        border-left-color: rgb(var(--v-theme-primary));
+        background-color: rgba(var(--v-theme-primary), 0.06);
+    }
+
+    .cursor-pointer {
         cursor: pointer;
-        transition: background 0.15s, color 0.15s;
-        color: rgba(var(--v-theme-on-surface), 0.6);
-        background: transparent;
-    }
-
-    .filter-chip:hover {
-        background: rgba(var(--v-theme-surface-variant), 0.5);
-        color: rgba(var(--v-theme-on-surface), 1);
-    }
-
-    .filter-chip.active {
-        background: rgba(var(--v-theme-primary), 0.15);
-        color: rgb(var(--v-theme-primary));
-    }
-
-    /* 元数据项 */
-    .meta-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-    }
-
-    /* 任务卡片 */
-    .task-card {
-        border-radius: 12px;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        padding: 16px;
-        transition: all 0.2s;
-    }
-
-    .task-card--running {
-        border-color: rgba(var(--v-theme-success), 0.2);
-        background: rgba(var(--v-theme-success), 0.03);
-    }
-
-    .task-card--failed {
-        border-color: rgba(var(--v-theme-error), 0.2);
-        background: rgba(var(--v-theme-error), 0.03);
-    }
-
-    .task-card--paused {
-        border-color: rgba(var(--v-theme-warning), 0.15);
-    }
-
-    .task-card--completed {
-        opacity: 0.6;
-    }
-
-    /* 类型图标容器 */
-    .task-type-icon {
-        width: 36px;
-        height: 36px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(var(--v-theme-surface-variant), 0.5);
-    }
-
-    .task-type-icon--running {
-        background: rgba(var(--v-theme-success), 0.1);
-    }
-
-    .task-type-icon--failed {
-        background: rgba(var(--v-theme-error), 0.1);
-    }
-
-    .task-type-icon--paused {
-        background: rgba(var(--v-theme-warning), 0.1);
-    }
-
-    /* 类型选择卡片 */
-    .type-option {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 8px;
-        padding: 12px;
-        cursor: pointer;
-        transition: border-color 0.15s, background 0.15s;
-    }
-
-    .type-option:hover {
-        border-color: rgba(var(--v-theme-on-surface), 0.3);
-    }
-
-    .type-option--active {
-        border-color: rgba(var(--v-theme-primary), 0.5);
-        background: rgba(var(--v-theme-primary), 0.1);
-    }
-
-    /* 类型配置块 */
-    .type-config-block {
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 8px;
-        background: rgba(var(--v-theme-surface), 0.5);
-        padding: 12px;
-    }
-
-    /* 标签输入框 */
-    .tag-input {
-        height: 28px;
-        width: 96px;
-        font-size: 12px;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 6px;
-        padding: 0 8px;
-        background: transparent;
-        color: inherit;
-        outline: none;
-    }
-
-    .tag-input:focus {
-        border-color: rgb(var(--v-theme-primary));
-    }
-
-    /* 搜索框左侧图标 */
-    .search-input :deep(.v-field__input) {
-        padding-inline-start: 32px !important;
-        font-size: 12px;
-        min-height: 32px !important;
-        padding-top: 4px !important;
-        padding-bottom: 4px !important;
     }
 </style>

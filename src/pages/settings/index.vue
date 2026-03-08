@@ -17,14 +17,12 @@
 
             <!-- 左侧标签导航 -->
             <v-sheet class="flex-shrink-0 overflow-y-auto border-e" color="transparent" width="220">
-                <div class="pa-3 d-flex flex-column ga-1">
-                    <div v-for="tab in tabs" :key="tab.id" class="settings-tab"
-                        :class="{ 'settings-tab--active': activeTab === tab.id }" @click="activeTab = tab.id">
-                        <v-icon :size="16" class="flex-shrink-0">{{ tab.icon }}</v-icon>
-                        <span class="text-body-2 font-weight-medium flex-grow-1">{{ tab.label }}</span>
-                        <v-icon v-if="activeTab === tab.id" size="14">mdi-chevron-right</v-icon>
-                    </div>
-                </div>
+                <v-list density="compact" class="pa-2" nav>
+                    <v-list-item v-for="tab in tabs" :key="tab.id" :prepend-icon="tab.icon" :title="tab.label"
+                        :active="activeTab === tab.id" active-color="primary" rounded="lg"
+                        :append-icon="activeTab === tab.id ? 'mdi-chevron-right' : undefined"
+                        @click="activeTab = tab.id" />
+                </v-list>
             </v-sheet>
 
             <!-- 右侧内容区 -->
@@ -42,12 +40,10 @@
                         <!-- API Provider -->
                         <div class="mb-5">
                             <div class="text-caption font-weight-medium text-medium-emphasis mb-2">API Provider</div>
-                            <div class="d-flex ga-2">
-                                <button v-for="p in apiProviders" :key="p" class="provider-btn"
-                                    :class="{ 'provider-btn--active': llm.provider === p }" @click="llm.provider = p">
-                                    {{ p }}
-                                </button>
-                            </div>
+                            <v-btn-toggle v-model="llm.provider" mandatory density="compact" variant="outlined"
+                                color="primary">
+                                <v-btn v-for="p in apiProviders" :key="p" :value="p" size="small">{{ p }}</v-btn>
+                            </v-btn-toggle>
                         </div>
 
                         <!-- API Key -->
@@ -105,26 +101,20 @@
                         </div>
 
                         <!-- 安全提示 -->
-                        <div class="security-tip mb-5">
-                            <v-icon size="16" color="success"
-                                style="margin-top:2px;flex-shrink:0;">mdi-shield-check</v-icon>
-                            <span class="text-caption text-success" style="line-height:1.625;">
-                                All credentials are encrypted locally using AES-256 and never transmitted to external
-                                servers.
-                            </span>
-                        </div>
+                        <v-alert type="success" variant="tonal" density="compact" class="mb-5" style="font-size:12px;">
+                            All credentials are encrypted locally using AES-256 and never transmitted to external
+                            servers.
+                        </v-alert>
 
                         <!-- 认证方式 -->
                         <div class="mb-5">
                             <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Authentication Method
                             </div>
-                            <div class="d-flex ga-2">
-                                <button v-for="m in authMethods" :key="m.value" class="provider-btn"
-                                    :class="{ 'provider-btn--active': creds.method === m.value }"
-                                    @click="creds.method = m.value">
-                                    {{ m.label }}
-                                </button>
-                            </div>
+                            <v-btn-toggle v-model="creds.method" mandatory density="compact" variant="outlined"
+                                color="primary">
+                                <v-btn v-for="m in authMethods" :key="m.value" :value="m.value" size="small">{{ m.label
+                                    }}</v-btn>
+                            </v-btn-toggle>
                         </div>
 
                         <!-- CAS Login 表单 -->
@@ -191,7 +181,7 @@
                         </div>
 
                         <!-- 开机自启动 -->
-                        <div class="startup-card mb-5">
+                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-5" max-width="420">
                             <div class="d-flex align-center ga-3">
                                 <v-icon size="16" class="text-medium-emphasis">mdi-power</v-icon>
                                 <div class="flex-grow-1">
@@ -200,13 +190,9 @@
                                         Automatically start Agent when system boots
                                     </div>
                                 </div>
-                                <!-- 自定义开关 -->
-                                <div class="custom-switch" :class="{ 'custom-switch--on': prefs.startup }"
-                                    @click="prefs.startup = !prefs.startup">
-                                    <div class="custom-switch__thumb" />
-                                </div>
+                                <v-switch v-model="prefs.startup" density="compact" hide-details color="primary" />
                             </div>
-                        </div>
+                        </v-card>
 
                         <!-- 工作区路径 -->
                         <div class="mb-5">
@@ -229,6 +215,165 @@
                         <v-btn size="small" color="primary" @click="">Save Preferences</v-btn>
                     </div>
 
+                    <!-- Appearance -->
+                    <div v-else-if="activeTab === 'appearance'">
+                        <div class="text-subtitle-1 font-weight-bold mb-1">Appearance</div>
+                        <div class="text-caption text-medium-emphasis mb-6">Customize the look and feel of the
+                            application.</div>
+
+                        <!-- Theme -->
+                        <div class="mb-5">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Theme</div>
+                            <v-btn-toggle v-model="appearance.theme" mandatory density="compact" variant="outlined"
+                                color="primary">
+                                <v-btn v-for="t in themeOptions" :key="t.value" :value="t.value" size="small">
+                                    <v-icon :size="13" class="mr-1">{{ t.icon }}</v-icon>{{ t.label }}
+                                </v-btn>
+                            </v-btn-toggle>
+                            <div class="text-medium-emphasis mt-1" style="font-size:11px;">
+                                System mode follows your OS appearance settings.
+                            </div>
+                        </div>
+
+                        <!-- Language -->
+                        <div class="mb-5">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Language</div>
+                            <v-select v-model="appearance.language" :items="languageOptions" item-title="label"
+                                item-value="value" density="compact" variant="outlined" hide-details
+                                style="max-width:260px;" />
+                        </div>
+
+                        <!-- Font Size -->
+                        <div class="mb-5">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">
+                                UI Font Size — <span class="text-primary font-weight-bold">{{ appearance.fontSize
+                                }}px</span>
+                            </div>
+                            <v-slider v-model="appearance.fontSize" :min="11" :max="16" :step="1" density="compact"
+                                hide-details thumb-label color="primary" style="max-width:320px;" />
+                        </div>
+
+                        <!-- Compact Mode -->
+                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-5" max-width="420">
+                            <div class="d-flex align-center ga-3">
+                                <v-icon size="16" class="text-medium-emphasis">mdi-arrow-collapse-all</v-icon>
+                                <div class="flex-grow-1">
+                                    <div class="text-body-2 font-weight-medium">Compact Mode</div>
+                                    <div class="text-medium-emphasis" style="font-size:11px;">
+                                        Reduce padding and spacing for a denser layout
+                                    </div>
+                                </div>
+                                <v-switch v-model="appearance.compact" density="compact" hide-details color="primary" />
+                            </div>
+                        </v-card>
+
+                        <v-divider class="mb-4" />
+                        <v-btn size="small" color="primary">Save Appearance</v-btn>
+                    </div>
+
+                    <!-- Window -->
+                    <div v-else-if="activeTab === 'window'">
+                        <div class="text-subtitle-1 font-weight-bold mb-1">Window</div>
+                        <div class="text-caption text-medium-emphasis mb-6">Control how the application window behaves
+                            (Tauri desktop).
+                        </div>
+
+                        <!-- Always on Top -->
+                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-3" max-width="420">
+                            <div class="d-flex align-center ga-3">
+                                <v-icon size="16" class="text-medium-emphasis">mdi-pin-outline</v-icon>
+                                <div class="flex-grow-1">
+                                    <div class="text-body-2 font-weight-medium">Always on Top</div>
+                                    <div class="text-medium-emphasis" style="font-size:11px;">Keep window above all
+                                        other application windows</div>
+                                </div>
+                                <v-switch v-model="winSettings.alwaysOnTop" density="compact" hide-details
+                                    color="primary" @update:model-value="applyAlwaysOnTop" />
+                            </div>
+                        </v-card>
+
+                        <!-- Minimize to Tray -->
+                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-3" max-width="420">
+                            <div class="d-flex align-center ga-3">
+                                <v-icon size="16" class="text-medium-emphasis">mdi-tray-arrow-down</v-icon>
+                                <div class="flex-grow-1">
+                                    <div class="text-body-2 font-weight-medium">Minimize to System Tray</div>
+                                    <div class="text-medium-emphasis" style="font-size:11px;">Closing the window hides
+                                        to tray instead of quitting</div>
+                                </div>
+                                <v-switch v-model="winSettings.minimizeToTray" density="compact" hide-details
+                                    color="primary" />
+                            </div>
+                        </v-card>
+
+                        <!-- Start Minimized -->
+                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-5" max-width="420">
+                            <div class="d-flex align-center ga-3">
+                                <v-icon size="16" class="text-medium-emphasis">mdi-window-minimize</v-icon>
+                                <div class="flex-grow-1">
+                                    <div class="text-body-2 font-weight-medium">Start Minimized</div>
+                                    <div class="text-medium-emphasis" style="font-size:11px;">Launch in background
+                                        without showing the window</div>
+                                </div>
+                                <v-switch v-model="winSettings.startMinimized" density="compact" hide-details
+                                    color="primary" />
+                            </div>
+                        </v-card>
+
+                        <!-- Window Opacity -->
+                        <div class="mb-5">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">
+                                Window Opacity — <span class="text-primary font-weight-bold">{{ winSettings.opacity
+                                }}%</span>
+                            </div>
+                            <v-slider v-model="winSettings.opacity" :min="60" :max="100" :step="5" density="compact"
+                                hide-details thumb-label color="primary" style="max-width:320px;" />
+                        </div>
+
+                        <v-divider class="mb-4" />
+                        <v-btn size="small" color="primary">Apply Window Settings</v-btn>
+                    </div>
+
+                    <!-- Notifications -->
+                    <div v-else-if="activeTab === 'notifications'">
+                        <div class="text-subtitle-1 font-weight-bold mb-1">Notifications</div>
+                        <div class="text-caption text-medium-emphasis mb-6">Control when and how you receive
+                            notifications.</div>
+
+                        <!-- Master Switch -->
+                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-4" max-width="420">
+                            <div class="d-flex align-center ga-3">
+                                <v-icon size="16" :color="notif.enabled ? 'primary' : undefined"
+                                    class="text-medium-emphasis">mdi-bell-outline</v-icon>
+                                <div class="flex-grow-1">
+                                    <div class="text-body-2 font-weight-medium">Enable Notifications</div>
+                                    <div class="text-medium-emphasis" style="font-size:11px;">Master toggle for all
+                                        notification types</div>
+                                </div>
+                                <v-switch v-model="notif.enabled" density="compact" hide-details color="primary" />
+                            </div>
+                        </v-card>
+
+                        <div :class="{ 'opacity-40': !notif.enabled }" style="pointer-events: var(--notif-events);"
+                            :style="{ pointerEvents: notif.enabled ? 'auto' : 'none' }">
+                            <v-card v-for="item in notifItems" :key="item.key" variant="outlined" rounded="lg"
+                                class="pa-3 mb-3" max-width="420">
+                                <div class="d-flex align-center ga-3">
+                                    <v-icon size="16" class="text-medium-emphasis">{{ item.icon }}</v-icon>
+                                    <div class="flex-grow-1">
+                                        <div class="text-body-2 font-weight-medium">{{ item.label }}</div>
+                                        <div class="text-medium-emphasis" style="font-size:11px;">{{ item.desc }}</div>
+                                    </div>
+                                    <v-switch v-model="(notif as any)[item.key]" density="compact" hide-details
+                                        color="primary" />
+                                </div>
+                            </v-card>
+                        </div>
+
+                        <v-divider class="mb-4 mt-2" />
+                        <v-btn size="small" color="primary">Save Notification Settings</v-btn>
+                    </div>
+
                     <!-- Capability Hub -->
                     <div v-else-if="activeTab === 'capabilities'">
                         <div class="d-flex align-center justify-space-between mb-1">
@@ -244,8 +389,9 @@
                         </div>
 
                         <div class="d-flex flex-column ga-2">
-                            <div v-for="cap in capabilities" :key="cap.id" class="cap-row"
-                                :class="{ 'cap-row--enabled': cap.enabled }">
+                            <v-card v-for="cap in capabilities" :key="cap.id"
+                                :color="cap.enabled ? 'primary' : undefined"
+                                :variant="cap.enabled ? 'tonal' : 'outlined'" rounded="lg">
                                 <!-- 折叠态 -->
                                 <div class="d-flex align-center ga-3 px-4 py-3">
                                     <v-btn icon variant="text" size="x-small" @click="cap.expanded = !cap.expanded">
@@ -263,28 +409,30 @@
                                         <div class="text-medium-emphasis mt-1" style="font-size:11px;">{{
                                             cap.description }}</div>
                                     </div>
-                                    <!-- 开关 -->
-                                    <div class="custom-switch" :class="{ 'custom-switch--on': cap.enabled }"
-                                        @click="cap.enabled = !cap.enabled">
-                                        <div class="custom-switch__thumb" />
-                                    </div>
+                                    <v-switch v-model="cap.enabled" density="compact" hide-details color="primary" />
                                 </div>
                                 <!-- 展开态 -->
-                                <div v-if="cap.expanded" class="cap-expand">
-                                    <div class="d-flex align-center ga-1 mb-2">
-                                        <v-icon size="14" class="text-medium-emphasis">mdi-information-outline</v-icon>
-                                        <span class="text-caption font-weight-bold text-medium-emphasis">Required
-                                            Permissions</span>
+                                <template v-if="cap.expanded">
+                                    <v-divider />
+                                    <div class="px-4 py-3">
+                                        <div class="d-flex align-center ga-1 mb-2">
+                                            <v-icon size="14"
+                                                class="text-medium-emphasis">mdi-information-outline</v-icon>
+                                            <span class="text-caption font-weight-bold text-medium-emphasis">Required
+                                                Permissions</span>
+                                        </div>
+                                        <div class="d-flex flex-column ga-1 pl-5">
+                                            <div v-for="perm in cap.permissions" :key="perm"
+                                                class="d-flex align-center ga-2">
+                                                <v-icon size="6" :color="cap.enabled ? 'primary' : undefined"
+                                                    style="opacity:0.7;">mdi-circle</v-icon>
+                                                <span style="font-size:11px;" class="text-medium-emphasis">{{ perm
+                                                    }}</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <ul class="cap-perms">
-                                        <li v-for="perm in cap.permissions" :key="perm"
-                                            class="d-flex align-center ga-2">
-                                            <span class="perm-dot" :class="{ 'perm-dot--enabled': cap.enabled }" />
-                                            <span style="font-size:11px;" class="text-medium-emphasis">{{ perm }}</span>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
+                                </template>
+                            </v-card>
                         </div>
                     </div>
 
@@ -301,6 +449,9 @@
     const tabs = [
         { id: 'llm', icon: 'mdi-brain', label: 'LLM Configuration' },
         { id: 'credentials', icon: 'mdi-shield-check', label: 'Credential Vault' },
+        { id: 'appearance', icon: 'mdi-palette-outline', label: 'Appearance' },
+        { id: 'window', icon: 'mdi-application-outline', label: 'Window' },
+        { id: 'notifications', icon: 'mdi-bell-outline', label: 'Notifications' },
         { id: 'preferences', icon: 'mdi-wrench-outline', label: 'System Preferences' },
         { id: 'capabilities', icon: 'mdi-puzzle-outline', label: 'Capability Hub' },
     ]
@@ -367,57 +518,51 @@
         { id: 3, name: 'Email Sender', filename: 'email_sender.py', description: 'Send emails on behalf of the user.', enabled: false, expanded: false, permissions: ['SMTP access', 'Contact list read', 'Email compose'] },
         { id: 4, name: 'Calendar Sync', filename: 'calendar_sync.py', description: 'Read and write calendar events.', enabled: true, expanded: false, permissions: ['Calendar read', 'Calendar write', 'External calendar API'] },
     ])
+
+    // Appearance
+    const themeOptions = [
+        { value: 'system', label: 'System', icon: 'mdi-monitor' },
+        { value: 'light', label: 'Light', icon: 'mdi-white-balance-sunny' },
+        { value: 'dark', label: 'Dark', icon: 'mdi-weather-night' },
+    ]
+    const languageOptions = [
+        { value: 'en', label: 'English' },
+        { value: 'zh', label: '中文 (简体)' },
+        { value: 'zh-tw', label: '中文 (繁體)' },
+        { value: 'ja', label: '日本語' },
+    ]
+    const appearance = ref({ theme: 'system', language: 'en', fontSize: 13, compact: true })
+
+    // Window (Tauri)
+    const winSettings = ref({ alwaysOnTop: false, minimizeToTray: true, startMinimized: false, opacity: 100 })
+
+    const toggleAlwaysOnTop = async () => {
+        winSettings.value.alwaysOnTop = !winSettings.value.alwaysOnTop
+        await applyAlwaysOnTop(winSettings.value.alwaysOnTop)
+    }
+
+    const applyAlwaysOnTop = async (val: boolean | null) => {
+        const v = val ?? false
+        try {
+            const { getCurrentWindow } = await import('@tauri-apps/api/window')
+            await getCurrentWindow().setAlwaysOnTop(v)
+        } catch { /* web fallback: ignore */ }
+    }
+
+    // Notifications
+    const notif = ref({ enabled: true, taskComplete: true, taskFailed: true, calendarReminder: true, sound: false, desktopBanner: true })
+    const notifItems = [
+        { key: 'taskComplete', icon: 'mdi-check-circle-outline', label: 'Task Completed', desc: 'Notify when a scheduled task finishes successfully' },
+        { key: 'taskFailed', icon: 'mdi-alert-circle-outline', label: 'Task Failed', desc: 'Notify when a task encounters an error or failure' },
+        { key: 'calendarReminder', icon: 'mdi-calendar-clock-outline', label: 'Calendar Reminders', desc: 'Remind you before upcoming events (15 min default)' },
+        { key: 'sound', icon: 'mdi-volume-high', label: 'Notification Sound', desc: 'Play a sound when a notification arrives' },
+        { key: 'desktopBanner', icon: 'mdi-message-badge-outline', label: 'Desktop Banner', desc: 'Show OS-level desktop banner notifications' },
+    ]
 </script>
 
 <style scoped>
 
-    /* 左侧导航标签 */
-    .settings-tab {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 10px 12px;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: background 0.15s, color 0.15s;
-        color: rgba(var(--v-theme-on-surface), 0.6);
-    }
-
-    .settings-tab:hover {
-        background: rgba(var(--v-theme-surface-variant), 0.5);
-        color: rgba(var(--v-theme-on-surface), 1);
-    }
-
-    .settings-tab--active {
-        background: rgba(var(--v-theme-primary), 0.1);
-        color: rgb(var(--v-theme-primary));
-    }
-
-    /* Provider / method 按钮 */
-    .provider-btn {
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 8px;
-        padding: 8px 16px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: border-color 0.15s, background 0.15s, color 0.15s;
-        background: transparent;
-        color: rgba(var(--v-theme-on-surface), 0.6);
-    }
-
-    .provider-btn:hover {
-        border-color: rgba(var(--v-theme-on-surface), 0.4);
-        color: rgba(var(--v-theme-on-surface), 1);
-    }
-
-    .provider-btn--active {
-        border-color: rgb(var(--v-theme-primary));
-        background: rgba(var(--v-theme-primary), 0.1);
-        color: rgb(var(--v-theme-primary));
-    }
-
-    /* 旋转动画 */
+    /* 旋转动画（框架无法实现） */
     .spin-icon {
         animation: spin 1s linear infinite;
     }
@@ -432,18 +577,7 @@
         }
     }
 
-    /* 安全提示 */
-    .security-tip {
-        border: 1px solid rgba(var(--v-theme-success), 0.2);
-        background: rgba(var(--v-theme-success), 0.05);
-        border-radius: 8px;
-        padding: 12px;
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-    }
-
-    /* 快捷键显示 */
+    /* 快捷键录制显示框（需要特定样式状态切换，保留） */
     .shortcut-display {
         height: 36px;
         border-radius: 8px;
@@ -478,84 +612,5 @@
         50% {
             opacity: 0.5;
         }
-    }
-
-    /* 开机自启动卡片 */
-    .startup-card {
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 8px;
-        padding: 12px 16px;
-    }
-
-    /* 自定义开关 */
-    .custom-switch {
-        width: 36px;
-        height: 20px;
-        border-radius: 9999px;
-        background: rgba(var(--v-theme-on-surface), 0.2);
-        position: relative;
-        cursor: pointer;
-        transition: background 0.2s;
-        flex-shrink: 0;
-    }
-
-    .custom-switch--on {
-        background: rgb(var(--v-theme-primary));
-    }
-
-    .custom-switch__thumb {
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: #fff;
-        transition: transform 0.2s;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    }
-
-    .custom-switch--on .custom-switch__thumb {
-        transform: translateX(16px);
-    }
-
-    /* Capability 行 */
-    .cap-row {
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 8px;
-        overflow: hidden;
-        transition: border-color 0.15s, background 0.15s;
-    }
-
-    .cap-row--enabled {
-        border-color: rgba(var(--v-theme-primary), 0.2);
-        background: rgba(var(--v-theme-primary), 0.03);
-    }
-
-    .cap-expand {
-        border-top: 1px solid rgba(var(--v-border-color), 0.5);
-        padding: 12px 16px;
-    }
-
-    .cap-perms {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        padding-left: 20px;
-    }
-
-    .perm-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: rgba(var(--v-theme-on-surface), 0.3);
-        flex-shrink: 0;
-    }
-
-    .perm-dot--enabled {
-        background: rgb(var(--v-theme-primary));
     }
 </style>

@@ -1,317 +1,322 @@
-<template>
-    <v-container fluid class="d-flex flex-column h-100 pa-0">
+﻿<template>
+    <div class="cal-page d-flex flex-column h-100">
 
-        <!-- 头部 -->
-        <v-sheet class="px-6 py-4 border-b flex-shrink-0" color="transparent">
-            <div class="d-flex align-center justify-space-between">
-                <!-- 左侧 -->
-                <div class="d-flex align-center ga-3">
-                    <v-icon size="20" color="primary">mdi-calendar</v-icon>
-                    <div>
-                        <div class="text-h6 font-weight-bold" style="font-size:18px;line-height:1.3;">My Calendar</div>
-                        <div class="text-caption text-medium-emphasis">{{ currentMonthLabel }}</div>
-                    </div>
-                </div>
-                <!-- 右侧导航 -->
-                <div class="d-flex align-center ga-1">
-                    <v-btn icon variant="text" size="small" width="32" height="32" @click="prevWeek">
-                        <v-icon size="16">mdi-chevron-left</v-icon>
-                    </v-btn>
-                    <v-btn variant="outlined" size="small" style="font-size:12px;height:28px;" @click="goToday">
-                        Today
-                    </v-btn>
-                    <v-btn icon variant="text" size="small" width="32" height="32" @click="nextWeek">
-                        <v-icon size="16">mdi-chevron-right</v-icon>
-                    </v-btn>
-                </div>
+        <!-- 顶栏 -->
+        <div class="cal-toolbar px-5 py-2 border-b d-flex align-center justify-space-between flex-shrink-0">
+            <div class="d-flex align-center ga-2">
+                <v-btn icon size="x-small" variant="text" @click="prevMonth">
+                    <v-icon size="16">mdi-chevron-left</v-icon>
+                </v-btn>
+                <span class="text-subtitle-2 font-weight-bold" style="min-width:130px;text-align:center;">
+                    {{ monthLabel }}
+                </span>
+                <v-btn icon size="x-small" variant="text" @click="nextMonth">
+                    <v-icon size="16">mdi-chevron-right</v-icon>
+                </v-btn>
+                <v-btn size="x-small" variant="outlined" class="ml-1" @click="goToday">Today</v-btn>
             </div>
-        </v-sheet>
-
-        <!-- 周日期条 -->
-        <v-sheet class="border-b flex-shrink-0" color="transparent">
-            <div class="d-flex">
-                <div v-for="day in weekDays" :key="day.key" class="week-day-col"
-                    :class="{ 'week-day-col--active': day.isSelected }" @click="selectedDate = day.date">
-                    <span class="week-day-abbr">{{ day.abbr }}</span>
-                    <div class="week-day-num-wrap" :class="{ 'week-day-num-wrap--active': day.isSelected }">
-                        <span class="week-day-num" :class="{ 'week-day-num--active': day.isSelected }">{{ day.num
-                            }}</span>
-                    </div>
-                    <span v-if="day.hasEvents" class="event-dot"
-                        :class="day.isSelected ? 'event-dot--active' : 'event-dot--default'" />
-                    <span v-else style="height:4px;" />
-                </div>
+            <div class="d-flex align-center ga-2">
+                <!-- type filter chips -->
+                <v-chip v-for="f in typeFilters" :key="f.value" :prepend-icon="f.icon" size="x-small"
+                    :variant="activeFilters.includes(f.value) ? 'tonal' : 'text'"
+                    :color="activeFilters.includes(f.value) ? 'primary' : undefined" @click="toggleFilter(f.value)">{{
+                    f.label }}</v-chip>
+                <v-btn size="x-small" color="primary" @click="openCreate(todayKey)">
+                    <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
+                </v-btn>
             </div>
-        </v-sheet>
+        </div>
 
-        <!-- 事件列表 -->
-        <v-sheet color="transparent" class="flex-grow-1 overflow-y-auto">
-            <div class="pa-6">
-                <div class="text-body-2 font-weight-bold mb-4">{{ selectedDateLabel }} Events</div>
+        <!-- 主体 -->
+        <div class="cal-body d-flex flex-grow-1 min-height-0">
 
-                <!-- 空状态 -->
-                <div v-if="selectedDayEvents.length === 0" class="d-flex flex-column align-center justify-center py-12">
-                    <v-icon size="32" style="opacity:0.4;" class="text-medium-emphasis mb-2">mdi-calendar-blank</v-icon>
-                    <span class="text-body-2 text-medium-emphasis">No events for this day</span>
-                </div>
-
-                <!-- 事件卡片列表 -->
-                <div v-else class="d-flex flex-column ga-3">
-                    <div v-for="event in selectedDayEvents" :key="event.id" class="event-card"
-                        :class="`event-card--${event.type}`">
-                        <div class="d-flex ga-3">
-                            <!-- 图标容器 -->
-                            <div class="event-icon-wrap flex-shrink-0" :class="`event-icon-wrap--${event.type}`">
-                                <v-icon size="16" :color="eventTypeColor(event.type)">{{ eventTypeIcon(event.type)
-                                    }}</v-icon>
-                            </div>
-                            <!-- 信息区 -->
-                            <div class="flex-grow-1 min-width-0">
-                                <!-- 第一行：标题 + 类型标签 -->
-                                <div class="d-flex align-center ga-1 flex-wrap">
-                                    <span class="text-body-2 font-weight-medium text-truncate">{{ event.title }}</span>
-                                    <v-chip variant="outlined" size="x-small" density="compact"
-                                        :color="eventTypeColor(event.type)" style="font-size:9px;height:18px;">
-                                        {{ event.type }}
-                                    </v-chip>
-                                </div>
-                                <!-- 第二行：时间 & 地点 -->
-                                <div class="d-flex align-center flex-wrap ga-3 mt-1">
-                                    <span class="d-flex align-center ga-1">
-                                        <v-icon size="12" class="text-medium-emphasis">mdi-clock-outline</v-icon>
-                                        <span class="text-caption text-medium-emphasis">{{ event.time }}</span>
-                                    </span>
-                                    <span v-if="event.location" class="d-flex align-center ga-1">
-                                        <v-icon size="12" class="text-medium-emphasis">mdi-map-marker-outline</v-icon>
-                                        <span class="text-caption text-medium-emphasis">{{ event.location }}</span>
-                                    </span>
-                                </div>
-                                <!-- 第三行：课程号 -->
-                                <div v-if="event.courseId" class="text-medium-emphasis mt-1" style="font-size:10px;">
-                                    Course: {{ event.courseId }}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <!-- 日历网格 -->
+            <div class="cal-grid-wrap flex-grow-1 d-flex flex-column min-width-0">
+                <CalendarGrid :cells="cells" :events="filteredEvents" :selected-cell="selectedCell"
+                    :drag-from="dragFrom" :drag-to="dragTo" @cell-click="onCellClick" @event-click="onEventClick"
+                    @drag-start="onDragStart" @drag-enter="onDragEnter" @drag-end="onDragEnd"
+                    @context-menu="onContextMenu" />
             </div>
-        </v-sheet>
 
-    </v-container>
+            <!-- 右侧事件面板 -->
+            <transition name="panel-slide">
+                <CalendarEventPanel v-if="selectedCell" :date-key="selectedCell.dateKey" :events="selectedDayEvents"
+                    :selected-event-id="selectedEventId" class="flex-shrink-0" @close="selectedCell = null"
+                    @create="openCreate(selectedCell!.dateKey)" @select="ev => selectedEventId = ev.id" @edit="openEdit"
+                    @delete="deleteEvent" />
+            </transition>
+
+        </div>
+
+        <!-- 右键菜单 -->
+        <div v-if="ctxMenu.show" class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+            @click.stop>
+            <button class="ctx-item" @click="openCreate(ctxMenu.dateKey); ctxMenu.show = false">
+                <v-icon size="13" class="mr-2">mdi-calendar-plus</v-icon>New Event
+            </button>
+            <button class="ctx-item" @click="pasteEvent(); ctxMenu.show = false" :disabled="!clipboard">
+                <v-icon size="13" class="mr-2">mdi-content-paste</v-icon>Paste Event
+            </button>
+        </div>
+
+        <!-- 拖选批量建事件提示 -->
+        <v-snackbar v-model="dragSnackbar" timeout="4000" location="bottom center" color="primary">
+            <span class="text-caption">Drag-selected <strong>{{ dragRangeCount }}</strong> day(s).
+                <v-btn size="x-small" variant="text" color="white" @click="openBatchCreate">Create Events</v-btn>
+            </span>
+        </v-snackbar>
+
+        <!-- 事件编辑弹窗 -->
+        <CalendarEventDialog v-model="dialogOpen" :event="editingEvent" :default-date="dialogDefaultDate"
+            @submit="saveEvent" />
+
+        <!-- 批量建事件弹窗 -->
+        <v-dialog v-model="batchDialogOpen" max-width="380">
+            <v-card rounded="lg">
+                <v-card-title class="text-body-2 font-weight-bold px-4 pt-4 pb-2">
+                    Batch Create Events
+                </v-card-title>
+                <v-card-text class="px-4 py-2 text-caption text-medium-emphasis">
+                    Create the same event for {{ dragRangeCount }} selected days ({{ dragFrom?.dateKey }} {{
+                    dragTo?.dateKey }}).
+                </v-card-text>
+                <v-card-text class="px-4 pt-0 pb-3">
+                    <v-text-field v-model="batchTitle" label="Event title" density="compact" variant="outlined"
+                        hide-details autofocus />
+                </v-card-text>
+                <v-card-actions class="px-4 py-3 justify-end ga-2">
+                    <v-btn variant="outlined" size="small" @click="batchDialogOpen = false">Cancel</v-btn>
+                    <v-btn color="primary" size="small" :disabled="!batchTitle.trim()"
+                        @click="confirmBatch">Create</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- 全局点击关闭右键菜单 -->
+        <div v-if="ctxMenu.show" class="ctx-overlay" @click="ctxMenu.show = false"
+            @contextmenu.prevent="ctxMenu.show = false" />
+    </div>
 </template>
 
 <script setup lang="ts">
-    type EventType = 'exam' | 'class' | 'personal' | 'deadline'
+    import CalendarGrid from '@/components/calendar/CalendarGrid.vue'
+    import CalendarEventPanel from '@/components/calendar/CalendarEventPanel.vue'
+    import CalendarEventDialog from '@/components/calendar/CalendarEventDialog.vue'
+    import type { CalEvent, CalendarCell, EventType } from '@/utils/calendar'
+    import {
+        buildMonthGrid, buildDefaultEvents, getEventsForDate,
+        nextId, toDateKey, EVENT_TYPE_ICON, EVENT_TYPE_COLOR,
+    } from '@/utils/calendar'
 
-    interface CalEvent {
-        id: number
-        title: string
-        type: EventType
-        time: string
-        date: string   // YYYY-MM-DD
-        location?: string
-        courseId?: string
-    }
-
+    //  State 
     const today = new Date()
-    const selectedDate = ref(today)
+    const year = ref(today.getFullYear())
+    const month = ref(today.getMonth())
+    const todayKey = toDateKey(today)
 
-    // 当前周起始（周日 = 0）
-    const weekStart = computed(() => {
-        const d = new Date(selectedDate.value)
-        d.setDate(d.getDate() - d.getDay())
-        return d
+    const events = ref<CalEvent[]>(buildDefaultEvents())
+    const selectedCell = ref<CalendarCell | null>(null)
+    const selectedEventId = ref<number | null>(null)
+    const clipboard = ref<CalEvent | null>(null)
+
+    // Drag-select
+    const dragFrom = ref<CalendarCell | null>(null)
+    const dragTo = ref<CalendarCell | null>(null)
+    const isDragging = ref(false)
+    const dragSnackbar = ref(false)
+    const batchDialogOpen = ref(false)
+    const batchTitle = ref('')
+
+    // Dialog
+    const dialogOpen = ref(false)
+    const editingEvent = ref<CalEvent | null>(null)
+    const dialogDefaultDate = ref('')
+
+    // Right-click menu
+    const ctxMenu = reactive({ show: false, x: 0, y: 0, dateKey: '' })
+
+    // Type filters
+    const typeFilters = [
+        { value: 'class', label: 'Class', icon: EVENT_TYPE_ICON.class },
+        { value: 'exam', label: 'Exam', icon: EVENT_TYPE_ICON.exam },
+        { value: 'deadline', label: 'Deadline', icon: EVENT_TYPE_ICON.deadline },
+        { value: 'personal', label: 'Personal', icon: EVENT_TYPE_ICON.personal },
+        { value: 'meeting', label: 'Meeting', icon: EVENT_TYPE_ICON.meeting },
+    ]
+    const activeFilters = ref<string[]>([])
+
+    //  Computed 
+    const cells = computed(() => buildMonthGrid(year.value, month.value))
+
+    const monthLabel = computed(() => {
+        const d = new Date(year.value, month.value, 1)
+        return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     })
 
-    const weekDays = computed(() => {
-        const abbrs = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-        return Array.from({ length: 7 }, (_, i) => {
-            const d = new Date(weekStart.value)
-            d.setDate(d.getDate() + i)
-            const key = d.toISOString().slice(0, 10)
-            return {
-                key,
-                date: d,
-                abbr: abbrs[i],
-                num: d.getDate(),
-                isSelected: key === selectedDate.value.toISOString().slice(0, 10),
-                hasEvents: events.value.some(e => e.date === key),
-            }
+    const filteredEvents = computed(() =>
+        activeFilters.value.length === 0
+            ? events.value
+            : events.value.filter(e => activeFilters.value.includes(e.type))
+    )
+
+    const selectedDayEvents = computed(() =>
+        selectedCell.value ? getEventsForDate(filteredEvents.value, selectedCell.value.dateKey) : []
+    )
+
+    const dragRangeKeys = computed(() => {
+        if (!dragFrom.value || !dragTo.value) return []
+        const a = dragFrom.value.dateKey, b = dragTo.value.dateKey
+        const lo = a <= b ? a : b, hi = a <= b ? b : a
+        return cells.value.filter(c => c.dateKey >= lo && c.dateKey <= hi).map(c => c.dateKey)
+    })
+
+    const dragRangeCount = computed(() => dragRangeKeys.value.length)
+
+    //  Navigation 
+    const prevMonth = () => { if (month.value === 0) { month.value = 11; year.value-- } else month.value-- }
+    const nextMonth = () => { if (month.value === 11) { month.value = 0; year.value++ } else month.value++ }
+    const goToday = () => { year.value = today.getFullYear(); month.value = today.getMonth() }
+
+    //  Filter 
+    const toggleFilter = (v: string) => {
+        const i = activeFilters.value.indexOf(v)
+        i >= 0 ? activeFilters.value.splice(i, 1) : activeFilters.value.push(v)
+    }
+
+    //  Grid events 
+    const onCellClick = (cell: CalendarCell) => {
+        if (isDragging.value) return
+        selectedCell.value = (selectedCell.value?.dateKey === cell.dateKey) ? null : cell
+        selectedEventId.value = null
+    }
+
+    const onEventClick = (ev: CalEvent) => {
+        selectedEventId.value = ev.id
+        const cell = cells.value.find(c => c.dateKey === ev.date) ?? null
+        if (cell) selectedCell.value = cell
+    }
+
+    //  Drag-select 
+    const onDragStart = (cell: CalendarCell) => { dragFrom.value = cell; dragTo.value = cell; isDragging.value = true }
+    const onDragEnter = (cell: CalendarCell) => { if (isDragging.value) dragTo.value = cell }
+    const onDragEnd = (cell: CalendarCell) => {
+        isDragging.value = false
+        dragTo.value = cell
+        if (dragRangeCount.value > 1) dragSnackbar.value = true
+        else { dragFrom.value = null; dragTo.value = null }
+    }
+
+    const openBatchCreate = () => { batchTitle.value = ''; batchDialogOpen.value = true; dragSnackbar.value = false }
+
+    const confirmBatch = () => {
+        const title = batchTitle.value.trim()
+        if (!title) return
+        dragRangeKeys.value.forEach(dateKey => {
+            events.value.push({ id: nextId(events.value), title, type: 'personal', date: dateKey, time: '' })
         })
-    })
-
-    const currentMonthLabel = computed(() => {
-        return selectedDate.value.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    })
-
-    const selectedDateLabel = computed(() => {
-        return selectedDate.value.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    })
-
-    const selectedDayEvents = computed(() => {
-        const key = selectedDate.value.toISOString().slice(0, 10)
-        return events.value.filter(e => e.date === key)
-    })
-
-    const prevWeek = () => {
-        const d = new Date(selectedDate.value)
-        d.setDate(d.getDate() - 7)
-        selectedDate.value = d
+        batchDialogOpen.value = false
+        dragFrom.value = null; dragTo.value = null
     }
-    const nextWeek = () => {
-        const d = new Date(selectedDate.value)
-        d.setDate(d.getDate() + 7)
-        selectedDate.value = d
+
+    //  Context menu 
+    const onContextMenu = ({ cell, event }: { cell: CalendarCell; event: MouseEvent }) => {
+        ctxMenu.show = true
+        ctxMenu.x = event.clientX
+        ctxMenu.y = event.clientY
+        ctxMenu.dateKey = cell.dateKey
     }
-    const goToday = () => { selectedDate.value = new Date() }
 
-    // 颜色映射
-    const eventTypeColor = (type: EventType) => ({
-        exam: 'error', class: 'primary', personal: 'info', deadline: 'warning',
-    }[type])
+    const pasteEvent = () => {
+        if (!clipboard.value) return
+        events.value.push({ ...clipboard.value, id: nextId(events.value), date: ctxMenu.dateKey })
+    }
 
-    const eventTypeIcon = (type: EventType) => ({
-        exam: 'mdi-book-open-outline', class: 'mdi-calendar', personal: 'mdi-calendar', deadline: 'mdi-clock-alert-outline',
-    }[type])
+    //  CRUD 
+    const openCreate = (date: string) => {
+        editingEvent.value = null; dialogDefaultDate.value = date; dialogOpen.value = true
+    }
+    const openEdit = (ev: CalEvent) => { editingEvent.value = ev; dialogOpen.value = true }
 
-    // 示例数据（基于今天动态生成日期）
-    const todayStr = today.toISOString().slice(0, 10)
-    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
-    const tomorrowStr = tomorrow.toISOString().slice(0, 10)
+    const saveEvent = (form: any) => {
+        if (editingEvent.value) {
+            Object.assign(editingEvent.value, form)
+        } else {
+            events.value.push({ id: nextId(events.value), ...form })
+        }
+    }
 
-    const events = ref<CalEvent[]>([
-        { id: 1, title: 'Software Engineering Lecture', type: 'class', time: '08:00 - 09:50', date: todayStr, location: 'Teaching Building 1, Room 201', courseId: 'CS304' },
-        { id: 2, title: 'Algorithm Midterm Exam', type: 'exam', time: '10:00 - 12:00', date: todayStr, location: 'Gym Hall A', courseId: 'CS302' },
-        { id: 3, title: 'Project Submission Deadline', type: 'deadline', time: '23:59', date: todayStr, courseId: 'CS304' },
-        { id: 4, title: 'Study Group Meeting', type: 'personal', time: '14:00 - 16:00', date: todayStr, location: 'Library Room B204' },
-        { id: 5, title: 'Linear Algebra Lecture', type: 'class', time: '08:00 - 09:50', date: tomorrowStr, location: 'Teaching Building 2, Room 101', courseId: 'MA201' },
-        { id: 6, title: 'Database Assignment Due', type: 'deadline', time: '23:59', date: tomorrowStr, courseId: 'CS307' },
-    ])
+    const deleteEvent = (ev: CalEvent) => {
+        clipboard.value = ev
+        events.value = events.value.filter(e => e.id !== ev.id)
+        if (selectedEventId.value === ev.id) selectedEventId.value = null
+    }
 </script>
 
 <style scoped>
-
-    /* 周日期条 */
-    .week-day-col {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 4px;
-        padding: 12px 0;
-        cursor: pointer;
-        transition: background 0.15s;
+    .cal-page {
+        overflow: hidden;
     }
 
-    .week-day-col:hover {
+    .cal-body {
+        overflow: hidden;
+    }
+
+    .cal-grid-wrap {
+        overflow: hidden;
+    }
+
+    /* right-click menu */
+    .ctx-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+    }
+
+    .ctx-menu {
+        position: fixed;
+        z-index: 1000;
+        min-width: 160px;
+        background: rgb(var(--v-theme-surface));
+        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+        padding: 4px;
+        overflow: hidden;
+    }
+
+    .ctx-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 500;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        color: rgba(var(--v-theme-on-surface), 0.85);
+        background: transparent;
+        transition: background 0.12s;
+    }
+
+    .ctx-item:hover {
         background: rgba(var(--v-theme-surface-variant), 0.5);
     }
 
-    .week-day-col--active {
-        background: rgba(var(--v-theme-primary), 0.1);
+    .ctx-item:disabled {
+        opacity: 0.4;
+        cursor: default;
     }
 
-    .week-day-abbr {
-        font-size: 10px;
-        text-transform: uppercase;
-        color: rgba(var(--v-theme-on-surface), 0.6);
-        letter-spacing: 0.05em;
+    /* panel slide animation */
+    .panel-slide-enter-active,
+    .panel-slide-leave-active {
+        transition: all 0.2s ease;
     }
 
-    .week-day-num-wrap {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .week-day-num-wrap--active {
-        background: rgb(var(--v-theme-primary));
-    }
-
-    .week-day-num {
-        font-size: 14px;
-        font-weight: 500;
-    }
-
-    .week-day-num--active {
-        color: #fff;
-        font-weight: 600;
-    }
-
-    .event-dot {
-        width: 4px;
-        height: 4px;
-        border-radius: 50%;
-        display: inline-block;
-    }
-
-    .event-dot--default {
-        background: rgb(var(--v-theme-primary));
-    }
-
-    .event-dot--active {
-        background: #fff;
-    }
-
-    /* 事件卡片 */
-    .event-card {
-        border-radius: 12px;
-        border: 1px solid;
-        padding: 16px;
-        transition: background 0.15s;
-        cursor: pointer;
-    }
-
-    .event-card:hover {
-        background: rgba(var(--v-theme-surface-variant), 0.5) !important;
-    }
-
-    .event-card--exam {
-        border-color: rgba(var(--v-theme-error), 0.3);
-        background: rgba(var(--v-theme-error), 0.05);
-    }
-
-    .event-card--class {
-        border-color: rgba(var(--v-theme-primary), 0.3);
-        background: rgba(var(--v-theme-primary), 0.05);
-    }
-
-    .event-card--personal {
-        border-color: rgba(var(--v-theme-info), 0.3);
-        background: rgba(var(--v-theme-info), 0.05);
-    }
-
-    .event-card--deadline {
-        border-color: rgba(var(--v-theme-warning), 0.3);
-        background: rgba(var(--v-theme-warning), 0.05);
-    }
-
-    /* 事件图标容器 */
-    .event-icon-wrap {
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .event-icon-wrap--exam {
-        background: rgba(var(--v-theme-error), 0.1);
-    }
-
-    .event-icon-wrap--class {
-        background: rgba(var(--v-theme-primary), 0.1);
-    }
-
-    .event-icon-wrap--personal {
-        background: rgba(var(--v-theme-info), 0.1);
-    }
-
-    .event-icon-wrap--deadline {
-        background: rgba(var(--v-theme-warning), 0.1);
+    .panel-slide-enter-from,
+    .panel-slide-leave-to {
+        transform: translateX(20px);
+        opacity: 0;
     }
 </style>
