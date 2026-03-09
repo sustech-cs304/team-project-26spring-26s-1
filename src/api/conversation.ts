@@ -1,5 +1,6 @@
 import http, { baseURL } from '@/utils/http'
-import type { Conversation, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseEventName, SseHistoryData, SseThoughtStepData, SseMessageDeltaData, SseDoneData, SseErrorData, SseSetTitleData
+import type {
+    Conversation, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseEventName, SseHistoryData, SseThoughtStepData, SseMessageDeltaData, SseDoneData, SseErrorData, SseSetTitleData
 } from '@/types/conversation.ts'
 
 /** 生成 UUID v4，兼容非 HTTPS 环境 */
@@ -167,4 +168,14 @@ export function chatCompletion (
     })()
 
     return controller
+}
+
+/**
+ * 停止对话接口：通知后端终止当前对话流并更新状态
+ * POST /conversation/cancelchat?conversation_id=...&message_id=...
+ */
+export function cancelChat (conversation_id: string, message_id: string): Promise<MessageResponse> {
+    return http.post<MessageResponse>('/conversation/cancelchat', null, {
+        params: { conversation_id, message_id },
+    })
 }

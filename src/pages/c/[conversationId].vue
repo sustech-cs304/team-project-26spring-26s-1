@@ -44,7 +44,7 @@
                                     <v-tooltip text="Copy" location="bottom">
                                         <template v-slot:activator="{ props }">
                                             <v-btn v-bind="props" icon="mdi-content-copy" size="x-small" variant="text"
-                                                @click="copy(msg.content)" />
+                                                @click="copyText(msg.content)" />
                                         </template>
                                     </v-tooltip>
                                 </v-row>
@@ -78,10 +78,10 @@
     import ThinkingChain from '@/components/chat/ThinkingChain.vue'
     import MarkdownRenderer from '@/components/chat/MarkdownRenderer.vue'
     import type { ThinkingStep } from '@/types/conversation.ts'
-    import { chatCompletion } from '@/api/conversation'
-    import { generateUUID } from '@/api/conversation'
+    import { chatCompletion, cancelChat, generateUUID } from '@/api/conversation'
     import { pendingPrompt } from '@/utils/pendingPrompt'
     import { useAppStore } from '@/stores/app'
+    import { copyText } from '@/utils/copyText'
     import type {
         SseHistoryData,
         SseThoughtStepData,
@@ -143,6 +143,8 @@
 
     /** 当前正在进行的流控制器，用于 stop 按钮 */
     let currentAbortCtrl: AbortController | null = null
+    /** 当前正在接收的 message_id，由 SSE 事件携带 */
+    let currentMessageId: string | null = null
 
     const processMessage = async (text: string) => {
         messages.push({ role: 'user', content: text, time: now() })
@@ -198,6 +200,7 @@
                 },
 
                 onThoughtStep: (data: SseThoughtStepData) => {
+                    if (data.message_id) currentMessageId = data.message_id
                     assistantMsg.thinkingActive = true
                     const stepTime = data.step.created_at
                         ? new Date(data.step.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
@@ -223,6 +226,7 @@
 
                 onMessageDelta: (data: SseMessageDeltaData) => {
                     assistantMsg.thinkingActive = false
+                    if (data.message_id) currentMessageId = data.message_id
                     assistantMsg.content += data.delta
                     void scrollIfAtBottom()
                 },
@@ -232,6 +236,7 @@
                     assistantMsg.time = now()
                     loading.value = false
                     currentAbortCtrl = null
+                    currentMessageId = null
                 },
 
                 onSetTitle: (data: SseSetTitleData) => {
@@ -245,6 +250,7 @@
                     assistantMsg.time = now()
                     loading.value = false
                     currentAbortCtrl = null
+                    currentMessageId = null
                 },
 
                 onFetchError: (err) => {
@@ -254,6 +260,7 @@
                     assistantMsg.time = now()
                     loading.value = false
                     currentAbortCtrl = null
+                    currentMessageId = null
                 },
             }
         )
@@ -264,6 +271,7 @@
         // 停止上一个流
         currentAbortCtrl?.abort()
         currentAbortCtrl = null
+        currentMessageId = null
         messages.splice(0)
         loading.value = false
 
@@ -327,8 +335,13 @@
     }
 
     const stop = () => {
+        // 先通知后端取消，再断开 SSE
+        if (currentMessageId) {
+            cancelChat(conversationId.value, currentMessageId).catch(() => {/* 忽略取消接口错误 */ })
+        }
         currentAbortCtrl?.abort()
         currentAbortCtrl = null
+        currentMessageId = null
         loading.value = false
         const last = messages[messages.length - 1]
         if (last?.role === 'assistant') {
@@ -336,6 +349,4 @@
             if (!last.time) last.time = now()
         }
     }
-
-    const copy = (text: string) => navigator.clipboard.writeText(text)
 </script>
