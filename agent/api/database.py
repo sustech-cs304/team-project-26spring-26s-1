@@ -54,6 +54,37 @@ async def init_db() -> None:
             await conn.execute(text("PRAGMA foreign_keys = ON"))
         await conn.run_sync(Base.metadata.create_all)
 
+        # Create bookkeeping triggers for SQLite (not expressible in SQLAlchemy ORM).
+        # These keep conversations.last_message_id / last_message_at / updated_at in sync
+        # at the DB level, providing a safety net when Python-side updates are skipped.
+        if DATABASE_URL.startswith("sqlite"):
+            await conn.execute(text("""
+                CREATE TRIGGER IF NOT EXISTS trg_messages_after_insert
+                AFTER INSERT ON messages
+                BEGIN
+                  UPDATE conversations
+                  SET updated_at      = NEW.updated_at,
+                      last_message_id = NEW.message_id,
+                      last_message_at = NEW.created_at
+                  WHERE conversation_id = NEW.conversation_id;
+                END
+            """))
+            await conn.execute(text("""
+                CREATE TRIGGER IF NOT EXISTS trg_messages_after_update
+                AFTER UPDATE ON messages
+                BEGIN
+                  UPDATE conversations
+                  SET updated_at      = NEW.updated_at,
+                      last_message_id = (SELECT message_id FROM messages
+                                         WHERE conversation_id = NEW.conversation_id
+                                         ORDER BY seq DESC LIMIT 1),
+                      last_message_at = (SELECT created_at FROM messages
+                                         WHERE conversation_id = NEW.conversation_id
+                                         ORDER BY seq DESC LIMIT 1)
+                  WHERE conversation_id = NEW.conversation_id;
+                END
+            """))
+
 
 async def close_db() -> None:
     """Dispose of the connection pool."""

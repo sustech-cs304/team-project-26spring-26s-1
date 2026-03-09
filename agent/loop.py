@@ -24,9 +24,12 @@ Streaming event types
 from __future__ import annotations
 
 import json
+import os
+import urllib.request
 from dataclasses import dataclass, field
 from typing import AsyncGenerator, Union
 
+import httpx
 import openai
 from qdrant_client import AsyncQdrantClient
 
@@ -96,6 +99,28 @@ StreamEvent = Union[
 ]
 
 
+# ── HTTP client factory (system-proxy aware) ─────────────────────────────────
+
+def _make_http_client() -> httpx.AsyncClient:
+    """Return an AsyncClient that forwards system proxy settings to openai.
+
+    The openai library does not read Windows system proxies by default.
+    We detect them via urllib.request.getproxies() and fall back to the
+    HTTPS_PROXY / HTTP_PROXY environment variables if set.
+    """
+    proxy_url: str | None = (
+        os.environ.get("HTTPS_PROXY")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("https_proxy")
+        or os.environ.get("http_proxy")
+        or urllib.request.getproxies().get("https")
+        or urllib.request.getproxies().get("http")
+    )
+    if proxy_url:
+        return httpx.AsyncClient(proxy=proxy_url, timeout=120)
+    return httpx.AsyncClient(timeout=120)
+
+
 # ── Legacy compat ────────────────────────────────────────────────────────────
 
 
@@ -151,14 +176,24 @@ class AgentLoop:
         cfg = self.config
 
         # ── OpenAI clients ───────────────────────────────────────────
+        # Build an httpx transport that respects system proxies.
+        # The openai library does not read Windows system proxy settings on its
+        # own, so we forward them explicitly via http_client.
+        _http_client = _make_http_client()
         self.agent_client = openai.AsyncOpenAI(
-            base_url=cfg.agent_api_base_url, api_key=cfg.agent_api_key
+            base_url=cfg.agent_api_base_url,
+            api_key=cfg.agent_api_key,
+            http_client=_http_client,
         )
         self.utility_client = openai.AsyncOpenAI(
-            base_url=cfg.utility_api_base_url, api_key=cfg.utility_api_key
+            base_url=cfg.utility_api_base_url,
+            api_key=cfg.utility_api_key,
+            http_client=_make_http_client(),
         )
         self.embed_client = openai.AsyncOpenAI(
-            base_url=cfg.embed_api_base_url, api_key=cfg.embed_api_key
+            base_url=cfg.embed_api_base_url,
+            api_key=cfg.embed_api_key,
+            http_client=_make_http_client(),
         )
 
         # ── Tool registry ────────────────────────────────────────────

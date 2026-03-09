@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Integer,
     ForeignKey,
     Index,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.types import JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -33,6 +37,12 @@ class ConversationRow(Base):
     is_pinned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    context: Mapped[dict] = mapped_column(JSON, nullable=False, server_default="'{}'")
+    metadata_json: Mapped[dict] = mapped_column(
+        "metadata", JSON, nullable=False, server_default="'{}'"
+    )
+    last_message_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_message_at: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
     # One-to-many: a conversation owns many messages
     messages: Mapped[list[MessageRow]] = relationship(
@@ -56,28 +66,28 @@ class MessageRow(Base):
         nullable=False,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    parent: Mapped[str | None] = mapped_column(
-        String(64),
-        ForeignKey("messages.message_id", ondelete="SET NULL"),
-        nullable=True,
-    )
+    parent_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="final")
+    attachment_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    thought_steps: Mapped[list | dict] = mapped_column(
+    thought_steps: Mapped[list] = mapped_column(
         JSON, nullable=False, server_default="'[]'"
+    )
+    metadata_json: Mapped[dict] = mapped_column(
+        "metadata", JSON, nullable=False, server_default="'{}'"
     )
 
     # Relationships
     conversation: Mapped[ConversationRow] = relationship(
         back_populates="messages",
     )
-    parent_message: Mapped[MessageRow | None] = relationship(
-        remote_side=[message_id],
-        foreign_keys=[parent],
-        lazy="selectin",
-    )
-
     __table_args__ = (
+        UniqueConstraint("conversation_id", "seq", name="uq_messages_conversation_seq"),
+        UniqueConstraint("conversation_id", "parent_id", name="uq_messages_one_child_per_parent"),
+        Index("idx_messages_conversation_seq", "conversation_id", "seq"),
         Index("idx_messages_conversation_created", "conversation_id", "created_at"),
     )
 
