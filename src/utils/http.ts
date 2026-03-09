@@ -2,7 +2,7 @@ import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 
 /** 统一的 API 根地址，去除末尾斜杠，供 fetch 等场景复用 */
-export const baseURL = ((import.meta.env.VITE_API_BASE_URL as string) || 'http://10.28.81.131:8000/').replace(/\/+$/, '')
+export const baseURL = ((import.meta.env.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8000/').replace(/\/+$/, '')
 
 const http: AxiosInstance = axios.create({
     baseURL,
