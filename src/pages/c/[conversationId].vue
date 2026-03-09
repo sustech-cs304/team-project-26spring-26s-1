@@ -90,7 +90,7 @@
         SseErrorData,
         SseSetTitleData,
         ThoughtStepType,
-    } from '@/api/conversation'
+    } from '@/types/conversation.ts'
 
     const route = useRoute()
     const conversationId = computed(() => route.params.conversationId as string)

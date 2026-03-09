@@ -135,7 +135,7 @@
         deleteConversation,
         updateConversation
     } from '@/api/conversation'
-    import type { Conversation } from '@/api/conversation'
+    import type { Conversation } from '@/types/conversation'
     import { debounce } from 'lodash'
     import { useAppStore } from '@/stores/app'
 
