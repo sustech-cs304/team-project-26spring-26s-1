@@ -1,4 +1,4 @@
-// ─── Calendar Types ────────────────────────────────────────────────────────────
+﻿// ─── Calendar Types ────────────────────────────────────────────────────────────
 export type EventType = 'exam' | 'class' | 'personal' | 'deadline' | 'meeting'
 
 export interface CalEvent {
@@ -131,24 +131,3 @@ export const sortEvents = (events: CalEvent[]): CalEvent[] =>
 export const nextId = (items: { id: number }[]): number =>
     items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1
 
-// ─── Mock Data Factory ─────────────────────────────────────────────────────────
-export function buildDefaultEvents (): CalEvent[] {
-    const today = new Date()
-    const fmt = (d: Date) => toDateKey(d)
-    const off = (n: number) => { const d = new Date(today); d.setDate(d.getDate() + n); return d }
-
-    return [
-        { id: 1, title: 'Software Engineering Lecture', type: 'class', time: '08:00', date: fmt(today), location: 'Teaching Building 1, Room 201', courseId: 'CS304' },
-        { id: 2, title: 'Algorithm Midterm Exam', type: 'exam', time: '10:00', date: fmt(today), location: 'Gym Hall A', courseId: 'CS302' },
-        { id: 3, title: 'Project Submission Deadline', type: 'deadline', time: '23:59', date: fmt(today), courseId: 'CS304' },
-        { id: 4, title: 'Study Group Meeting', type: 'personal', time: '14:00', date: fmt(today), location: 'Library Room B204' },
-        { id: 5, title: 'Linear Algebra Lecture', type: 'class', time: '08:00', date: fmt(off(1)), location: 'Teaching Building 2, Room 101', courseId: 'MA201' },
-        { id: 6, title: 'Database Assignment Due', type: 'deadline', time: '23:59', date: fmt(off(1)), courseId: 'CS307' },
-        { id: 7, title: 'Physics Lab', type: 'class', time: '14:00', date: fmt(off(2)), location: 'Lab Building 3', courseId: 'PH101' },
-        { id: 8, title: 'Mid-term Exam Review', type: 'personal', time: '19:00', date: fmt(off(3)), location: 'Self-study Room 4' },
-        { id: 9, title: 'Operating Systems Lecture', type: 'class', time: '10:00', date: fmt(off(4)), courseId: 'CS301' },
-        { id: 10, title: 'Final Exam - Algorithms', type: 'exam', time: '09:00', date: fmt(off(7)), location: 'Main Exam Hall', courseId: 'CS302' },
-        { id: 11, title: 'Project Presentation', type: 'deadline', time: '16:00', date: fmt(off(5)), courseId: 'CS304', location: 'Room 101' },
-        { id: 12, title: 'Club Activity', type: 'personal', time: '18:00', date: fmt(off(-2)) },
-    ]
-}

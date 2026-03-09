@@ -14,7 +14,7 @@
                     <div class="d-flex align-center ga-1">
                         <span class="stat-dot dot-running" />
                         <span class="text-subtitle-2 font-weight-bold text-success">{{ countByStatus('running')
-                            }}</span>
+                        }}</span>
                         <span class="text-caption text-medium-emphasis">Running</span>
                     </div>
                     <v-divider vertical style="height:14px;" />
@@ -50,7 +50,7 @@
                         <v-chip v-for="c in typeChips" :key="c.value" :prepend-icon="c.icon || undefined" size="x-small"
                             :variant="typeFilter === c.value ? 'tonal' : 'text'"
                             :color="typeFilter === c.value ? 'primary' : undefined" @click="typeFilter = c.value">{{
-                            c.label }}</v-chip>
+                                c.label }}</v-chip>
                     </div>
                     <div class="d-flex flex-wrap ga-1">
                         <v-chip v-for="c in statusChips" :key="c.value" size="x-small"
@@ -230,7 +230,7 @@
                                                 style="width:32px;">
                                                 <v-icon :color="STEP_STATUS_COLOR[step.status]" :size="20"
                                                     :class="{ 'spin-anim': step.status === 'running' }">{{
-                                                    STEP_STATUS_ICON[step.status]
+                                                        STEP_STATUS_ICON[step.status]
                                                     }}</v-icon>
                                                 <div v-if="idx < selectedTask.steps.length - 1" class="mt-1" :style="{
                                                     width: '2px',
@@ -288,7 +288,7 @@
                                                                         <v-sheet rounded="md" color="surface-variant"
                                                                             class="pa-2"
                                                                             style="font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">{{
-                                                                            tryFormat(step.input) }}</v-sheet>
+                                                                                tryFormat(step.input) }}</v-sheet>
                                                                     </div>
                                                                     <div v-if="step.output">
                                                                         <div class="text-caption text-medium-emphasis mb-1"
@@ -297,7 +297,7 @@
                                                                         <v-sheet rounded="md" color="surface-variant"
                                                                             class="pa-2"
                                                                             style="font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">{{
-                                                                            tryFormat(step.output) }}</v-sheet>
+                                                                                tryFormat(step.output) }}</v-sheet>
                                                                     </div>
                                                                     <div v-if="step.errorMessage">
                                                                         <div class="text-caption text-error mb-1"
@@ -339,7 +339,7 @@
                                                         <v-icon :color="RUN_STATUS_COLOR[log.status]"
                                                             :class="{ 'spin-anim': log.status === 'running' }"
                                                             size="16">{{
-                                                            RUN_STATUS_ICON[log.status] }}</v-icon>
+                                                                RUN_STATUS_ICON[log.status] }}</v-icon>
                                                         <span class="text-body-2 font-weight-bold"
                                                             style="font-variant-numeric:tabular-nums;">#{{ log.runNumber
                                                             }}</span>
@@ -352,13 +352,13 @@
                                                             style="font-size:9px;height:16px;">
                                                             <v-icon start size="10">{{ log.triggerType === 'manual' ?
                                                                 'mdi-hand-pointing-right' : log.triggerType === 'event'
-                                                                ?
-                                                                'mdi-lightning-bolt' : 'mdi-clock-outline' }}</v-icon>
+                                                                    ?
+                                                                    'mdi-lightning-bolt' : 'mdi-clock-outline' }}</v-icon>
                                                             {{ log.triggerType }}
                                                         </v-chip>
                                                         <span class="text-caption text-medium-emphasis"
                                                             style="font-size:10px;">{{
-                                                            log.startedAt }}</span>
+                                                                log.startedAt }}</span>
                                                         <v-spacer />
                                                         <span v-if="log.duration"
                                                             class="text-caption text-medium-emphasis"
@@ -376,12 +376,12 @@
                                                             class="text-caption text-medium-emphasis mb-2">
                                                             <v-icon size="12"
                                                                 class="mr-1">mdi-information-outline</v-icon>{{
-                                                            log.summary }}
+                                                                    log.summary }}
                                                         </div>
                                                         <div v-if="log.errorMessage"
                                                             class="text-caption text-error mb-2">
                                                             <v-icon size="12" class="mr-1">mdi-alert-circle</v-icon>{{
-                                                            log.errorMessage }}
+                                                                log.errorMessage }}
                                                         </div>
                                                         <div v-if="log.steps && log.steps.length">
                                                             <v-divider class="mb-2" />
@@ -389,12 +389,12 @@
                                                                 class="d-flex align-center ga-2 mb-1">
                                                                 <v-icon :color="STEP_STATUS_COLOR[s.status]"
                                                                     size="13">{{
-                                                                    STEP_STATUS_ICON[s.status] }}</v-icon>
+                                                                        STEP_STATUS_ICON[s.status] }}</v-icon>
                                                                 <span class="text-caption">{{ s.name }}</span>
                                                                 <span v-if="s.duration"
                                                                     class="text-caption text-medium-emphasis ml-auto"
                                                                     style="font-size:10px;">{{
-                                                                    formatDuration(s.duration) }}</span>
+                                                                        formatDuration(s.duration) }}</span>
                                                             </div>
                                                         </div>
                                                         <div v-else class="text-caption text-disabled"
@@ -421,7 +421,7 @@
                                             <v-list-item-title
                                                 class="text-caption font-weight-bold">Schedule</v-list-item-title>
                                             <v-list-item-subtitle class="text-caption">{{ selectedTask.intervalLabel
-                                                }}</v-list-item-subtitle>
+                                            }}</v-list-item-subtitle>
                                         </v-list-item>
                                         <v-list-item
                                             v-if="selectedTask.type === 'scheduled' && selectedTask.scheduledAt">
@@ -430,7 +430,7 @@
                                             <v-list-item-title class="text-caption font-weight-bold">Scheduled
                                                 At</v-list-item-title>
                                             <v-list-item-subtitle class="text-caption">{{ selectedTask.scheduledAt
-                                                }}</v-list-item-subtitle>
+                                            }}</v-list-item-subtitle>
                                         </v-list-item>
                                         <v-list-item v-if="selectedTask.eventSource">
                                             <template #prepend><v-icon size="16"
@@ -438,7 +438,7 @@
                                             <v-list-item-title class="text-caption font-weight-bold">Event
                                                 Source</v-list-item-title>
                                             <v-list-item-subtitle class="text-caption">{{ selectedTask.eventSource
-                                                }}</v-list-item-subtitle>
+                                            }}</v-list-item-subtitle>
                                         </v-list-item>
                                         <v-list-item v-if="selectedTask.triggerCondition">
                                             <template #prepend><v-icon size="16"
@@ -446,7 +446,7 @@
                                             <v-list-item-title class="text-caption font-weight-bold">Trigger
                                                 Condition</v-list-item-title>
                                             <v-list-item-subtitle class="text-caption">{{ selectedTask.triggerCondition
-                                                }}</v-list-item-subtitle>
+                                            }}</v-list-item-subtitle>
                                         </v-list-item>
                                         <v-list-item v-if="selectedTask.monitorTarget">
                                             <template #prepend><v-icon size="16"
@@ -454,7 +454,7 @@
                                             <v-list-item-title class="text-caption font-weight-bold">Monitor
                                                 Target</v-list-item-title>
                                             <v-list-item-subtitle class="text-caption">{{ selectedTask.monitorTarget
-                                                }}</v-list-item-subtitle>
+                                            }}</v-list-item-subtitle>
                                         </v-list-item>
                                         <v-list-item>
                                             <template #prepend><v-icon size="16"
@@ -462,7 +462,7 @@
                                             <v-list-item-title class="text-caption font-weight-bold">Created
                                                 At</v-list-item-title>
                                             <v-list-item-subtitle class="text-caption">{{ selectedTask.createdAt ?? '—'
-                                                }}</v-list-item-subtitle>
+                                            }}</v-list-item-subtitle>
                                         </v-list-item>
                                         <v-list-item>
                                             <template #prepend><v-icon size="16"
@@ -471,7 +471,7 @@
                                                 Statistics</v-list-item-title>
                                             <v-list-item-subtitle class="text-caption">
                                                 {{ selectedTask.runCount ?? 0 }} total runs · {{ selectedTask.failCount
-                                                ?? 0 }} failures
+                                                    ?? 0 }} failures
                                             </v-list-item-subtitle>
                                         </v-list-item>
                                         <v-list-item v-if="selectedTask.tags && selectedTask.tags.length">
@@ -523,9 +523,10 @@
 <script setup lang="ts">
     import TaskEditDialog from '@/components/tasks/TaskEditDialog.vue'
     import TaskLogDialog from '@/components/tasks/TaskLogDialog.vue'
+    import { buildDefaultTasks } from '@/api/tasks'
     import type { Task, TaskForm, TaskStatus, TaskStep, TaskRunLog } from '@/utils/tasks'
     import {
-        buildDefaultTasks, formToTaskPatch,
+        formToTaskPatch,
         typeIcon, typeIconColor, statusColor,
         STEP_STATUS_COLOR, STEP_STATUS_ICON,
         RUN_STATUS_COLOR, RUN_STATUS_ICON,

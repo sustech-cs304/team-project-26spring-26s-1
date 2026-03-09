@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-    import ImagePreview from '@/components/ImagePreview.vue'
+    import ImagePreview from '@/components/chat/ImagePreview.vue'
 
     const props = defineProps<{
         modelValue: string

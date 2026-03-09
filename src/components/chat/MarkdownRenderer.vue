@@ -54,13 +54,13 @@
 
     /* ── 基础文本 ── */
     .md-body {
-        line-height: 1.7;
+        line-height: 1.8;
         word-break: break-word;
         overflow-wrap: anywhere;
     }
 
     .md-body p {
-        margin: 0;
+        margin: 0.4em 0;
     }
 
     .md-body p:first-child {
@@ -78,9 +78,9 @@
     .md-body h4,
     .md-body h5,
     .md-body h6 {
-        margin: 0;
+        margin: 0.6em 0 0.3em;
         font-weight: 600;
-        line-height: 1.3;
+        line-height: 1.4;
     }
 
     .md-body h1 {
@@ -95,15 +95,21 @@
         font-size: 1.05em;
     }
 
+    .md-body h1:first-child,
+    .md-body h2:first-child,
+    .md-body h3:first-child {
+        margin-top: 0;
+    }
+
     /* ── 列表 ── */
     .md-body ul,
     .md-body ol {
         padding-left: 1.4em;
-        margin: 0;
+        margin: 0.3em 0;
     }
 
     .md-body li {
-        margin: 0;
+        margin: 0.15em 0;
     }
 
     /* ── 行内代码 ── */
@@ -132,8 +138,8 @@
 
     /* ── 引用 ── */
     .md-body blockquote {
-        margin: 0;
-        padding: 0.2em 0.8em;
+        margin: 0.4em 0;
+        padding: 0.3em 0.8em;
         border-left: 3px solid rgba(128, 128, 128, 0.4);
         color: rgba(var(--v-theme-on-surface), 0.65);
     }
@@ -141,7 +147,7 @@
     /* ── 表格 ── */
     .md-body table {
         border-collapse: collapse;
-        margin: 0;
+        margin: 0.5em 0;
         font-size: 0.9em;
         width: max-content;
         max-width: 100%;
@@ -150,7 +156,7 @@
     .md-body th,
     .md-body td {
         border: 1px solid rgba(128, 128, 128, 0.3);
-        padding: 0.3em 0.7em;
+        padding: 0.4em 0.8em;
     }
 
     .md-body th {

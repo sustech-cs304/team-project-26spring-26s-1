@@ -19,21 +19,20 @@
             <v-sheet v-if="expanded" color="transparent">
                 <div class="steps-timeline">
                     <v-list density="compact" class="pa-0 bg-transparent" nav>
-                        <v-list-item v-for="(step, i) in steps" :key="i" class="step-row px-1" density="compact"
-                            prepend-gap="6" min-height="24" :ripple="false">
+                        <v-list-item v-for="step in steps" :key="step.id" class="step-row px-1" density="compact"
+                            prepend-gap="6" min-height="24" :ripple="false" style="align-items: flex-start;">
                             <template #prepend>
-                                <v-icon size="13" :color="stepIconColor(step.status)">{{ stepIcon(step.type)
+                                <v-icon size="13" :color="stepIconColor(step.status)" style="margin-top: 3px;">{{
+                                    stepIcon(step.type)
                                     }}</v-icon>
                             </template>
 
-                            <v-list-item-title class="font-weight-light"
+                            <div class="step-content font-weight-light text-body-2"
                                 :class="step.status === 'running' ? 'text-primary font-weight-medium' : 'text-medium-emphasis'">
-                                {{ step.title }}
-                                {{ step.content ? `: ${step.content}` : '' }}
-                                <span class="text-caption text-medium-emphasis" style="margin-left: 6px;">{{
-                                    step.time
+                                {{ step.title }}{{ step.content ? `: ${step.content}` : '' }}
+                                <span class="text-caption text-medium-emphasis" style="margin-left: 6px;">{{ step.time
                                     }}</span>
-                            </v-list-item-title>
+                            </div>
                         </v-list-item>
                     </v-list>
                 </div>
@@ -43,16 +42,7 @@
 </template>
 
 <script setup lang="ts">
-    export type ThinkingStepStatus = 'running' | 'done' | 'error'
-    export type ThinkingStepType = 'search' | 'code' | 'tool' | 'read' | 'think' | 'api'
-
-    export interface ThinkingStep {
-        type: ThinkingStepType
-        title: string
-        content?: string
-        status: ThinkingStepStatus
-        time: string
-    }
+    import type { ThinkingStep, ThinkingStepStatus, ThinkingStepType } from '@/types/conversation.ts'
 
     const props = defineProps<{
         steps: ThinkingStep[]
@@ -78,6 +68,12 @@
 </script>
 
 <style scoped>
+
+    .step-content {
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.5;
+    }
 
     /* 推理步骤左侧竖线 */
     .steps-timeline {

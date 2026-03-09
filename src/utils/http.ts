@@ -1,15 +1,11 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 
-// Define the response structure based on standard API patterns
-// Since the doc shows different structures, we try to keep it generic or follow the doc's wrapper if any.
-// The doc shows direct JSON responses like { conversations: [] } or { message: "success" }.
-// Sometimes APIs wrap data in { code: 200, data: ..., msg: ... }, but the provided doc 
-// implies direct return of data in the body corresponding to 200 OK.
+/** 统一的 API 根地址，去除末尾斜杠，供 fetch 等场景复用 */
+export const baseURL = ((import.meta.env.VITE_API_BASE_URL as string) || 'http://10.28.81.131:8000/').replace(/\/+$/, '')
 
 const http: AxiosInstance = axios.create({
-    // Use environment variable for base URL, default to empty string (relative path) or specific API path
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'https://m1.apifoxmock.com/m1/7865145-7614648-default/',
+    baseURL,
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json',

@@ -20,7 +20,7 @@
                 <v-chip v-for="f in typeFilters" :key="f.value" :prepend-icon="f.icon" size="x-small"
                     :variant="activeFilters.includes(f.value) ? 'tonal' : 'text'"
                     :color="activeFilters.includes(f.value) ? 'primary' : undefined" @click="toggleFilter(f.value)">{{
-                    f.label }}</v-chip>
+                        f.label }}</v-chip>
                 <v-btn size="x-small" color="primary" @click="openCreate(todayKey)">
                     <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
                 </v-btn>
@@ -78,7 +78,7 @@
                 </v-card-title>
                 <v-card-text class="px-4 py-2 text-caption text-medium-emphasis">
                     Create the same event for {{ dragRangeCount }} selected days ({{ dragFrom?.dateKey }} {{
-                    dragTo?.dateKey }}).
+                        dragTo?.dateKey }}).
                 </v-card-text>
                 <v-card-text class="px-4 pt-0 pb-3">
                     <v-text-field v-model="batchTitle" label="Event title" density="compact" variant="outlined"
@@ -103,8 +103,9 @@
     import CalendarEventPanel from '@/components/calendar/CalendarEventPanel.vue'
     import CalendarEventDialog from '@/components/calendar/CalendarEventDialog.vue'
     import type { CalEvent, CalendarCell, EventType } from '@/utils/calendar'
+    import { buildDefaultEvents } from '@/api/calendar'
     import {
-        buildMonthGrid, buildDefaultEvents, getEventsForDate,
+        buildMonthGrid, getEventsForDate,
         nextId, toDateKey, EVENT_TYPE_ICON, EVENT_TYPE_COLOR,
     } from '@/utils/calendar'
 

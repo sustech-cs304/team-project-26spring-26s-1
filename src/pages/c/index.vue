@@ -12,7 +12,7 @@
         <!-- 底部输入区 -->
         <v-sheet elevation="0" color="transparent">
             <v-container max-width="800" class="px-6 pb-5 pt-2">
-                <MessageInput v-model="input" @send="send" />
+                <MessageInput v-model="input" :loading="creating" @send="send" />
             </v-container>
         </v-sheet>
 
@@ -20,23 +20,31 @@
 </template>
 
 <script setup lang="ts">
-    import ConversationStarters from '@/components/ConversationStarters.vue'
-    import MessageInput from '@/components/MessageInput.vue'
+    import ConversationStarters from '@/components/chat/ConversationStarters.vue'
+    import MessageInput from '@/components/chat/MessageInput.vue'
+    import { createConversation } from '@/api/conversation'
+    import { pendingPrompt } from '@/utils/pendingPrompt'
 
     const router = useRouter()
     const input = ref('')
+    const creating = ref(false)
 
-    const startConversation = (prompt: string) => {
-        const uuid = crypto.randomUUID()
-        router.push({
-            path: `/c/${uuid}`,
-            state: { prompt }
-        })
+    const startConversation = async (prompt: string) => {
+        creating.value = true
+        try {
+            const conv = await createConversation()
+            pendingPrompt.value = prompt
+            router.push(`/c/${conv.conversation_id}`)
+        } catch (err) {
+            console.error('创建对话失败:', err)
+        } finally {
+            creating.value = false
+        }
     }
 
     const send = () => {
         const text = input.value.trim()
-        if (!text) return
+        if (!text || creating.value) return
         startConversation(text)
     }
 </script>

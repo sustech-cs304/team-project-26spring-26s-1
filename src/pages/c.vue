@@ -129,8 +129,6 @@
 </template>
 
 <script setup lang="ts">
-    import { ref, computed, watch, onMounted } from 'vue'
-    import { useRoute, useRouter } from 'vue-router'
     import {
         getConversations,
         searchConversations,
@@ -139,9 +137,11 @@
     } from '@/api/conversation'
     import type { Conversation } from '@/api/conversation'
     import { debounce } from 'lodash'
+    import { useAppStore } from '@/stores/app'
 
     const router = useRouter()
     const route = useRoute()
+    const appStore = useAppStore()
     const drawer = ref(true)
     const loading = ref(false)
 
@@ -180,6 +180,18 @@
 
     onMounted(() => {
         fetchConversations()
+    })
+
+    // 监听 SSE set_title 事件：直接更新本地列表，无需重新请求接口
+    watch(() => appStore.conversationTitleUpdate, (update) => {
+        if (!update) return
+        const conv = conversations.value.find(c => c.conversation_id === update.conversation_id)
+        if (conv) {
+            conv.title = update.title
+        } else {
+            // 新对话首次出现，刷新列表使其显示在侧边栏
+            fetchConversations()
+        }
     })
 
     // Search logic with debounce
