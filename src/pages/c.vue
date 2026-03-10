@@ -125,6 +125,24 @@
         <v-main scrollable>
             <RouterView />
         </v-main>
+
+        <!-- 全屏拖拽上传遮罩层 -->
+        <Teleport to="body">
+            <Transition name="drop-fade">
+                <div v-if="showDropZone" class="drop-overlay">
+                    <div class="drop-overlay__content">
+                        <v-icon icon="mdi-cloud-upload-outline" size="64" color="primary" />
+                        <div class="text-h6 mt-4">拖拽文件到此处上传</div>
+                        <div class="text-body-2 text-medium-emphasis mt-1">
+                            支持图片、PDF、PPT、Markdown、TXT，单个文件不超过 5 MB
+                        </div>
+                        <div class="text-caption text-disabled mt-2">
+                            上传的文件将缓存在本地，随对话删除自动清除
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
     </v-layout>
 </template>
 
@@ -145,6 +163,70 @@
     const drawer = ref(true)
     const loading = ref(false)
 
+    // ── 拖拽上传（布局层统一管理） ─────────────
+    /** 当前活跃子路由注册的 MessageInput 引用 */
+    const messageInputRef = shallowRef<{ addFiles: (files: FileList | File[]) => void } | null>(null)
+    const showDropZone = ref(false)
+    let dragCounter = 0
+
+    /** 子路由挂载时调用，注册 MessageInput 的 addFiles 方法 */
+    const registerMessageInput = (ref: typeof messageInputRef.value) => {
+        messageInputRef.value = ref
+    }
+    /** 子路由卸载时调用，清除引用 */
+    const unregisterMessageInput = () => {
+        messageInputRef.value = null
+    }
+
+    provide('registerMessageInput', registerMessageInput)
+    provide('unregisterMessageInput', unregisterMessageInput)
+
+    const onDragEnter = (e: DragEvent) => {
+        e.preventDefault()
+        if (e.dataTransfer?.types.includes('Files')) {
+            dragCounter++
+            showDropZone.value = true
+        }
+    }
+
+    const onDragOver = (e: DragEvent) => {
+        e.preventDefault()
+    }
+
+    const onDragLeave = (e: DragEvent) => {
+        e.preventDefault()
+        dragCounter--
+        if (dragCounter <= 0) {
+            dragCounter = 0
+            showDropZone.value = false
+        }
+    }
+
+    const onDrop = (e: DragEvent) => {
+        e.preventDefault()
+        dragCounter = 0
+        showDropZone.value = false
+        const files = e.dataTransfer?.files
+        if (files && files.length > 0 && messageInputRef.value) {
+            messageInputRef.value.addFiles(files)
+        }
+    }
+
+    onMounted(() => {
+        document.addEventListener('dragenter', onDragEnter)
+        document.addEventListener('dragover', onDragOver)
+        document.addEventListener('dragleave', onDragLeave)
+        document.addEventListener('drop', onDrop)
+        fetchConversations()
+    })
+
+    onBeforeUnmount(() => {
+        document.removeEventListener('dragenter', onDragEnter)
+        document.removeEventListener('dragover', onDragOver)
+        document.removeEventListener('dragleave', onDragLeave)
+        document.removeEventListener('drop', onDrop)
+    })
+
     // Conversations state
     const conversations = ref<Conversation[]>([])
     const searchResults = ref<Conversation[]>([])
@@ -161,7 +243,7 @@
         // Sort conversations: pinned first, then by updated_at (desc)
         return [...conversations.value].sort((a, b) => {
             if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1
-            return b.updated_at - a.updated_at
+            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
         })
     })
 
@@ -177,10 +259,6 @@
             loading.value = false
         }
     }
-
-    onMounted(() => {
-        fetchConversations()
-    })
 
     // 监听 SSE set_title 事件：直接更新本地列表，无需重新请求接口
     watch(() => appStore.conversationTitleUpdate, (update) => {
@@ -334,5 +412,38 @@
 
     .conv-item:hover .conv-menu-btn {
         opacity: 1;
+    }
+</style>
+
+<!-- 非 scoped：Teleport 传送到 body 下的遮罩层样式 -->
+<style>
+    .drop-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--v-theme-surface), 0.85);
+        backdrop-filter: blur(4px);
+    }
+
+    .drop-overlay__content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 48px;
+        border: 3px dashed rgb(var(--v-theme-primary));
+        border-radius: 16px;
+    }
+
+    .drop-fade-enter-active,
+    .drop-fade-leave-active {
+        transition: opacity 0.2s ease;
+    }
+
+    .drop-fade-enter-from,
+    .drop-fade-leave-to {
+        opacity: 0;
     }
 </style>

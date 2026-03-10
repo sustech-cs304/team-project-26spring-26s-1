@@ -34,7 +34,7 @@
                                     <MarkdownRenderer :content="msg.content" />
                                 </v-sheet>
                                 <v-row align="center" class="ml-2 ga-0" style="opacity: 0.6;">
-                                    <span class="text-body-small">{{ msg.time }}</span>
+                                    <span class="text-body-small">{{ msg.created_at }}</span>
                                     <v-tooltip text="Reload" location="bottom">
                                         <template v-slot:activator="{ props }">
                                             <v-btn v-bind="props" icon="mdi-reload" size="x-small" variant="text"
@@ -62,7 +62,7 @@
         <!-- 底部输入区 -->
         <v-sheet elevation="0" color="transparent">
             <v-container max-width="800" class="px-6 pb-5 pt-2">
-                <MessageInput v-model="input" :loading="loading" @send="send" @stop="stop" />
+                <MessageInput ref="messageInputRef" v-model="input" :loading="loading" @send="send" @stop="stop" />
             </v-container>
         </v-sheet>
     </v-container>
@@ -77,7 +77,7 @@
     import TypingIndicator from '@/components/chat/TypingIndicator.vue'
     import ThinkingChain from '@/components/chat/ThinkingChain.vue'
     import MarkdownRenderer from '@/components/chat/MarkdownRenderer.vue'
-    import type { ThinkingStep } from '@/types/conversation.ts'
+    import type { StepStatus, ThoughtStep } from '@/types/conversation.ts'
     import { chatCompletion, cancelChat, generateUUID } from '@/api/conversation'
     import { pendingPrompt } from '@/utils/pendingPrompt'
     import { useAppStore } from '@/stores/app'
@@ -89,7 +89,7 @@
         SseDoneData,
         SseErrorData,
         SseSetTitleData,
-        ThoughtStepType,
+        Message,
     } from '@/types/conversation.ts'
 
     const route = useRoute()
@@ -97,18 +97,27 @@
     const appStore = useAppStore()
 
     const scrollEl = ref<InstanceType<typeof import('vuetify/components').VSheet> | null>(null)
+    const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
     const input = ref('')
     const loading = ref(false)
 
-    interface Message {
-        role: 'user' | 'assistant'
-        content: string
-        time: string
-        /** 思维链步骤列表，仅 assistant 消息可能有 */
-        thinkingSteps?: ThinkingStep[]
-        /** 思维链是否仍在推入新节点 */
-        thinkingActive?: boolean
-    }
+    // ── 向布局层注册 MessageInput（用于拖拽上传） ──
+    const registerMessageInput = inject<(ref: any) => void>('registerMessageInput')
+    const unregisterMessageInput = inject<() => void>('unregisterMessageInput')
+
+    onMounted(() => {
+        registerMessageInput?.(messageInputRef.value)
+        loadConversation()
+    })
+
+    onBeforeUnmount(() => {
+        unregisterMessageInput?.()
+    })
+
+    // 监听 messageInputRef 变化（组件可能在 onMounted 后才完成渲染）
+    watch(messageInputRef, (ref) => {
+        if (ref) registerMessageInput?.(ref)
+    })
 
     const now = () => new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 
@@ -134,20 +143,13 @@
         if (distanceFromBottom <= 150) el.scrollTop = el.scrollHeight
     }
 
-    /** 将后端 ThoughtStepType 映射到前端 ThinkingChain 所用的 type */
-    const mapStepType = (type: ThoughtStepType): ThinkingStep['type'] => {
-        if (type === 'tool_call') return 'tool'
-        if (type === 'tool_response') return 'tool'
-        return 'think'
-    }
-
     /** 当前正在进行的流控制器，用于 stop 按钮 */
     let currentAbortCtrl: AbortController | null = null
     /** 当前正在接收的 message_id，由 SSE 事件携带 */
     let currentMessageId: string | null = null
 
     const processMessage = async (text: string) => {
-        messages.push({ role: 'user', content: text, time: now() })
+        messages.push({ role: 'user', content: text, created_at: Date.now() })
         await scrollToBottom()
 
         loading.value = true
@@ -157,7 +159,7 @@
         const assistantMsg: Message = reactive({
             role: 'assistant',
             content: '',
-            time: '',
+            created_at: Date.now(),
             thinkingSteps: [],
             thinkingActive: false,
         })
@@ -183,15 +185,15 @@
                     messages.splice(0, messages.length, ...data.history_messages.map(m => ({
                         role: m.role as 'user' | 'assistant',
                         content: m.content,
-                        time: new Date(m.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+                        created_at: m.created_at || Date.now(),
                         thinkingSteps: m.thought_steps.map(s => ({
                             id: s.id,
-                            type: mapStepType(s.type),
+                            type: s.type,
                             title: s.type,
                             content: s.content,
-                            status: s.status === 'running' ? 'running' : 'done',
-                            time: s.created_at ? new Date(s.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '',
-                        } as ThinkingStep)),
+                            status: s.status as ThoughtStep['status'],
+                            created_at: s.created_at || Date.now(),
+                        })),
                         thinkingActive: false,
                     })))
                     // splice 后重新将 assistantMsg 占位追加到末尾，保持引用有效
@@ -202,23 +204,20 @@
                 onThoughtStep: (data: SseThoughtStepData) => {
                     if (data.message_id) currentMessageId = data.message_id
                     assistantMsg.thinkingActive = true
-                    const stepTime = data.step.created_at
-                        ? new Date(data.step.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-                        : now()
-                    // 按 id upsert：同一个 step 可能多次到达（running → done）
+                    const stepTime = data.step.created_at || Date.now()
                     const existing = assistantMsg.thinkingSteps!.find(s => s.id === data.step.id)
                     if (existing) {
                         existing.content = data.step.content
-                        existing.status = data.step.status === 'running' ? 'running' : 'done'
-                        existing.time = stepTime
+                        existing.status = data.step.status as ThoughtStep['status']
+                        existing.created_at = stepTime
                     } else {
                         assistantMsg.thinkingSteps!.push({
                             id: data.step.id,
-                            type: mapStepType(data.step.type),
+                            type: data.step.type,
                             title: data.step.type,
                             content: data.step.content,
-                            status: data.step.status === 'running' ? 'running' : 'done',
-                            time: stepTime,
+                            status: data.step.status as ThoughtStep['status'],
+                            created_at: stepTime,
                         })
                     }
                     void scrollIfAtBottom()
@@ -233,7 +232,7 @@
 
                 onDone: (_data: SseDoneData) => {
                     assistantMsg.thinkingActive = false
-                    assistantMsg.time = now()
+                    assistantMsg.created_at = Date.now()
                     loading.value = false
                     currentAbortCtrl = null
                     currentMessageId = null
@@ -247,7 +246,7 @@
                 onError: (data: SseErrorData) => {
                     assistantMsg.thinkingActive = false
                     assistantMsg.content = `[错误] ${data.error_message}`
-                    assistantMsg.time = now()
+                    assistantMsg.created_at = Date.now()
                     loading.value = false
                     currentAbortCtrl = null
                     currentMessageId = null
@@ -257,7 +256,7 @@
                     console.error('[SSE] fetch error:', err)
                     assistantMsg.thinkingActive = false
                     assistantMsg.content = '[网络错误，请重试]'
-                    assistantMsg.time = now()
+                    assistantMsg.created_at = Date.now()
                     loading.value = false
                     currentAbortCtrl = null
                     currentMessageId = null
@@ -295,15 +294,15 @@
                         messages.splice(0, messages.length, ...data.history_messages.map(m => ({
                             role: m.role as 'user' | 'assistant',
                             content: m.content,
-                            time: new Date(m.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+                            created_at: m.created_at || Date.now(),
                             thinkingSteps: m.thought_steps.map(s => ({
                                 id: s.id,
-                                type: mapStepType(s.type),
+                                type: s.type,
                                 title: s.type,
                                 content: s.content,
-                                status: 'done' as const,
-                                time: s.created_at ? new Date(s.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '',
-                            } as ThinkingStep)),
+                                status: 'done' as StepStatus,
+                                created_at: s.created_at || Date.now(),
+                            })),
                             thinkingActive: false,
                         })))
                         loading.value = false
@@ -316,11 +315,6 @@
             )
         }
     }
-
-    // 初始加载
-    onMounted(() => {
-        loadConversation()
-    })
 
     // 监听路由参数变化，切换对话时重新加载
     watch(conversationId, () => {
@@ -346,7 +340,7 @@
         const last = messages[messages.length - 1]
         if (last?.role === 'assistant') {
             last.thinkingActive = false
-            if (!last.time) last.time = now()
+            if (!last.created_at) last.created_at = Date.now()
         }
     }
 </script>

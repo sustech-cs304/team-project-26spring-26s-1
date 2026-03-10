@@ -2,7 +2,7 @@
     <div class="w-100">
         <v-sheet rounded="xl" color="surface" elevation="1" class="px-4  pb-2" style="cursor: text;"
             @click="focusTextarea">
-            <ImagePreview v-if="images.length" v-model="images" class="pt-4 pb-0" />
+            <FilePreview v-if="attachments.length" v-model="attachments" class="pt-4 pb-0" />
             <v-textarea ref="textareaRef" :model-value="modelValue"
                 @update:model-value="emit('update:modelValue', $event)" placeholder="发送消息，或输入 / 使用命令…" variant="plain"
                 rows="1" auto-grow max-rows="6" hide-details @keydown.enter.exact.prevent="send" @paste="onPaste">
@@ -12,7 +12,8 @@
                 <!-- 左侧：上传文件 -->
                 <v-btn icon="mdi-plus" size="small" variant="text" :ripple="false" :disabled="loading"
                     @click="triggerUpload" />
-                <input ref="fileInput" type="file" accept="image/*" multiple class="d-none" @change="onFileChange" />
+                <input ref="fileInput" type="file" :accept="ACCEPT_STRING" multiple class="d-none"
+                    @change="onFileChange" />
                 <v-spacer />
                 <v-scale-transition mode="out-in">
                     <v-btn v-if="loading" key="stop" icon="mdi-stop" size="small" color="primary" variant="tonal"
@@ -26,11 +27,27 @@
                 </v-scale-transition>
             </v-row>
         </v-sheet>
+
+        <!-- 错误提示 Snackbar -->
+        <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="4000" location="top">
+            {{ snackbar.text }}
+            <template #actions>
+                <v-btn variant="text" @click="snackbar.show = false">关闭</v-btn>
+            </template>
+        </v-snackbar>
     </div>
 </template>
 
 <script setup lang="ts">
-    import ImagePreview from '@/components/chat/ImagePreview.vue'
+    import FilePreview from '@/components/chat/FilePreview.vue'
+    import type { AttachmentFile } from '@/types/attachment'
+    import {
+        ACCEPT_STRING,
+        validateFile,
+        getFileCategory,
+        computeFileMd5,
+        generateFileId,
+    } from '@/utils/fileUtils'
 
     const props = defineProps<{
         modelValue: string
@@ -43,10 +60,31 @@
         (e: 'stop'): void
     }>()
 
-    const images = ref<string[]>([])
+    // ── 附件状态 ──────────────────────────
+    const attachments = ref<AttachmentFile[]>([])
     const fileInput = ref<HTMLInputElement | null>(null)
     const textareaRef = ref<{ $el: HTMLElement } | null>(null)
 
+    // ── Snackbar ─────────────────────────
+    const snackbar = reactive({
+        show: false,
+        text: '',
+        color: 'error',
+    })
+
+    const showError = (msg: string) => {
+        snackbar.text = msg
+        snackbar.color = 'error'
+        snackbar.show = true
+    }
+
+    const showWarning = (msg: string) => {
+        snackbar.text = msg
+        snackbar.color = 'warning'
+        snackbar.show = true
+    }
+
+    // ── 基本交互 ─────────────────────────
     const focusTextarea = (e: MouseEvent) => {
         const target = e.target as HTMLElement
         if (target.closest('button, input, a, [role="button"]')) return
@@ -55,7 +93,7 @@
     }
 
     const hasContent = computed(() =>
-        !!(props.modelValue.trim() || images.value.length > 0)
+        !!(props.modelValue.trim() || attachments.value.length > 0)
     )
 
     const canSend = computed(() => hasContent.value && !props.loading)
@@ -70,40 +108,92 @@
         fileInput.value?.click()
     }
 
-    const onFileChange = (e: Event) => {
-        const files = (e.target as HTMLInputElement).files
-        if (!files) return
+    // ── 核心：处理文件添加 ───────────────────
+    /**
+     * 处理一组文件：校验 → MD5 计算 → 去重 → 添加到 attachments
+     * 供 onFileChange、onPaste、以及父组件拖拽调用
+     */
+    const addFiles = async (files: FileList | File[]) => {
         for (const file of files) {
-            if (!file.type.startsWith('image/')) continue
+            // 1. 校验类型和大小
+            const validation = validateFile(file)
+            if (!validation.valid) {
+                showError(validation.error!)
+                continue
+            }
+
+            // 2. 计算 MD5
+            let md5: string
+            try {
+                md5 = await computeFileMd5(file)
+            } catch {
+                showError(`文件 "${file.name}" 读取失败`)
+                continue
+            }
+
+            // 3. 重复检测
+            if (attachments.value.some(a => a.md5 === md5)) {
+                showWarning(`文件 "${file.name}" 已添加，请勿重复上传`)
+                continue
+            }
+
+            // 4. 读取为 data URL
+            const dataUrl = await readFileAsDataUrl(file)
+            if (!dataUrl) {
+                showError(`文件 "${file.name}" 读取失败`)
+                continue
+            }
+
+            // 5. 构建 AttachmentFile 并添加
+            const category = getFileCategory(file)!
+            const attachment: AttachmentFile = {
+                id: generateFileId(),
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                category,
+                dataUrl,
+                md5,
+            }
+            attachments.value = [...attachments.value, attachment]
+        }
+    }
+
+    /** 将 File 读取为 base64 data URL */
+    const readFileAsDataUrl = (file: File): Promise<string | null> => {
+        return new Promise((resolve) => {
             const reader = new FileReader()
             reader.onload = (ev) => {
                 const result = ev.target?.result
-                if (typeof result === 'string') {
-                    images.value = [...images.value, result]
-                }
+                resolve(typeof result === 'string' ? result : null)
             }
+            reader.onerror = () => resolve(null)
             reader.readAsDataURL(file)
-        }
+        })
+    }
+
+    // ── 事件处理 ─────────────────────────
+    const onFileChange = async (e: Event) => {
+        const files = (e.target as HTMLInputElement).files
+        if (!files || files.length === 0) return
+        await addFiles(files)
         // 清空 input 以允许重复选同一文件
         if (fileInput.value) fileInput.value.value = ''
     }
 
-    const onPaste = (e: ClipboardEvent) => {
+    const onPaste = async (e: ClipboardEvent) => {
         const items = e.clipboardData?.items
         if (!items) return
+        const files: File[] = []
         for (const item of items) {
-            if (item.type.startsWith('image/')) {
-                const file = item.getAsFile()
-                if (!file) continue
-                const reader = new FileReader()
-                reader.onload = (ev) => {
-                    const result = ev.target?.result
-                    if (typeof result === 'string') {
-                        images.value = [...images.value, result]
-                    }
-                }
-                reader.readAsDataURL(file)
+            // 支持所有允许的类型（不仅仅是图片）
+            const file = item.getAsFile()
+            if (file) {
+                files.push(file)
             }
+        }
+        if (files.length > 0) {
+            await addFiles(files)
         }
     }
 
@@ -111,4 +201,7 @@
         if (!canSend.value) return
         emit('send')
     }
+
+    // ── 暴露给父组件（用于拖拽上传） ──────────
+    defineExpose({ addFiles, attachments })
 </script>

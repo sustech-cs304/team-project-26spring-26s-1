@@ -30,7 +30,7 @@
                             <div class="step-content font-weight-light text-body-2"
                                 :class="step.status === 'running' ? 'text-primary font-weight-medium' : 'text-medium-emphasis'">
                                 {{ step.title }}{{ step.content ? `: ${step.content}` : '' }}
-                                <span class="text-caption text-medium-emphasis" style="margin-left: 6px;">{{ step.time
+                                <span class="text-caption text-medium-emphasis" style="margin-left: 6px;">{{ step.created_at
                                     }}</span>
                             </div>
                         </v-list-item>
@@ -42,10 +42,10 @@
 </template>
 
 <script setup lang="ts">
-    import type { ThinkingStep, ThinkingStepStatus, ThinkingStepType } from '@/types/conversation.ts'
+    import type { ThoughtStep, StepStatus, StepType } from '@/types/conversation.ts'
 
     const props = defineProps<{
-        steps: ThinkingStep[]
+        steps: ThoughtStep[]
         isActive?: boolean
     }>()
 
@@ -54,16 +54,19 @@
     // 当前最新步骤标题（用于触发行轮播）
     const latestTitle = computed(() => props.steps[props.steps.length - 1]?.title ?? '')
 
-    const stepIcon = (type: ThinkingStepType) => ({
+    const stepIcon = (type: StepType) => ({
         search: 'mdi-magnify',
         code: 'mdi-code-braces',
         tool: 'mdi-wrench-outline',
         read: 'mdi-file-eye-outline',
         think: 'mdi-thought-bubble-outline',
         api: 'mdi-api',
+        tool_call: 'mdi-wrench-outline',
+        tool_response: 'mdi-wrench-outline',
+        thought_step: 'mdi-thought-bubble-outline',
     }[type] ?? 'mdi-circle-small')
 
-    const stepIconColor = (status: ThinkingStepStatus) =>
+    const stepIconColor = (status: StepStatus) =>
         status === 'running' ? 'primary' : status === 'error' ? 'error' : 'medium-emphasis'
 </script>
 

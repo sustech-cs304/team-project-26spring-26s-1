@@ -1,16 +1,13 @@
 // conversation types
 
-export type ThinkingStepStatus = 'running' | 'done' | 'error'
-export type ThinkingStepType = 'search' | 'code' | 'tool' | 'read' | 'think' | 'api'
+export type StepStatus = 'running' | 'done' | 'error'
 
-
-export interface ThinkingStep {
-    id: string
-    type: ThinkingStepType
-    title: string
-    content?: string
-    status: ThinkingStepStatus
-    time: string
+export interface Message {
+    role: 'user' | 'assistant'
+    content: string
+    created_at: number
+    thinkingSteps?: ThoughtStep[]
+    thinkingActive?: boolean
 }
 
 /**
@@ -65,17 +62,17 @@ export type SseEventName =
     | 'keep_alive'
     | 'set_title'
 
-/** thought_step 中 step 的类型 */
-export type ThoughtStepType = 'thought_step' | 'tool_call' | 'tool_response'
+export type StepType = 'search' | 'code' | 'tool' | 'read' | 'think' | 'api' | 'thought_step' | 'tool_call' | 'tool_response'
 
 /** 思维步骤 */
 export interface ThoughtStep {
     id: string;
-    type: ThoughtStepType;
-    content: string;
-    status: string;
-    created_at: number;
-    raw_json: string;
+    type: StepType;
+    title?: string;
+    content?: string;
+    status: StepStatus;
+    created_at?: number;
+    raw_json?: string;
 }
 
 /** 历史消息条目 */

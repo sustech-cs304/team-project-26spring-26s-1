@@ -12,7 +12,7 @@
         <!-- 底部输入区 -->
         <v-sheet elevation="0" color="transparent">
             <v-container max-width="800" class="px-6 pb-5 pt-2">
-                <MessageInput v-model="input" :loading="creating" @send="send" />
+                <MessageInput ref="messageInputRef" v-model="input" :loading="creating" @send="send" />
             </v-container>
         </v-sheet>
 
@@ -26,8 +26,25 @@
     import { pendingPrompt } from '@/utils/pendingPrompt'
 
     const router = useRouter()
+    const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
     const input = ref('')
     const creating = ref(false)
+
+    // ── 向布局层注册 MessageInput（用于拖拽上传） ──
+    const registerMessageInput = inject<(ref: any) => void>('registerMessageInput')
+    const unregisterMessageInput = inject<() => void>('unregisterMessageInput')
+
+    onMounted(() => {
+        registerMessageInput?.(messageInputRef.value)
+    })
+
+    onBeforeUnmount(() => {
+        unregisterMessageInput?.()
+    })
+
+    watch(messageInputRef, (ref) => {
+        if (ref) registerMessageInput?.(ref)
+    })
 
     const startConversation = async (prompt: string) => {
         creating.value = true
