@@ -72,6 +72,7 @@ export function chatCompletion (
         create_at: number;
         attachments?: string[];
         need_history?: boolean;
+        message_id?: string;
     },
     handlers: SseHandlers
 ): AbortController {
@@ -83,6 +84,7 @@ export function chatCompletion (
     form.append('create_at', String(payload.create_at))
     if (payload.content !== undefined) form.append('content', payload.content)
     if (payload.need_history !== undefined) form.append('need_history', String(payload.need_history))
+    if (payload.message_id !== undefined) form.append('message_id', payload.message_id)
     if (payload.attachments) {
         payload.attachments.forEach(id => form.append('attachments', id))
     }

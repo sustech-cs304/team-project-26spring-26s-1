@@ -35,10 +35,10 @@
                                 </v-sheet>
                                 <v-row align="center" class="ml-2 ga-0" style="opacity: 0.6;">
                                     <span class="text-body-small">{{ msg.created_at }}</span>
-                                    <v-tooltip text="Reload" location="bottom">
+                                    <v-tooltip text="重试" location="bottom">
                                         <template v-slot:activator="{ props }">
                                             <v-btn v-bind="props" icon="mdi-reload" size="x-small" variant="text"
-                                                active-color="primary" />
+                                                active-color="primary" @click="retryMessage(i)" :disabled="loading" />
                                         </template>
                                     </v-tooltip>
                                     <v-tooltip text="Copy" location="bottom">
@@ -90,11 +90,19 @@
         SseErrorData,
         SseSetTitleData,
         Message,
+        SseHandlers,
     } from '@/types/conversation.ts'
 
     const route = useRoute()
     const conversationId = computed(() => route.params.conversationId as string)
     const appStore = useAppStore()
+
+    interface SendChatRequestOptions {
+        content: string           // 用户消息内容（必需）
+        messageId?: string        // 用户消息ID（重试时使用）
+        addUserMessage?: boolean  // 是否添加用户消息到列表（默认true）
+        clearFromIndex?: number   // 从指定索引开始清理消息（重试时使用）
+    }
 
     const scrollEl = ref<InstanceType<typeof import('vuetify/components').VSheet> | null>(null)
     const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
@@ -148,14 +156,113 @@
     /** 当前正在接收的 message_id，由 SSE 事件携带 */
     let currentMessageId: string | null = null
 
-    const processMessage = async (text: string) => {
-        messages.push({ role: 'user', content: text, created_at: Date.now() })
-        await scrollToBottom()
+    /** 创建统一的 SSE 回调处理器 */
+    const createSseHandlers = (assistantMsg: Message): SseHandlers => ({
+        onHistory: (data: SseHistoryData) => {
+            // 若后端推送了历史，重建消息列表（首次进入对话时）
+            // 注意：splice 会替换整个数组，需在末尾重新追加占位消息
+            if (!data.history_messages) return
+            messages.splice(0, messages.length, ...data.history_messages.map(m => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+                created_at: m.created_at || Date.now(),
+                message_id: m.message_id,
+                thinkingSteps: m.thought_steps.map(s => ({
+                    id: s.id,
+                    type: s.type,
+                    title: s.type,
+                    content: s.content,
+                    status: s.status as ThoughtStep['status'],
+                    created_at: s.created_at || Date.now(),
+                })),
+                thinkingActive: false,
+            })))
+            // splice 后重新将 assistantMsg 占位追加到末尾，保持引用有效
+            messages.push(assistantMsg)
+            void scrollToBottom()
+        },
+
+        onThoughtStep: (data: SseThoughtStepData) => {
+            if (data.message_id) currentMessageId = data.message_id
+            assistantMsg.thinkingActive = true
+            const stepTime = data.step.created_at || Date.now()
+            const existing = assistantMsg.thinkingSteps!.find(s => s.id === data.step.id)
+            if (existing) {
+                existing.content = data.step.content
+                existing.status = data.step.status as ThoughtStep['status']
+                existing.created_at = stepTime
+            } else {
+                assistantMsg.thinkingSteps!.push({
+                    id: data.step.id,
+                    type: data.step.type,
+                    title: data.step.type,
+                    content: data.step.content,
+                    status: data.step.status as ThoughtStep['status'],
+                    created_at: stepTime,
+                })
+            }
+            void scrollIfAtBottom()
+        },
+
+        onMessageDelta: (data: SseMessageDeltaData) => {
+            assistantMsg.thinkingActive = false
+            if (data.message_id) currentMessageId = data.message_id
+            assistantMsg.content += data.delta
+            void scrollIfAtBottom()
+        },
+
+        onDone: (_data: SseDoneData) => {
+            assistantMsg.thinkingActive = false
+            assistantMsg.created_at = Date.now()
+            loading.value = false
+            currentAbortCtrl = null
+            currentMessageId = null
+        },
+
+        onSetTitle: (data: SseSetTitleData) => {
+            // 通知侧边栏(c.vue)更新标题
+            appStore.setConversationTitle(data.conversation_id, data.title)
+        },
+
+        onError: (data: SseErrorData) => {
+            assistantMsg.thinkingActive = false
+            assistantMsg.content = `[错误] ${data.error_message}`
+            assistantMsg.created_at = Date.now()
+            loading.value = false
+            currentAbortCtrl = null
+            currentMessageId = null
+        },
+
+        onFetchError: (err: unknown) => {
+            console.error('[SSE] fetch error:', err)
+            assistantMsg.thinkingActive = false
+            assistantMsg.content = '[网络错误，请重试]'
+            assistantMsg.created_at = Date.now()
+            loading.value = false
+            currentAbortCtrl = null
+            currentMessageId = null
+        },
+    })
+
+    /** 统一的消息发送函数 */
+    const sendChatRequest = async (options: SendChatRequestOptions) => {
+        // 停止当前可能正在进行的请求
+        stop()
+
+        // 清理消息（如果指定了clearFromIndex）
+        if (options.clearFromIndex !== undefined) {
+            messages.splice(options.clearFromIndex, messages.length - options.clearFromIndex)
+        }
+
+        // 添加用户消息（如果需要）
+        if (options.addUserMessage !== false) {
+            messages.push({ role: 'user', content: options.content, created_at: Date.now() })
+            await scrollToBottom()
+        }
 
         loading.value = true
 
-        // 预先创建 assistant 消息占位，直接 push 到 reactive 数组
-        // 用对象引用而非下标追踪，避免 onHistory splice 替换数组后下标失效
+        // 预先创建 assistant 消息占位
         const assistantMsg: Message = reactive({
             role: 'assistant',
             content: '',
@@ -173,96 +280,20 @@
             {
                 conversation_id: conversationId.value,
                 request_id: requestId,
-                content: text,
+                content: options.content,
                 create_at: Date.now(),
                 need_history: false,
+                message_id: options.messageId, // 重试时传递
             },
-            {
-                onHistory: (data: SseHistoryData) => {
-                    // 若后端推送了历史，重建消息列表（首次进入对话时）
-                    // 注意：splice 会替换整个数组，需在末尾重新追加占位消息
-                    if (!data.history_messages) return
-                    messages.splice(0, messages.length, ...data.history_messages.map(m => ({
-                        role: m.role as 'user' | 'assistant',
-                        content: m.content,
-                        created_at: m.created_at || Date.now(),
-                        thinkingSteps: m.thought_steps.map(s => ({
-                            id: s.id,
-                            type: s.type,
-                            title: s.type,
-                            content: s.content,
-                            status: s.status as ThoughtStep['status'],
-                            created_at: s.created_at || Date.now(),
-                        })),
-                        thinkingActive: false,
-                    })))
-                    // splice 后重新将 assistantMsg 占位追加到末尾，保持引用有效
-                    messages.push(assistantMsg)
-                    void scrollToBottom()
-                },
-
-                onThoughtStep: (data: SseThoughtStepData) => {
-                    if (data.message_id) currentMessageId = data.message_id
-                    assistantMsg.thinkingActive = true
-                    const stepTime = data.step.created_at || Date.now()
-                    const existing = assistantMsg.thinkingSteps!.find(s => s.id === data.step.id)
-                    if (existing) {
-                        existing.content = data.step.content
-                        existing.status = data.step.status as ThoughtStep['status']
-                        existing.created_at = stepTime
-                    } else {
-                        assistantMsg.thinkingSteps!.push({
-                            id: data.step.id,
-                            type: data.step.type,
-                            title: data.step.type,
-                            content: data.step.content,
-                            status: data.step.status as ThoughtStep['status'],
-                            created_at: stepTime,
-                        })
-                    }
-                    void scrollIfAtBottom()
-                },
-
-                onMessageDelta: (data: SseMessageDeltaData) => {
-                    assistantMsg.thinkingActive = false
-                    if (data.message_id) currentMessageId = data.message_id
-                    assistantMsg.content += data.delta
-                    void scrollIfAtBottom()
-                },
-
-                onDone: (_data: SseDoneData) => {
-                    assistantMsg.thinkingActive = false
-                    assistantMsg.created_at = Date.now()
-                    loading.value = false
-                    currentAbortCtrl = null
-                    currentMessageId = null
-                },
-
-                onSetTitle: (data: SseSetTitleData) => {
-                    // 通知侧边栏(c.vue)更新标题
-                    appStore.setConversationTitle(data.conversation_id, data.title)
-                },
-
-                onError: (data: SseErrorData) => {
-                    assistantMsg.thinkingActive = false
-                    assistantMsg.content = `[错误] ${data.error_message}`
-                    assistantMsg.created_at = Date.now()
-                    loading.value = false
-                    currentAbortCtrl = null
-                    currentMessageId = null
-                },
-
-                onFetchError: (err) => {
-                    console.error('[SSE] fetch error:', err)
-                    assistantMsg.thinkingActive = false
-                    assistantMsg.content = '[网络错误，请重试]'
-                    assistantMsg.created_at = Date.now()
-                    loading.value = false
-                    currentAbortCtrl = null
-                    currentMessageId = null
-                },
-            }
+            createSseHandlers(assistantMsg)
         )
+    }
+
+    const processMessage = async (text: string) => {
+        await sendChatRequest({
+            content: text,
+            addUserMessage: true,
+        })
     }
 
     /** 加载对话（首次进入或切换 conversationId 时） */
@@ -295,6 +326,7 @@
                             role: m.role as 'user' | 'assistant',
                             content: m.content,
                             created_at: m.created_at || Date.now(),
+                            message_id: m.message_id,
                             thinkingSteps: m.thought_steps.map(s => ({
                                 id: s.id,
                                 type: s.type,
@@ -342,5 +374,23 @@
             last.thinkingActive = false
             if (!last.created_at) last.created_at = Date.now()
         }
+    }
+
+    /** 重试消息 */
+    const retryMessage = async (messageIndex: number) => {
+        const agentMsg = messages[messageIndex]
+        if (agentMsg?.role !== 'assistant' || loading.value) return
+
+        // 找到对应的用户消息（前一条）
+        const userMsgIndex = messageIndex - 1
+        const userMsg = messages[userMsgIndex]
+        if (!userMsg || userMsg.role !== 'user') return
+
+        await sendChatRequest({
+            content: userMsg.content,
+            messageId: userMsg.message_id,
+            addUserMessage: false,
+            clearFromIndex: messageIndex,
+        })
     }
 </script>

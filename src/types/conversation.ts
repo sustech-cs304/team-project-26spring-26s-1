@@ -8,6 +8,7 @@ export interface Message {
     created_at: number
     thinkingSteps?: ThoughtStep[]
     thinkingActive?: boolean
+    message_id?: string
 }
 
 /**
