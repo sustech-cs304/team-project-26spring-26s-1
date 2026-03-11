@@ -18,10 +18,12 @@
                 <v-scale-transition mode="out-in">
                     <v-btn v-if="loading" key="stop" icon="mdi-stop" size="small" color="primary" variant="tonal"
                         :ripple="false" @click="$emit('stop')" />
-                    <v-btn v-else-if="!hasContent && !isRecording" key="mic" icon="mdi-microphone-outline" size="small"
-                        variant="text" :ripple="false" @click="toggleRecording" />
-                    <v-btn v-else-if="isRecording" key="recording" icon="mdi-microphone" size="small" color="error"
-                        variant="flat" :ripple="false" @click="toggleRecording" />
+                    <v-btn v-else-if="asr.isStarting.value" key="starting" icon="mdi-loading" size="small" color="warning"
+                        variant="tonal" :ripple="false" :loading="true" disabled />
+                    <v-btn v-else-if="!hasContent && !asr.isRecording.value" key="mic" icon="mdi-microphone-outline"
+                        size="small" variant="text" :ripple="false" @click="toggleRecording" />
+                    <v-btn v-else-if="asr.isRecording.value" key="recording" icon="mdi-microphone" size="small"
+                        color="error" variant="flat" :ripple="false" @click="toggleRecording" />
                     <v-btn v-else key="send" icon="mdi-send" size="small" variant="flat" :ripple="false"
                         @click="send" />
                 </v-scale-transition>
@@ -48,6 +50,7 @@
         computeFileMd5,
         generateFileId,
     } from '@/utils/fileUtils'
+    import { useAsr } from '@/composables/useAsr'
 
     const props = defineProps<{
         modelValue: string
@@ -84,6 +87,16 @@
         snackbar.show = true
     }
 
+    // ── ASR 语音识别 ─────────────────────
+    const asr = useAsr({
+        onTranscript: (text: string) => {
+            emit('update:modelValue', text)
+        },
+        onError: (message: string) => {
+            showError(message)
+        },
+    })
+
     // ── 基本交互 ─────────────────────────
     const focusTextarea = (e: MouseEvent) => {
         const target = e.target as HTMLElement
@@ -98,10 +111,12 @@
 
     const canSend = computed(() => hasContent.value && !props.loading)
 
-    const isRecording = ref(false)
-
     const toggleRecording = () => {
-        isRecording.value = !isRecording.value
+        if (asr.isStarting.value || asr.isRecording.value) {
+            asr.stopRecording()
+        } else {
+            asr.startRecording()
+        }
     }
 
     const triggerUpload = () => {
