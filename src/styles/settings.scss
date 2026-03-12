@@ -8,3 +8,14 @@
 // @use 'vuetify/settings' with (
 //   $color-pack: false
 // );
+@use 'vuetify/settings' with ($tooltip-font-size: 0.75rem, $tooltip-line-height: 1.6, $tooltip-padding: 2px 8px);
+
+
+// 仅让页面根元素始终保留滚动条槽位，防止内容区抖动
+html {
+    overflow-y: auto
+}
+
+* {
+    scrollbar-width: none;
+}
