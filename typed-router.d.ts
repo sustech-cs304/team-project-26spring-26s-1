@@ -44,13 +44,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/auth/reset': RouteRecordInfo<
-      '/auth/reset',
-      '/auth/reset',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
     '/calendar/': RouteRecordInfo<
       '/calendar/',
       '/calendar',
@@ -107,12 +100,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/auth/forgot.vue': {
       routes:
         | '/auth/forgot'
-      views:
-        | never
-    }
-    'src/pages/auth/reset.vue': {
-      routes:
-        | '/auth/reset'
       views:
         | never
     }

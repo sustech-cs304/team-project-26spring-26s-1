@@ -5,28 +5,20 @@
             <slot name="label-append"></slot>
         </div>
         <div class="d-flex align-start ga-2">
-            <v-text-field
+           <v-text-field
                 v-model="model"
                 :placeholder="placeholder"
                 :prepend-inner-icon="icon"
+                :append-inner-icon="isPassword ? (showPassword ? 'mdi-eye' : 'mdi-eye-off') : undefined"
                 :rules="rules"
-                type="text"
+                :type="isPassword ? (showPassword ? 'text' : 'password') : 'text'"
                 :error-messages="errorMessages"
-                :autocomplete="isPassword ? 'new-password' : undefined"
-                :class="{ 'password-field': isPassword && !showPassword }"
+                @click:append-inner="isPassword && (showPassword = !showPassword)"
                 variant="outlined"
-                density="default"
+                :density="props.compact ? 'compact' : 'default'"
                 color="cyan-darken-2"
                 class="flex-grow-1"
-            >
-                <template #append-inner v-if="isPassword">
-                    <v-icon 
-                        :icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'" 
-                        @click="showPassword = !showPassword"
-                        style="cursor: pointer;"
-                    />
-                </template>
-            </v-text-field>
+            />
             <slot name="append"></slot>
         </div>
     </div>
@@ -43,10 +35,12 @@ const props = withDefaults(defineProps<{
     rules?: ((v: string) => boolean | string)[]
     isPassword?: boolean
     errorMessages?: string | string[]
+    compact?: boolean
 }>(), {
     rules: () => [],
     isPassword: false,
-    errorMessages: () => []
+    errorMessages: () => [],
+    compact: false,
 })
 
 const emit = defineEmits<{
@@ -61,8 +55,8 @@ const model = computed({
 })
 </script>
 
-<style scoped>
-.password-field :deep(input) {
-    -webkit-text-security: disc;
-}
+<style>
+    input::-ms-reveal {
+        display: none !important;
+    }
 </style>
