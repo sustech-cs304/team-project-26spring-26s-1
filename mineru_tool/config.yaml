@@ -1,0 +1,6 @@
+paths:
+  input_dir: "input"
+  output_dir: "output"
+
+api-keys:
+  MinerU: "your-mineru-api-key-here"
