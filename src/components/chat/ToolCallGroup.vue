@@ -104,7 +104,7 @@
         if (hasPending) {
             expanded.value = true
         }
-    }, { immediate: true })
+    }, { immediate: true, deep: true })
 
     // 监听 autoCollapse 变化
     watch(() => props.autoCollapse, (shouldCollapse) => {
