@@ -42,8 +42,6 @@ let _themeRefCount = 0
     let unwatch: (() => void) | null = null
     onMounted(() => {
         _themeRefCount++
-        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        applyTheme(isDark ? 'dark' : 'light')
         unwatch = watchTheme((dark) => applyTheme(dark ? 'dark' : 'light'))
     })
 
