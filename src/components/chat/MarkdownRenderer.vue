@@ -84,8 +84,6 @@ let _themeRefCount = 0
         const token = tokens[idx]!
         const lang = token.info?.trim() || 'text'
         const code = defaultFenceRenderer!(tokens, idx, options, env, self)
-        // 将代码内容编码为 base64，避免 HTML 属性中的特殊字符问题
-        const encodedCode = btoa(unescape(encodeURIComponent(token.content)))
 
         return `
 <div class="code-block-wrapper">
@@ -94,7 +92,6 @@ let _themeRefCount = 0
         <button 
             class="code-copy-btn d-inline-flex align-center px-2 py-1 rounded cursor-pointer bg-transparent border-0 text-medium-emphasis"
             style="height: 24px; transition: background-color 0.2s;"
-            data-code="${encodedCode}"
             type="button"
         >
             <svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" style="margin-right: 4px;">
@@ -134,8 +131,6 @@ let _themeRefCount = 0
                 'aria-hidden', 'focusable', 'xmlns', 'encoding',
                 // svg 属性
                 'viewBox', 'fill', 'd', 'width', 'height',
-                // 复制按钮
-                'data-code',
             ],
         })
     })
@@ -146,10 +141,13 @@ let _themeRefCount = 0
         const codeBtn = target.closest('.code-copy-btn')
         if (!codeBtn) return
 
-        const encoded = codeBtn.getAttribute('data-code')
-        if (!encoded) return
+        const wrapper = codeBtn.closest('.code-block-wrapper')
+        if (!wrapper) return
 
-        const code = decodeURIComponent(escape(atob(encoded)))
+        const codeElement = wrapper.querySelector('pre code')
+        const code = codeElement?.textContent
+        if (!code) return
+
         await copyText(code)
     }
 </script>
