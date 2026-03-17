@@ -1,5 +1,5 @@
 <template>
-    <div class="text-body-medium opacity-80 pa-1" height="32">
+    <div class="text-body-medium opacity-80 pa-1">
         <span class="d-flex align-center" style="gap: 4px;">
             <v-icon size="16">mdi-lightbulb-outline</v-icon>
             <span v-if="isActive" class="typing-shimmer">Thinking...</span>

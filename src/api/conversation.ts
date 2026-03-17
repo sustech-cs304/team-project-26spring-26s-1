@@ -113,7 +113,11 @@ export function chatCompletion (
             let currentData = ''
 
             const processFrame = () => {
-                if (!currentData) return
+                if (!currentData) {
+                    currentEvent = ''
+                    currentData = ''
+                    return
+                }
                 try {
                     const parsed = JSON.parse(currentData)
                     switch (currentEvent as SseEventTypes) {
@@ -141,9 +145,10 @@ export function chatCompletion (
                     }
                 } catch (e) {
                     console.warn('[SSE] JSON parse error:', currentData, e)
+                } finally {
+                    currentEvent = ''
+                    currentData = ''
                 }
-                currentEvent = ''
-                currentData = ''
             }
 
             while (true) {
