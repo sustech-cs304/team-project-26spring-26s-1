@@ -1,0 +1,20 @@
+// Typing Indicator Shimmer Animation
+// 可复用的文字渐变流动效果
+
+@keyframes typing-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.typing-shimmer {
+  background: linear-gradient(110deg,
+    rgba(var(--v-theme-on-surface), 0.6) 0%,
+    rgba(var(--v-theme-on-surface), 1) 40%,
+    rgba(var(--v-theme-on-surface), 0.6) 80%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: typing-shimmer 2.2s infinite linear;
+}

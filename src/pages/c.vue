@@ -282,7 +282,7 @@
         try {
             const res = await searchConversations({ keywords: keyword, page: 1, page_size: 50 })
             // Handle inconsistent backend response (conversations vs sessions)
-            searchResults.value = res.conversations || res.sessions || []
+            searchResults.value = res.conversations || []
         } catch (error) {
             console.error('Search failed:', error)
         } finally {

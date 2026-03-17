@@ -10,6 +10,9 @@
 // );
 @use 'vuetify/settings' with ($tooltip-font-size: 0.75rem, $tooltip-line-height: 1.6, $tooltip-padding: 2px 8px);
 
+// Typing indicator animation
+@use './components/typing.scss';
+
 
 // 仅让页面根元素始终保留滚动条槽位，防止内容区抖动
 html {

@@ -1,6 +1,8 @@
 import http, { baseURL } from '@/utils/http'
 import type {
-    Conversation, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseEventName, SseHistoryData, SseThoughtStepData, SseMessageDeltaData, SseDoneData, SseErrorData, SseSetTitleData
+    Conversation, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseHistoryResponse, SseMessageDeltaData, SseToolCallData, SseErrorData, SseKeepAliveData, SseDoneData,
+    SseEventTypes,
+    SseMetaData
 } from '@/types/conversation.ts'
 
 /** 生成 UUID v4，兼容非 HTTPS 环境 */
@@ -114,24 +116,27 @@ export function chatCompletion (
                 if (!currentData) return
                 try {
                     const parsed = JSON.parse(currentData)
-                    switch (currentEvent as SseEventName) {
+                    switch (currentEvent as SseEventTypes) {
                         case 'history':
-                            handlers.onHistory?.(parsed as SseHistoryData)
+                            handlers.onHistory?.(parsed as SseHistoryResponse)
                             break
-                        case 'thought_step':
-                            handlers.onThoughtStep?.(parsed as SseThoughtStepData)
+                        case 'delta':
+                            handlers.onDelta?.(parsed as SseMessageDeltaData)
                             break
-                        case 'message_delta':
-                            handlers.onMessageDelta?.(parsed as SseMessageDeltaData)
+                        case 'meta_data':
+                            handlers.onMetaData?.(parsed as SseMetaData)
                             break
-                        case 'done':
-                            handlers.onDone?.(parsed as SseDoneData)
+                        case 'tool_call':
+                            handlers.onToolCall?.(parsed as SseToolCallData)
                             break
                         case 'error':
                             handlers.onError?.(parsed as SseErrorData)
                             break
-                        case 'set_title':
-                            handlers.onSetTitle?.(parsed as SseSetTitleData)
+                        case 'done':
+                            handlers.onDone?.(parsed as SseDoneData)
+                            break
+                        case 'keep_alive':
+                            handlers.onKeepAlive?.(parsed as SseKeepAliveData)
                             break
                     }
                 } catch (e) {
@@ -150,17 +155,19 @@ export function chatCompletion (
                 buffer = lines.pop() ?? ''
 
                 for (const line of lines) {
-                    if (line.startsWith('event:')) {
-                        currentEvent = line.slice(6).trim()
-                    } else if (line.startsWith('data:')) {
-                        currentData = line.slice(5).trim()
-                    } else if (line === '') {
-                        // 空行 → 分发一帧
+                    const trimmed = line.trim()
+                    if (trimmed.startsWith('event:')) {
+                        currentEvent = trimmed.slice(6).trim()
+                    }
+                    else if (trimmed.startsWith('data:')) {
+                        const chunk = trimmed.slice(5).trim()
+                        currentData += (currentData ? '\n' : '') + chunk
+                    }
+                    else if (trimmed === '') {
                         processFrame()
                     }
                 }
             }
-            // 处理末尾残余
             processFrame()
         } catch (err) {
             if ((err as DOMException)?.name !== 'AbortError') {
@@ -174,7 +181,7 @@ export function chatCompletion (
 
 /**
  * 停止对话接口：通知后端终止当前对话流并更新状态
- * POST /conversation/cancelchat?conversation_id=...&message_id=...
+ * POST /conversation/cancelchat
  */
 export function cancelChat (conversation_id: string, message_id: string): Promise<MessageResponse> {
     return http.post<MessageResponse>('/conversation/cancelchat', null, {
