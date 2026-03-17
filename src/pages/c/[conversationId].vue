@@ -320,7 +320,11 @@
 
         onError: (data: SseErrorData) => {
             assistantMsg.thinkingActive = false
-            assistantMsg.content += `\n[错误] ${data.error_message}`
+            if (assistantMsg.content) {
+                assistantMsg.content += `\n[错误] ${data.error_message}`
+            } else {
+                assistantMsg.content = `[错误] ${data.error_message}`
+            }
             assistantMsg.created_at = Date.now()
             loading.value = false
             currentAbortCtrl = null
@@ -330,7 +334,11 @@
         onFetchError: (err: unknown) => {
             console.error('[SSE] fetch error:', err)
             assistantMsg.thinkingActive = false
-            assistantMsg.content += '\n[网络错误，请重试]'
+            if (assistantMsg.content) {
+                assistantMsg.content += '\n[网络错误，请重试]'
+            } else {
+                assistantMsg.content = '[网络错误，请重试]'
+            }
             assistantMsg.created_at = Date.now()
             loading.value = false
             currentAbortCtrl = null
