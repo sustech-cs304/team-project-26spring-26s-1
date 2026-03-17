@@ -46,8 +46,8 @@ export interface ToolCallMessage {
     argument: string
   }>
   status: 'pending' | 'approved' | 'rejected'
-  pending_reason: string
-  tool_response: string
+  pending_reason?: string
+  tool_response?: string
 }
 
 export interface Message {
