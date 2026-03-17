@@ -4,7 +4,7 @@
         <!-- 消息列表 -->
         <v-sheet ref="scrollEl" color="transparent" class="flex-grow-1 overflow-y-auto">
             <v-container max-width="800" class="px-6 py-4">
-                <template v-for="(msg, i) in messages" :key="`${i}-${msg.role}`">
+                <template v-for="(msg, i) in messages" :key="msg.message_id || `${i}-${msg.role}`">
 
                     <!-- 用户消息 -->
                     <v-row v-if="msg.role === 'user'" justify="end" class="mb-1" density="compact">
@@ -32,18 +32,13 @@
                         </v-col>
                     </v-row>
 
-                    <!-- Tool 消息（HumanInLoop 审批卡片） -->
-                    <v-row
-                        v-else-if="msg.role === 'tools' && msg.toolCall && msg.toolCall.status === 'pending'"
-                        justify="start"
-                        class="mb-1"
-                        density="compact"
-                    >
+                    <!-- Tool 消息（独立节点：pending 显示审批卡片，非 pending 显示 ToolCallGroup） -->
+                    <v-row v-else-if="msg.role === 'tools' && msg.toolCall" justify="start" class="mb-1"
+                        density="compact">
                         <v-col class="pa-0" style="min-width: 0; max-width: 100%;">
-                            <HumanInLoopCard
-                                :tool="msg.toolCall"
-                                @action="(action) => handleToolAction(msg.toolCall!, msg.message_id!, action)"
-                            />
+                            <HumanInLoopCard v-if="msg.toolCall.status === 'pending'" :tool="msg.toolCall"
+                                @action="(action) => handleToolAction(msg.toolCall!, msg.message_id!, action)" />
+                            <ToolCallGroup v-else :steps="[msg.toolCall]" :auto-collapse="false" />
                         </v-col>
                     </v-row>
 
@@ -56,10 +51,6 @@
                                     <!-- Thinking 展示 -->
                                     <ThinkingMsg v-if="msg.thinking" :content="msg.thinking"
                                         :is-active="msg.thinkingActive" />
-
-                                    <!-- 已完成的 tool calls 展示 -->
-                                    <ToolCallGroup v-if="msg.toolCalls && msg.toolCalls.length > 0"
-                                        :steps="msg.toolCalls" :auto-collapse="!!msg.content" />
 
                                     <!-- 文本内容 -->
                                     <v-sheet v-if="msg.content" rounded="lg" color="transparent" class="px-0 py-1 pl-3">
@@ -135,8 +126,7 @@
         created_at?: number
         thinking?: string
         thinkingActive?: boolean
-        toolCall?: ToolCallMessage        // 用于 role='tools' 的 HumanInLoop 卡片
-        toolCalls?: ToolCallMessage[]      // 用于 assistant 消息中已完成的 tool calls
+        toolCall?: ToolCallMessage
     }
 
     const route = useRoute()
@@ -173,6 +163,23 @@
     })
 
     const messages = reactive<ChatMessage[]>([])
+    const messageMap = new Map<string, ChatMessage>()
+
+    /** 根据 message_id 查找或创建消息节点 */
+    const getOrCreateMessage = (messageId: string, role: MsgRole): ChatMessage => {
+        const existing = messageMap.get(messageId)
+        if (existing) return existing
+
+        const msg: ChatMessage = reactive({
+            role,
+            content: '',
+            message_id: messageId,
+            created_at: Date.now(),
+        })
+        messages.push(msg)
+        messageMap.set(messageId, msg)
+        return msg
+    }
 
     const hasPendingTool = computed(() =>
         messages.some(m => m.role === 'tools' && m.toolCall?.status === 'pending')
@@ -241,13 +248,11 @@
         }
 
         if (m.type === 'tools') {
-            // tool 消息：data 是 ToolCallMessage
             const toolData = m.data as ToolCallMessage
             base.toolCall = toolData
             return base
         }
 
-        // user / assistant 消息：data 是 Message
         const msgData = m.data as Message
         base.content = msgData.content || ''
 
@@ -259,25 +264,41 @@
         return base
     }
 
+    /** 将消息数组同步到 messageMap */
+    const syncMessageMap = () => {
+        messageMap.clear()
+        for (const msg of messages) {
+            if (msg.message_id) messageMap.set(msg.message_id, msg)
+        }
+    }
+
     // ── SSE 回调处理器 ──
 
-    /** 创建统一的 SSE 回调处理器 */
-    const createSseHandlers = (assistantMsg: ChatMessage): SseHandlers => ({
+    /** 获取最后一个 assistant 消息（用于 done/error 等无 message_id 的事件） */
+    const getLastAssistantMsg = (): ChatMessage | undefined => {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i]?.role === 'assistant') return messages[i]
+        }
+        return undefined
+    }
+
+    /** 创建统一的 SSE 回调处理器（不再绑定单一 assistantMsg） */
+    const createSseHandlers = (): SseHandlers => ({
 
         onDelta: (data: SseMessageDeltaData) => {
             if (data.message_id) currentMessageId = data.message_id
 
+            // 根据 message_id 查找或创建 assistant 消息节点
+            const msg = getOrCreateMessage(data.message_id, 'assistant')
+
             if (data.is_thinking) {
-                // 追加到 thinking 字段
-                assistantMsg.thinking = (assistantMsg.thinking || '') + data.delta
-                assistantMsg.thinkingActive = true
+                msg.thinking = (msg.thinking || '') + data.delta
+                msg.thinkingActive = true
             } else {
-                // 关闭 thinking 活跃状态
-                if (assistantMsg.thinkingActive) {
-                    assistantMsg.thinkingActive = false
+                if (msg.thinkingActive) {
+                    msg.thinkingActive = false
                 }
-                // 追加到 content
-                assistantMsg.content += data.delta
+                msg.content += data.delta
             }
             void scrollIfAtBottom()
         },
@@ -293,18 +314,9 @@
                 tool_response: data.tool_response,
             }
 
-            if (data.status === 'pending') {
-                messages.push({
-                    role: 'tools',
-                    content: '',
-                    created_at: Date.now(),
-                    message_id: data.message_id,
-                    toolCall: toolMsg,
-                })
-            } else {
-                if (!assistantMsg.toolCalls) assistantMsg.toolCalls = []
-                assistantMsg.toolCalls.push(toolMsg)
-            }
+            // tool_call 始终作为独立的 tools 节点
+            const msg = getOrCreateMessage(data.message_id, 'tools')
+            msg.toolCall = toolMsg
             void scrollToBottom()
         },
 
@@ -317,21 +329,31 @@
         },
 
         onDone: (_data: SseDoneData) => {
-            assistantMsg.thinkingActive = false
-            assistantMsg.created_at = Date.now()
+            const last = getLastAssistantMsg()
+            if (last) {
+                for (const msg of messages) {
+                    if (msg.role === 'assistant' && msg.thinking) {
+                        msg.thinkingActive = false
+                    }
+                }
+                last.created_at = Date.now()
+            }
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
         },
 
         onError: (data: SseErrorData) => {
-            assistantMsg.thinkingActive = false
-            if (assistantMsg.content) {
-                assistantMsg.content += `\n[错误] ${data.error_message}`
-            } else {
-                assistantMsg.content = `[错误] ${data.error_message}`
+            const last = getLastAssistantMsg()
+            if (last) {
+                last.thinkingActive = false
+                if (last.content) {
+                    last.content += `\n[错误] ${data.error_message}`
+                } else {
+                    last.content = `[错误] ${data.error_message}`
+                }
+                last.created_at = Date.now()
             }
-            assistantMsg.created_at = Date.now()
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
@@ -339,13 +361,16 @@
 
         onFetchError: (err: unknown) => {
             console.error('[SSE] fetch error:', err)
-            assistantMsg.thinkingActive = false
-            if (assistantMsg.content) {
-                assistantMsg.content += '\n[网络错误，请重试]'
-            } else {
-                assistantMsg.content = '[网络错误，请重试]'
+            const last = getLastAssistantMsg()
+            if (last) {
+                last.thinkingActive = false
+                if (last.content) {
+                    last.content += '\n[网络错误，请重试]'
+                } else {
+                    last.content = '[网络错误，请重试]'
+                }
+                last.created_at = Date.now()
             }
-            assistantMsg.created_at = Date.now()
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
@@ -357,6 +382,11 @@
         stop()
 
         if (options.clearFromIndex !== undefined) {
+            // 清除被删消息在 messageMap 中的引用
+            for (let i = options.clearFromIndex; i < messages.length; i++) {
+                const mid = messages[i]?.message_id
+                if (mid) messageMap.delete(mid)
+            }
             messages.splice(options.clearFromIndex, messages.length - options.clearFromIndex)
         }
 
@@ -366,15 +396,6 @@
         }
 
         loading.value = true
-
-        // 预先创建 assistant 消息占位
-        const assistantMsg: ChatMessage = reactive({
-            role: 'assistant' as const,
-            content: '',
-            created_at: Date.now(),
-        })
-        messages.push(assistantMsg)
-
         await scrollToBottom()
 
         const requestId = generateUUID()
@@ -388,7 +409,7 @@
                 need_history: false,
                 message_id: options.messageId,
             },
-            createSseHandlers(assistantMsg)
+            createSseHandlers()
         )
     }
 
@@ -405,6 +426,7 @@
         currentAbortCtrl = null
         currentMessageId = null
         messages.splice(0)
+        messageMap.clear()
         loading.value = false
 
         const prompt = pendingPrompt.value
@@ -424,6 +446,7 @@
                     onHistory: (data: SseHistoryResponse) => {
                         if (!data.history_messages) { loading.value = false; return }
                         messages.splice(0, messages.length, ...data.history_messages.map(historyToMessage))
+                        syncMessageMap()
                         loading.value = false
                         void scrollToBottom()
                     },
@@ -460,8 +483,8 @@
         currentAbortCtrl = null
         currentMessageId = null
         loading.value = false
-        const last = messages[messages.length - 1]
-        if (last?.role === 'assistant') {
+        const last = getLastAssistantMsg()
+        if (last) {
             last.thinkingActive = false
             if (!last.created_at) last.created_at = Date.now()
         }
