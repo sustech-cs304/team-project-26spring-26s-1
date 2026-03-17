@@ -44,9 +44,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/calendar/': RouteRecordInfo<
-      '/calendar/',
-      '/calendar',
     '/c': RouteRecordInfo<
       '/c',
       '/c',
@@ -128,7 +125,6 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
-    'src/pages/calendar/index.vue': {
     'src/pages/c.vue': {
       routes:
         | '/c'
