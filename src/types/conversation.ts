@@ -20,7 +20,7 @@ export interface MessageResponse {
 }
 
 export interface SseFrame<T = unknown> {
-  event: 'history' | 'event';
+  event: SseEventTypes;
   data: T;
 }
 
