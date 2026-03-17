@@ -126,7 +126,7 @@
         created_at?: number
         thinking?: string
         thinkingActive?: boolean
-        toolCall?: ToolCallMessage        // 用于 role='tools' 的独立 tool_call 节点
+        toolCall?: ToolCallMessage
     }
 
     const route = useRoute()
