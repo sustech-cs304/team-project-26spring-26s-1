@@ -14,15 +14,15 @@
                             <v-sheet v-if="editingIndex === i" class="flex-grow-1" color="transparent">
                                 <v-textarea v-model="editingContent" variant="solo" rounded="lg" rows="1" auto-grow
                                     max-rows="8" hide-details autofocus @keydown.enter.exact.prevent="submitEdit(i)"
-                                    @keydown.esc="cancelEdit" />
-                                <div class="d-flex justify-end ga-2 mt-1">
+                                    @keydown.esc="cancelEdit" :color="cardColor" />
+                                <div class="d-flex justify-end ga-1 mt-1">
                                     <v-btn size="small" variant="text" @click="cancelEdit" rounded="lg">取消</v-btn>
-                                    <v-btn size="small" variant="flat" rounded="lg"
+                                    <v-btn size="small" variant="flat" rounded="lg" color="surface-variant"
                                         :disabled="!editingContent.trim() || loading" @click="submitEdit(i)">发送</v-btn>
                                 </div>
                             </v-sheet>
                             <!-- 展示模式 -->
-                            <v-sheet v-else rounded="lg" class="px-3 py-2" style="cursor: pointer;"
+                            <v-sheet v-else rounded="lg" class="px-3 py-2" style="cursor: pointer;" :color="cardColor"
                                 @click="startEdit(i, msg.content)">
                                 <MarkdownRenderer :content="msg.content" />
                             </v-sheet>
@@ -119,6 +119,7 @@
     import { pendingPrompt } from '@/utils/pendingPrompt'
     import { useAppStore } from '@/stores/app'
     import { copyText } from '@/utils/copyText'
+    import { useTheme } from 'vuetify'
 
     // ── 内部扩展的 ChatMessage 类型 ──
     interface ChatMessage {
@@ -172,6 +173,9 @@
     )
 
     // ── 用户消息编辑 ──
+    const theme = useTheme()
+    const cardColor = computed(() => theme.current.value.dark ? 'grey-darken-3' : 'grey-lighten-3')
+
     const editingIndex = ref<number | null>(null)
     const editingContent = ref('')
 
