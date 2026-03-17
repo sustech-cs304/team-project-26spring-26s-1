@@ -267,7 +267,6 @@
         if (conv) {
             conv.title = update.title
         } else {
-            // 新对话首次出现，刷新列表使其显示在侧边栏
             fetchConversations()
         }
     })
@@ -281,8 +280,7 @@
         loading.value = true
         try {
             const res = await searchConversations({ keywords: keyword, page: 1, page_size: 50 })
-            // Handle inconsistent backend response (conversations vs sessions)
-            searchResults.value = res.conversations || res.sessions || []
+            searchResults.value = res.conversations || []
         } catch (error) {
             console.error('Search failed:', error)
         } finally {
