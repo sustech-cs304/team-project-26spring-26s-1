@@ -33,11 +33,17 @@
                     </v-row>
 
                     <!-- Tool 消息（HumanInLoop 审批卡片） -->
-                    <v-row v-else-if="msg.role === 'tools'" justify="start" class="mb-1" density="compact">
+                    <v-row
+                        v-else-if="msg.role === 'tools' && msg.toolCall && msg.toolCall.status === 'pending'"
+                        justify="start"
+                        class="mb-1"
+                        density="compact"
+                    >
                         <v-col class="pa-0" style="min-width: 0; max-width: 100%;">
-                            <HumanInLoopCard v-if="msg.toolCall && msg.toolCall.status === 'pending'"
+                            <HumanInLoopCard
                                 :tool="msg.toolCall"
-                                @action="(action) => handleToolAction(msg.toolCall!, msg.message_id!, action)" />
+                                @action="(action) => handleToolAction(msg.toolCall!, msg.message_id!, action)"
+                            />
                         </v-col>
                     </v-row>
 
