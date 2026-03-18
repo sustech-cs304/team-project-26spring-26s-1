@@ -58,25 +58,25 @@
                                     </v-sheet>
                                 </div>
 
-                                <!-- 操作栏 -->
-                                <v-row v-if="msg.content" align="center" class="ml-2 ga-0" style="opacity: 0.6;">
-                                    <v-tooltip text="重试" location="bottom">
-                                        <template v-slot:activator="{ props }">
-                                            <v-btn v-bind="props" icon="mdi-reload" size="x-small" variant="text"
-                                                active-color="primary" @click="retryMessage(i)" :disabled="loading" />
-                                        </template>
-                                    </v-tooltip>
-                                    <v-tooltip text="Copy" location="bottom">
-                                        <template v-slot:activator="{ props }">
-                                            <v-btn v-bind="props" icon="mdi-content-copy" size="x-small" variant="text"
-                                                @click="copyText(msg.content)" />
-                                        </template>
-                                    </v-tooltip>
-                                    <TypingIndicator v-if="loading && i === messages.length - 1" />
-                                </v-row>
                             </v-col>
                         </v-row>
                     </template>
+
+                    <v-row v-if="shouldShowTurnActions(i)" align="center" class="ml-2 ga-0" style="opacity: 0.6;">
+                        <v-tooltip text="重试" location="bottom">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" icon="mdi-reload" size="x-small" variant="text"
+                                    active-color="primary" @click="retryTurn(i)" :disabled="loading" />
+                            </template>
+                        </v-tooltip>
+                        <v-tooltip text="Copy" location="bottom">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" icon="mdi-content-copy" size="x-small" variant="text"
+                                    @click="copyTurnAssistantContent(i)" />
+                            </template>
+                        </v-tooltip>
+                        <TypingIndicator v-if="loading && i === messages.length - 1" />
+                    </v-row>
 
                 </template>
             </v-container>
@@ -184,6 +184,60 @@
     const hasPendingTool = computed(() =>
         messages.some(m => m.role === 'tools' && m.toolCall?.status === 'pending')
     )
+
+    interface TurnInfo {
+        start: number
+        end: number
+        hasAssistantContent: boolean
+        assistantCombinedContent: string
+        userMsg?: ChatMessage
+    }
+
+    const getTurnInfo = (index: number): TurnInfo | null => {
+        if (!messages.length) return null
+        const i = Math.max(0, Math.min(index, messages.length - 1))
+        let start = 0
+        for (let cursor = i; cursor >= 0; cursor--) {
+            if (messages[cursor]?.role === 'user') {
+                start = cursor
+                break
+            }
+        }
+        let end = messages.length - 1
+        for (let cursor = start + 1; cursor < messages.length; cursor++) {
+            if (messages[cursor]?.role === 'user') {
+                end = cursor - 1
+                break
+            }
+        }
+        const chunks: string[] = []
+        for (let cursor = start; cursor <= end; cursor++) {
+            const msg = messages[cursor]
+            if (msg?.role === 'assistant' && msg.content.trim()) {
+                chunks.push(msg.content.trim())
+            }
+        }
+        const userMsg = messages[start]?.role === 'user' ? messages[start] : undefined
+        return {
+            start,
+            end,
+            hasAssistantContent: chunks.length > 0,
+            assistantCombinedContent: chunks.join('\n\n'),
+            userMsg,
+        }
+    }
+
+    /** 轮级操作栏可见性。 */
+    const shouldShowTurnActions = (index: number): boolean => {
+        const info = getTurnInfo(index)
+        return !!info && info.end === index && info.hasAssistantContent
+    }
+
+    const copyTurnAssistantContent = (index: number) => {
+        const info = getTurnInfo(index)
+        if (!info?.assistantCombinedContent) return
+        void copyText(info.assistantCombinedContent)
+    }
 
     // ── 用户消息编辑 ──
     const theme = useTheme()
@@ -490,20 +544,17 @@
         }
     }
 
-    /** 重试消息 */
-    const retryMessage = async (messageIndex: number) => {
-        const agentMsg = messages[messageIndex]
-        if (agentMsg?.role !== 'assistant' || loading.value) return
-
-        const userMsgIndex = messageIndex - 1
-        const userMsg = messages[userMsgIndex]
-        if (!userMsg || userMsg.role !== 'user') return
+    /** 按轮重试：定位该轮 user 消息，重发并清理该轮末尾之后内容。 */
+    const retryTurn = async (messageIndex: number) => {
+        if (loading.value || !messages.length) return
+        const info = getTurnInfo(messageIndex)
+        if (!info?.userMsg) return
 
         await sendChatRequest({
-            content: userMsg.content,
-            messageId: userMsg.message_id,
+            content: info.userMsg.content,
+            messageId: info.userMsg.message_id,
             addUserMessage: false,
-            clearFromIndex: messageIndex,
+            clearFromIndex: info.start + 1,
         })
     }
 </script>
