@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}上传技能 - 2026 opencrab{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto fade-in">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <!-- Main Upload Card -->
+        <div class="lg:col-span-7 bg-white rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden">
+            <div class="bg-gradient-to-r from-violet-600 to-purple-600 px-6 py-5">
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    上传新技能
+                </h2>
+            </div>
+
+            <div class="p-6">
+                <form id="uploadForm" class="space-y-5">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        <div class="lg:col-span-4 space-y-4">
+                            <!-- Tags -->
+                            <div class="space-y-3">
+                                <label class="block text-sm font-medium text-slate-700">标签（可多选）</label>
+                                <div id="tagsContainer" class="flex flex-wrap gap-2"></div>
+                            </div>
+
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+                                <p class="text-sm font-semibold text-slate-700">上传说明</p>
+                                <p class="text-xs text-slate-500 leading-5">把 `.md` 文件直接拖进右侧编辑区即可自动加载。</p>
+                                <p class="text-xs text-slate-500 leading-5">内容需包含 `## Name`、`## Description`、`## Usage`
+                                    三个标题。</p>
+                                <p class="text-xs text-slate-500 leading-5">支持 .md，大小不超过 1MB。</p>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-8 space-y-2 flex flex-col">
+                            <!-- Editor with Drag & Drop -->
+                            <label class="block text-sm font-medium text-slate-700">
+                                内容编辑 <span class="text-xs text-slate-400">（拖拽 .md 文件到此处加载）</span>
+                            </label>
+                            <div id="dropZone" class="relative group">
+                                <textarea id="editor"
+                                    class="w-full h-[22rem] md:h-[28rem] bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-4 font-mono text-sm text-slate-600 focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:border-violet-400 focus:bg-white resize-none transition-all duration-200 hover:border-slate-300 ${isDragging ? 'border-violet-500 bg-violet-50' : ''}"
+                                    placeholder="拖拽 .md 文件到此处，或直接在此编辑 Markdown 内容...
+
+文件必须包含以下三个标题：
+## Name
+（技能名称）
+
+## Description
+（技能描述）
+
+## Usage
+（使用方法）"></textarea>
+                                <!-- Drag overlay -->
+                                <div id="dragOverlay"
+                                    class="hidden absolute inset-0 bg-violet-100/95 rounded-xl flex items-center justify-center pointer-events-none">
+                                    <div class="text-center">
+                                        <svg class="w-12 h-12 text-violet-500 mx-auto mb-2" fill="none"
+                                            stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                        </svg>
+                                        <p class="text-violet-700 font-medium">释放文件以加载</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex gap-3 pt-2">
+                        <button type="submit" id="submitBtn"
+                            class="w-full py-3 px-6 bg-gradient-to-r from-violet-600 to-purple-600 text-white font-medium rounded-xl shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:from-violet-700 hover:to-purple-700 transform hover:-translate-y-0.5 transition-all duration-200">
+                            提交审核
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- My Submissions -->
+        <div
+            class="lg:col-span-5 bg-white rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden fade-in lg:sticky lg:top-24">
+            <div class="px-6 py-5 border-b border-slate-100">
+                <h3 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    我的提交
+                </h3>
+            </div>
+            <div id="mySkills" class="p-6 max-h-[52rem] overflow-auto"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    let selectedTags = [];
+    let isDragging = false;
+
+    // ============== Drag & Drop Handlers ==============
+    const dropZone = document.getElementById('dropZone');
+    const editor = document.getElementById('editor');
+    const dragOverlay = document.getElementById('dragOverlay');
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = true;
+            dragOverlay.classList.remove('hidden');
+            editor.classList.add('border-violet-500', 'bg-violet-50');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isDragging = false;
+            dragOverlay.classList.add('hidden');
+            editor.classList.remove('border-violet-500', 'bg-violet-50');
+        });
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            const file = files[0];
+            if (!file.name.endsWith('.md')) {
+                showToast('只支持 .md 格式文件', 'error');
+                return;
+            }
+            if (file.size > 1024 * 1024) {
+                showToast('文件大小超过 1MB', 'error');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                editor.value = e.target.result;
+                showToast('文件已加载', 'success');
+            };
+            reader.readAsText(file);
+        }
+    });
+
+    // ============== Tags ==============
+    async function loadTags() {
+        try {
+            const tags = await api('/api/tags');
+            const container = document.getElementById('tagsContainer');
+            container.innerHTML = tags.map(t => `
+                <label class="cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${selectedTags.includes(t.id) ? 'bg-violet-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+                    <input type="checkbox" value="${t.id}" ${selectedTags.includes(t.id) ? 'checked' : ''} onchange="toggleTag(${t.id})" class="hidden">
+                    ${t.name}
+                </label>
+            `).join('');
+        } catch (e) {
+            console.error('加载标签失败:', e);
+        }
+    }
+
+    function toggleTag(id) {
+        if (selectedTags.includes(id)) {
+            selectedTags = selectedTags.filter(t => t !== id);
+        } else {
+            selectedTags.push(id);
+        }
+        loadTags();
+    }
+
+    // ============== My Skills ==============
+    async function loadMySkills() {
+        try {
+            const skills = await api('/api/skills/me');
+            const container = document.getElementById('mySkills');
+
+            if (!skills || skills.length === 0) {
+                container.innerHTML = '<p class="text-slate-400 text-center py-8">暂无提交记录</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-left text-sm text-slate-500 border-b border-slate-100">
+                                <th class="pb-3 font-medium">名称</th>
+                                <th class="pb-3 font-medium">标签</th>
+                                <th class="pb-3 font-medium">状态</th>
+                                <th class="pb-3 font-medium">下载量</th>
+                                <th class="pb-3 font-medium">时间</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            ${skills.map(s => `
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="py-4 font-medium text-slate-800">${escapeHtml(s.name)}</td>
+                                    <td class="py-4">
+                                        <div class="flex flex-wrap gap-1">
+                                            ${s.tags.map(t => `<span class="px-2 py-0.5 bg-violet-100 text-violet-700 rounded text-xs font-medium">${escapeHtml(t.name)}</span>`).join('')}
+                                        </div>
+                                    </td>
+                                    <td class="py-4">
+                                        ${s.status === 'pending' ? '<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium">待审核</span>' : ''}
+                                        ${s.status === 'approved' ? '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">已上架</span>' : ''}
+                                        ${s.status === 'rejected' ? '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">已拒绝</span>' : ''}
+                                        ${s.status === 'archived' ? '<span class="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-medium">已下架</span>' : ''}
+                                        ${s.rejection_reason ? `<br><small class="text-red-500 text-xs">${escapeHtml(s.rejection_reason)}</small>` : ''}
+                                    </td>
+                                    <td class="py-4 text-slate-600">${s.download_count}</td>
+                                    <td class="py-4 text-slate-500 text-sm">${s.created_at ? new Date(s.created_at).toLocaleDateString() : '-'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (e) {
+            console.error('加载我的技能失败:', e);
+            document.getElementById('mySkills').innerHTML = '<p class="text-red-400 text-center py-8">加载失败: ' + escapeHtml(e.message) + '</p>';
+        }
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // ============== Form Submit ==============
+    document.getElementById('uploadForm').onsubmit = async function (e) {
+        e.preventDefault();
+
+        const content = editor.value.trim();
+        if (!content) {
+            showToast('请输入或加载技能内容', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="animate-spin h-5 w-5 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+
+        try {
+            // Create a file from the editor content
+            const blob = new Blob([content], { type: 'text/markdown' });
+            const file = new File([blob], 'skill.md', { type: 'text/markdown' });
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('tag_ids', selectedTags.join(','));
+
+            const res = await fetch('/api/skills', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${getToken()}` },
+                body: formData
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.detail || data.message || '上传失败');
+            }
+
+            showToast('上传成功，等待审核', 'success');
+
+            // Reset form
+            editor.value = '';
+            selectedTags = [];
+            loadTags();
+            loadMySkills();
+
+        } catch (e) {
+            showToast(e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '提交审核';
+        }
+    };
+
+    // ============== Init ==============
+    if (!getToken()) {
+        window.location.href = '/login';
+    } else {
+        loadTags();
+        loadMySkills();
+    }
+</script>
+{% endblock %}

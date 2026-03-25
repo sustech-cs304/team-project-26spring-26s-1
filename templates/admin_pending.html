@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}待审核 - 2026 opencrab{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6 fade-in">
+    <!-- Header -->
+    <div class="bg-white rounded-2xl shadow-lg shadow-slate-200/50 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                待审核列表
+            </h2>
+            <div class="flex items-center gap-2">
+                <label class="text-sm text-slate-500">排序:</label>
+                <select id="sortOrder" onchange="loadPending()"
+                    class="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                    <option value="desc">最新优先</option>
+                    <option value="asc">最旧优先</option>
+                </select>
+            </div>
+        </div>
+        <div id="pendingList" class="p-6"></div>
+    </div>
+</div>
+
+<!-- Drawer Overlay -->
+<div class="fixed inset-0 bg-slate-900/50 z-40 hidden transition-opacity" id="drawerOverlay" onclick="closeDrawer()">
+</div>
+
+<!-- Drawer -->
+<div class="fixed top-0 right-0 h-full w-full max-w-xl bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300"
+    id="drawer">
+    <div class="flex flex-col h-full">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="font-semibold text-slate-800" id="drawerTitle">技能详情</h3>
+            <button onclick="closeDrawer()" class="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div id="drawerContent" class="flex-1 overflow-y-auto p-6"></div>
+        <div class="px-6 py-4 border-t border-slate-100 flex gap-3">
+            <button onclick="approveCurrent()"
+                class="flex-1 py-3 px-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-xl shadow-lg shadow-green-500/30 hover:shadow-green-500/50 hover:from-green-700 hover:to-emerald-700 transform hover:-translate-y-0.5 transition-all duration-200">
+                批准
+            </button>
+            <button onclick="showRejectModal()"
+                class="flex-1 py-3 px-4 bg-gradient-to-r from-red-600 to-rose-600 text-white font-medium rounded-xl shadow-lg shadow-red-500/30 hover:shadow-red-500/50 hover:from-red-700 hover:to-rose-700 transform hover:-translate-y-0.5 transition-all duration-200">
+                拒绝
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="fixed inset-0 bg-slate-900/50 z-50 hidden items-center justify-center" id="rejectModal">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100">
+            <h3 class="font-semibold text-slate-800">拒绝原因</h3>
+        </div>
+        <div class="p-6">
+            <textarea id="rejectReason" rows="4"
+                class="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none resize-none bg-slate-50/50 hover:bg-slate-50 transition-colors"
+                placeholder="请输入拒绝原因"></textarea>
+        </div>
+        <div class="px-6 py-4 border-t border-slate-100 flex gap-3">
+            <button onclick="closeRejectModal()"
+                class="flex-1 py-3 px-4 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-all">
+                取消
+            </button>
+            <button onclick="confirmReject()"
+                class="flex-1 py-3 px-4 bg-gradient-to-r from-red-600 to-rose-600 text-white font-medium rounded-xl shadow-lg shadow-red-500/30 hover:shadow-red-500/50 hover:from-red-700 hover:to-rose-700 transform hover:-translate-y-0.5 transition-all duration-200">
+                确认拒绝
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    let currentSkillId = null;
+    let currentSkills = [];
+
+    async function loadPending() {
+        const sort = document.getElementById('sortOrder').value;
+        try {
+            const skills = await api(`/admin/skills/pending?sort=${sort}`);
+            currentSkills = skills;
+            const container = document.getElementById('pendingList');
+
+            if (skills.length === 0) {
+                container.innerHTML = '<p class="text-slate-400 text-center py-16">暂无待审核技能</p>';
+                return;
+            }
+
+            container.innerHTML = skills.map(s => `
+                <div class="bg-slate-50 rounded-xl p-5 hover:bg-slate-100 transition-colors mb-4 last:mb-0">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex-1 min-w-0">
+                            <h4 class="font-semibold text-slate-800 truncate">${s.name}</h4>
+                            <p class="text-sm text-slate-500 mt-1">${s.description || '无描述'}</p>
+                            <div class="flex flex-wrap gap-2 mt-3">
+                                ${s.tags.map(t => `<span class="px-2 py-0.5 bg-violet-100 text-violet-700 rounded text-xs font-medium">${t.name}</span>`).join('')}
+                            </div>
+                            <div class="flex items-center gap-2 mt-3 text-xs text-slate-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                                <span>${s.user_email}</span>
+                                <span>•</span>
+                                <span>${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-col gap-2">
+                            <button onclick="viewSkill(${s.id})" 
+                                class="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-medium rounded-lg hover:bg-white hover:border-violet-300 hover:text-violet-600 transition-all text-sm whitespace-nowrap">
+                                查看
+                            </button>
+                            <button onclick="approveSkill(${s.id})" 
+                                class="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg shadow-md hover:shadow-lg hover:from-green-700 hover:to-emerald-700 transition-all text-sm whitespace-nowrap">
+                                批准
+                            </button>
+                            <button onclick="rejectSkill(${s.id})" 
+                                class="px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 text-white font-medium rounded-lg shadow-md hover:shadow-lg hover:from-red-700 hover:to-rose-700 transition-all text-sm whitespace-nowrap">
+                                拒绝
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            showToast(e.message, 'error');
+        }
+    }
+
+    function viewSkill(id) {
+        const skill = currentSkills.find(s => s.id === id);
+        if (!skill) return;
+
+        currentSkillId = id;
+        document.getElementById('drawerTitle').textContent = skill.name;
+        document.getElementById('drawerContent').innerHTML = `
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-slate-500">描述</label>
+                    <p class="text-slate-800 mt-1">${skill.description || '无'}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-slate-500">标签</label>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        ${skill.tags.map(t => `<span class="px-3 py-1 bg-violet-100 text-violet-700 rounded-lg text-sm font-medium">${t.name}</span>`).join('')}
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-slate-500">提交者</label>
+                    <p class="text-slate-800 mt-1">${skill.user_email}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-slate-500">内容预览</label>
+                    <pre class="mt-2 p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600 whitespace-pre-wrap font-mono max-h-80 overflow-y-auto">${escapeHtml(skill.markdown_content || '')}</pre>
+                </div>
+            </div>
+        `;
+        openDrawer();
+    }
+
+    function openDrawer() {
+        document.getElementById('drawerOverlay').classList.remove('hidden');
+        document.getElementById('drawer').classList.remove('translate-x-full');
+    }
+
+    function closeDrawer() {
+        document.getElementById('drawerOverlay').classList.add('hidden');
+        document.getElementById('drawer').classList.add('translate-x-full');
+        currentSkillId = null;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async function approveSkill(id) {
+        try {
+            await api(`/admin/skills/${id}/approve`, { method: 'POST' });
+            showToast('已批准', 'success');
+            loadPending();
+        } catch (e) {
+            showToast(e.message, 'error');
+        }
+    }
+
+    async function approveCurrent() {
+        if (currentSkillId) await approveSkill(currentSkillId);
+        closeDrawer();
+    }
+
+    function showRejectModal() {
+        document.getElementById('rejectModal').classList.remove('hidden');
+        document.getElementById('rejectModal').classList.add('flex');
+    }
+
+    function closeRejectModal() {
+        document.getElementById('rejectModal').classList.add('hidden');
+        document.getElementById('rejectModal').classList.remove('flex');
+        document.getElementById('rejectReason').value = '';
+    }
+
+    async function confirmReject() {
+        const reason = document.getElementById('rejectReason').value.trim();
+        if (!reason) {
+            showToast('请输入拒绝原因', 'error');
+            return;
+        }
+
+        try {
+            await api(`/admin/skills/${currentSkillId}/reject`, {
+                method: 'POST',
+                body: JSON.stringify({ reason })
+            });
+            showToast('已拒绝', 'success');
+            closeRejectModal();
+            closeDrawer();
+            loadPending();
+        } catch (e) {
+            showToast(e.message, 'error');
+        }
+    }
+
+    async function rejectSkill(id) {
+        currentSkillId = id;
+        showRejectModal();
+    }
+
+    loadPending();
+</script>
+{% endblock %}

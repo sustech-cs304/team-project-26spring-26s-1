@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}登录 - 2026 opencrab{% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<div class="min-h-[calc(100vh-200px)] flex items-center justify-center py-12 px-4">
+    <div class="w-full max-w-md">
+        <!-- Card Container -->
+        <div class="bg-white rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden fade-in">
+            <!-- Header Pattern -->
+            <div
+                class="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 px-8 py-10 text-center relative overflow-hidden">
+                <div class="absolute inset-0 opacity-10">
+                    <svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <defs>
+                            <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="white" stroke-width="0.5" />
+                            </pattern>
+                        </defs>
+                        <rect width="100" height="100" fill="url(#grid)" />
+                    </svg>
+                </div>
+                <div class="relative z-10">
+                    <div
+                        class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                    </div>
+                    <h1 class="text-2xl font-bold text-white mb-1">欢迎回来</h1>
+                    <p class="text-blue-100 text-sm">登录到 2026 opencrab 探索更多精彩</p>
+                </div>
+            </div>
+
+            <!-- Form -->
+            <div class="px-8 py-8">
+                <form id="loginForm" class="space-y-5">
+                    <div id="msg"></div>
+
+                    <!-- Email -->
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-slate-700">邮箱地址</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                                </svg>
+                            </div>
+                            <input type="email" name="email" required
+                                class="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-slate-50/50 hover:bg-slate-50 focus:bg-white outline-none"
+                                placeholder="请输入 .edu.cn 邮箱">
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-slate-700">密码</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                            </div>
+                            <input type="password" name="password" required
+                                class="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-slate-50/50 hover:bg-slate-50 focus:bg-white outline-none"
+                                placeholder="请输入密码">
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit"
+                        class="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:from-blue-700 hover:to-indigo-700 transform hover:-translate-y-0.5 transition-all duration-200">
+                        登录
+                    </button>
+
+                    <!-- Register Link -->
+                    <p class="text-center text-slate-500 text-sm pt-2">
+                        还没有账号？
+                        <a href="/register"
+                            class="text-blue-600 hover:text-indigo-600 font-medium hover:underline transition-colors">
+                            立即注册
+                        </a>
+                    </p>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+    document.getElementById('loginForm').onsubmit = async function (e) {
+        e.preventDefault();
+        const msg = document.getElementById('msg');
+        msg.innerHTML = '';
+
+        const form = new FormData(e.target);
+        const btn = this.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="animate-spin h-5 w-5 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+
+        try {
+            const data = await api('/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({
+                    email: form.get('email'),
+                    password: form.get('password')
+                })
+            });
+
+            setToken(data.access_token);
+            localStorage.setItem('user', JSON.stringify(data));
+            showToast('登录成功！正在跳转...', 'success');
+
+            setTimeout(() => {
+                if (data.role === 'admin') {
+                    window.location.href = '/admin';
+                } else {
+                    window.location.href = '/upload';
+                }
+            }, 500);
+        } catch (e) {
+            showToast(e.message, 'error');
+            btn.disabled = false;
+            btn.textContent = '登录';
+        }
+    };
+</script>
+{% endblock %}

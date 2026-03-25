@@ -1,16 +1,20 @@
-# 安装: pip install -r requirements.txt
+# Skills Hub - 依赖
 
 # Web 框架
 fastapi>=0.100.0
 uvicorn[standard]>=0.22.0
+Jinja2>=3.0.0
+aiofiles>=0.8.0
 
 # 数据校验与配置
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 
-# 数据库 ORM（异步 PostgreSQL）
-sqlalchemy[asyncio]>=2.0.0
-asyncpg>=0.28.0
+# 数据库 ORM（SQLite）
+sqlalchemy>=2.0.0
 
-# JWT（登录 Token，请勿安装名为 jwt 的包，仅安装 PyJWT）
+# JWT
 PyJWT>=2.0.0
+
+# 邮件
+lark-oapi>=1.0.0
