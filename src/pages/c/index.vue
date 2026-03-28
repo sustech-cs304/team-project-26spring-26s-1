@@ -23,9 +23,11 @@
     import ConversationStarters from '@/components/chat/ConversationStarters.vue'
     import MessageInput from '@/components/chat/MessageInput.vue'
     import { createConversation } from '@/api/conversation'
+    import { useAppStore } from '@/stores/app'
     import { pendingPrompt } from '@/utils/pendingPrompt'
 
     const router = useRouter()
+    const appStore = useAppStore()
     const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
     const input = ref('')
     const creating = ref(false)
@@ -50,6 +52,14 @@
         creating.value = true
         try {
             const conv = await createConversation()
+            appStore.setConversationCreated({
+                conversation_id: conv.conversation_id,
+                created_at: conv.created_at,
+                updated_at: conv.created_at,
+                title: '新的对话',
+                is_active: true,
+                is_pinned: false,
+            })
             pendingPrompt.value = prompt
             router.push(`/c/${conv.conversation_id}`)
         } catch (err) {

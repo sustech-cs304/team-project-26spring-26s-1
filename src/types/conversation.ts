@@ -7,6 +7,11 @@ export interface Conversation {
   is_pinned: boolean;
 }
 
+export interface CreateConversationResponse {
+  conversation_id: string;
+  created_at: number;
+}
+
 export interface ConversationListResponse {
   conversations: Conversation[];
 }

@@ -1,6 +1,6 @@
 import http, { baseURL } from '@/utils/http'
 import type {
-    Conversation, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseHistoryResponse, SseMessageDeltaData, SseToolCallData, SseErrorData, SseKeepAliveData, SseDoneData,
+    Conversation, CreateConversationResponse, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseHistoryResponse, SseMessageDeltaData, SseToolCallData, SseErrorData, SseKeepAliveData, SseDoneData,
     SseEventTypes,
     SseMetaData
 } from '@/types/conversation.ts'
@@ -23,8 +23,8 @@ export function generateUUID (): string {
  * 发起聊天接口：创建新会话，返回 conversation_id
  * POST /conversation
  */
-export function createConversation (): Promise<Conversation> {
-    return http.post<Conversation>('/conversation')
+export function createConversation (): Promise<CreateConversationResponse> {
+    return http.post<CreateConversationResponse>('/conversation')
 }
 
 /**

@@ -231,6 +231,18 @@
     const conversations = ref<Conversation[]>([])
     const searchResults = ref<Conversation[]>([])
 
+    const upsertConversation = (conversation: Conversation) => {
+        const index = conversations.value.findIndex((item) => item.conversation_id === conversation.conversation_id)
+        if (index === -1) {
+            conversations.value.unshift({ ...conversation })
+            return
+        }
+        conversations.value[index] = {
+            ...conversations.value[index],
+            ...conversation,
+        }
+    }
+
     // Search mode
     const searchMode = ref(false)
     const searchKeyword = ref('')
@@ -261,6 +273,11 @@
     }
 
     // 监听 SSE set_title 事件：直接更新本地列表，无需重新请求接口
+    watch(() => appStore.conversationCreated, (conversation) => {
+        if (!conversation) return
+        upsertConversation(conversation)
+    })
+
     watch(() => appStore.conversationTitleUpdate, (update) => {
         if (!update) return
         const conv = conversations.value.find(c => c.conversation_id === update.conversation_id)
