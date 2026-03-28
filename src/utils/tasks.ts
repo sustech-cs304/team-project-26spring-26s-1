@@ -1,205 +1,173 @@
-﻿// ─── Task Types ────────────────────────────────────────────────────────────────
-export type TaskStatus = 'running' | 'paused' | 'pending' | 'failed' | 'completed'
-export type TaskType = 'recurring' | 'scheduled' | 'event-triggered' | 'monitor'
+// ─── API Types (matching OpenAPI spec) ────────────────────────────────────────
 
-// ─── SOP Step Types ────────────────────────────────────────────────────────────
-export type TaskStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
-export type RunStatus = 'success' | 'failed' | 'partial' | 'running'
+export type ExecutionMode = 'prompt' | 'script'
+export type TaskStatus = 'enabled' | 'disabled' | 'running'
+export type RunStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+export type RunTrigger = 'cron' | 'manual' | 'agent' | 'telegram'
+export type LastRunStatus = 'success' | 'failed' | 'cancelled'
+export type LogType = 'script_start' | 'script_stdout' | 'script_stderr' | 'script_end' | 'tool_call'
 
-export interface TaskStep {
-    id: string
-    index: number
-    name: string
-    description?: string
-    status: TaskStepStatus
-    duration?: number
-    startedAt?: string
-    completedAt?: string
-    input?: string
-    output?: string
-    errorMessage?: string
-    toolName?: string
-}
-
-export interface TaskRunLog {
-    id: string
-    runNumber: number
-    status: RunStatus
-    startedAt: string
-    completedAt?: string
-    duration?: number
-    stepsCompleted: number
-    stepsTotal: number
-    triggerType: 'scheduled' | 'manual' | 'event'
-    summary?: string
-    errorMessage?: string
-    steps: TaskStep[]
+export interface EnvVarRef {
+    key: string
+    secret_ref: string
 }
 
 export interface Task {
-    id: number
+    id: string
     name: string
     description?: string
-    type: TaskType
+    execution_mode: ExecutionMode
+    payload: string
+    cron_expression: string | null
     status: TaskStatus
-    intervalLabel?: string
-    scheduledAt?: string
-    eventSource?: string
-    triggerCondition?: string
-    monitorTarget?: string
-    lastRunAt?: string
-    nextRunAt?: string
-    runCount?: number
-    failCount?: number
-    tags?: string[]
-    createdAt?: string
-    logs?: TaskLog[]
-    // SOP fields
-    steps: TaskStep[]
-    runLogs: TaskRunLog[]
-    currentRun?: TaskRunLog
-    lastRunDuration?: number
-    successRate?: number
-    averageDuration?: number
+    last_run_at?: string | null
+    last_run_status?: LastRunStatus | null
+    last_run_trigger?: RunTrigger | null
+    created_at: string
+    updated_at: string
+    env_var_refs: EnvVarRef[]
 }
 
-export interface TaskLog {
-    time: string
-    level: 'info' | 'warn' | 'error'
-    message: string
+export interface Run {
+    id: string
+    task_id: string
+    trigger: RunTrigger
+    override_prompt?: string | null
+    status: RunStatus
+    started_at: string
+    finished_at: string | null
+    error_message: string | null
 }
 
-export interface TaskForm {
-    type: TaskType
+export interface LogEntry {
+    id: string
+    run_id: string
+    step_index: number
+    log_type: LogType
+    tool_name?: string | null
+    input_params?: Record<string, any> | null
+    output?: Record<string, any> | null
+    content?: string | null
+    metadata: {
+        python_version?: string
+        platform?: string
+        injected_env_keys?: string[]
+        chunk_index?: number
+        exit_code?: number
+        retry_count?: number
+    }
+    status: 'success' | 'failed'
+    duration_ms: number
+    timestamp: string
+}
+
+export interface TaskCreateForm {
     name: string
     description: string
-    cron: string
-    intervalLabel: string
-    scheduledAt: string
-    eventSource: string
-    triggerCondition: string
-    monitorTarget: string
-    pollInterval: string
-    tags: string[]
+    execution_mode: ExecutionMode
+    payload: string
+    cron_expression: string | null
+    env_var_refs: EnvVarRef[]
 }
 
-// ─── Task Helpers ──────────────────────────────────────────────────────────────
-export const TASK_TYPE_ICON: Record<TaskType, string> = {
-    recurring: 'mdi-refresh',
-    scheduled: 'mdi-clock-outline',
-    'event-triggered': 'mdi-lightning-bolt',
-    monitor: 'mdi-eye-outline',
+export interface TaskUpdateForm {
+    name?: string
+    description?: string
+    execution_mode?: ExecutionMode
+    payload?: string
+    cron_expression?: string | null
+    env_var_refs?: EnvVarRef[]
 }
 
-export const TASK_TYPE_COLOR: Record<TaskType, string> = {
-    recurring: 'primary',
-    scheduled: 'info',
-    'event-triggered': 'warning',
-    monitor: 'success',
-}
+// ─── Display Helpers ──────────────────────────────────────────────────────────
 
-export const TASK_STATUS_COLOR: Record<TaskStatus, string | undefined> = {
-    running: 'success',
-    paused: 'warning',
-    pending: 'info',
-    failed: 'error',
-    completed: undefined,
-}
-
-export const TASK_STATUS_COLOR_RAW: Record<TaskStatus, string> = {
-    paused: 'rgb(var(--v-theme-warning))',
-    pending: 'rgb(var(--v-theme-info))',
-    failed: 'rgb(var(--v-theme-error))',
-    completed: '#888',
-    running: '',
-}
-
-export const typeIcon = (type: TaskType) => TASK_TYPE_ICON[type]
-export const typeIconColor = (type: TaskType) => TASK_TYPE_COLOR[type]
-export const statusColor = (s: TaskStatus) => TASK_STATUS_COLOR[s]
-export const statusColorRaw = (s: TaskStatus) => TASK_STATUS_COLOR_RAW[s] ?? ''
-
-export const makeEmptyForm = (): TaskForm => ({
-    type: 'recurring',
-    name: '',
-    description: '',
-    cron: '',
-    intervalLabel: '',
-    scheduledAt: '',
-    eventSource: '',
-    triggerCondition: '',
-    monitorTarget: '',
-    pollInterval: '5 min',
-    tags: [],
-})
-
-// ─── Step Helpers ──────────────────────────────────────────────────────────────
-export const STEP_STATUS_COLOR: Record<TaskStepStatus, string> = {
-    completed: 'success',
+export const TASK_STATUS_COLOR: Record<TaskStatus, string> = {
+    enabled: 'success',
+    disabled: 'grey',
     running: 'primary',
-    pending: 'grey',
-    failed: 'error',
-    skipped: 'grey-lighten-1',
 }
 
-export const STEP_STATUS_ICON: Record<TaskStepStatus, string> = {
-    completed: 'mdi-check-circle',
-    running: 'mdi-circle-slice-4',
-    pending: 'mdi-circle-outline',
-    failed: 'mdi-close-circle',
-    skipped: 'mdi-minus-circle-outline',
+export const TASK_STATUS_ICON: Record<TaskStatus, string> = {
+    enabled: 'mdi-check-circle',
+    disabled: 'mdi-pause-circle',
+    running: 'mdi-play-circle',
 }
 
 export const RUN_STATUS_COLOR: Record<RunStatus, string> = {
+    pending: 'grey',
+    running: 'primary',
     success: 'success',
     failed: 'error',
-    partial: 'warning',
-    running: 'primary',
+    cancelled: 'warning',
 }
 
 export const RUN_STATUS_ICON: Record<RunStatus, string> = {
+    pending: 'mdi-circle-outline',
+    running: 'mdi-circle-slice-4',
     success: 'mdi-check-circle',
     failed: 'mdi-close-circle',
-    partial: 'mdi-alert-circle',
-    running: 'mdi-circle-slice-4',
+    cancelled: 'mdi-cancel',
 }
 
-export function formatDuration (ms?: number): string {
-    if (!ms) return '—'
+export const TRIGGER_ICON: Record<RunTrigger, string> = {
+    cron: 'mdi-clock-outline',
+    manual: 'mdi-hand-pointing-right',
+    agent: 'mdi-robot-outline',
+    telegram: 'mdi-send',
+}
+
+export const TRIGGER_LABEL: Record<RunTrigger, string> = {
+    cron: 'Cron',
+    manual: 'Manual',
+    agent: 'Agent',
+    telegram: 'Telegram',
+}
+
+export const MODE_ICON: Record<ExecutionMode, string> = {
+    prompt: 'mdi-chat-outline',
+    script: 'mdi-code-tags',
+}
+
+export const MODE_LABEL: Record<ExecutionMode, string> = {
+    prompt: 'Prompt',
+    script: 'Script',
+}
+
+export function formatDuration(ms?: number | null): string {
+    if (ms == null) return '—'
     if (ms < 1000) return `${ms}ms`
-    return `${(ms / 1000).toFixed(1)}s`
+    if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+    return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
 }
 
-export function makeEmptyTask (): Omit<Task, 'id'> {
-    return {
-        name: '', type: 'recurring', status: 'pending',
-        steps: [], runLogs: [], runCount: 0,
-        createdAt: new Date().toISOString().slice(0, 10),
+export function formatDateTime(iso?: string | null): string {
+    if (!iso) return '—'
+    try {
+        // Handle numeric string timestamps (seconds or milliseconds)
+        const num = Number(iso)
+        if (!isNaN(num) && num > 0) {
+            const ms = num < 1e12 ? num * 1000 : num
+            return new Date(ms).toLocaleString('zh-CN', { hour12: false })
+        }
+        const d = new Date(iso)
+        if (isNaN(d.getTime())) return iso
+        return d.toLocaleString('zh-CN', { hour12: false })
+    } catch {
+        return iso
     }
 }
 
-export const taskToForm = (task: Task): TaskForm => ({
-    type: task.type,
-    name: task.name,
-    description: task.description ?? '',
-    cron: '',
-    intervalLabel: task.intervalLabel ?? '',
-    scheduledAt: task.scheduledAt ?? '',
-    eventSource: task.eventSource ?? '',
-    triggerCondition: task.triggerCondition ?? '',
-    monitorTarget: task.monitorTarget ?? '',
-    pollInterval: '5 min',
-    tags: [...(task.tags ?? [])],
-})
+export function cronToHuman(cron: string | null): string {
+    if (!cron) return 'Manual only'
+    const parts = cron.trim().split(/\s+/)
+    if (parts.length !== 5) return cron
 
-export const formToTaskPatch = (form: TaskForm): Partial<Task> => ({
-    name: form.name,
-    description: form.description,
-    type: form.type,
-    intervalLabel: form.intervalLabel,
-    scheduledAt: form.scheduledAt,
-    eventSource: form.eventSource,
-    triggerCondition: form.triggerCondition,
-    monitorTarget: form.monitorTarget,
-    tags: form.tags,
-})
+    const [min, hour, dom, mon, dow] = parts
+
+    if (min === '*' && hour === '*') return 'Every minute'
+    if (min!.startsWith('*/')) return `Every ${min!.slice(2)} minutes`
+    if (hour === '*') return `Every hour at :${min!.padStart(2, '0')}`
+    if (dom === '*' && mon === '*' && dow === '*') return `Daily at ${hour!.padStart(2, '0')}:${min!.padStart(2, '0')}`
+    if (dom === '*' && mon === '*' && dow === '1-5') return `Weekdays at ${hour!.padStart(2, '0')}:${min!.padStart(2, '0')}`
+    return cron
+}

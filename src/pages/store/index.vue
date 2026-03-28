@@ -54,7 +54,7 @@
                                 <v-btn icon size="x-small" variant="tonal"
                                     :color="skill.installed ? 'error' : 'primary'" @click.stop="toggleInstall(skill)">
                                     <v-icon size="13">{{ skill.installed ? 'mdi-delete-outline' : 'mdi-download'
-                                        }}</v-icon>
+                                    }}</v-icon>
                                     <v-tooltip activator="parent" location="top">{{ skill.installed ? 'Uninstall' :
                                         'Install' }}</v-tooltip>
                                 </v-btn>
@@ -71,7 +71,7 @@
                                 <div class="d-flex align-center ga-1">
                                     <v-icon size="11" color="warning">mdi-star</v-icon>
                                     <span class="text-caption" style="font-size:10px;">{{ skill.rating.toFixed(1)
-                                        }}</span>
+                                    }}</span>
                                     <span class="text-caption text-disabled" style="font-size:10px;"> {{
                                         fmtNum(skill.downloads) }}</span>
                                 </div>
@@ -83,16 +83,31 @@
         </v-sheet>
 
         <!-- 详情弹窗 -->
-        <SkillDetailDialog v-model="detailOpen" :skill="selectedSkill"
-            @install="s => { s.installed = true; detailOpen = false }"
-            @uninstall="s => { s.installed = false; detailOpen = false }" />
+        <!-- Dialog removed for now -->
 
     </v-container>
 </template>
 
 <script setup lang="ts">
-    import SkillDetailDialog from '@/components/tasks/SkillDetailDialog.vue'
-    import type { Skill } from '@/components/tasks/SkillDetailDialog.vue'
+    import { ref, computed } from 'vue'
+
+    interface Skill {
+        id: number
+        name: string
+        icon: string
+        color: string
+        category: string
+        author: string
+        version: string
+        rating: number
+        downloads: number
+        installed: boolean
+        description: string
+        longDescription?: string
+        tags: string[]
+        permissions?: { name: string; description: string; level: string }[]
+        changelog?: { version: string; date: string; items: string[] }[]
+    }
 
     //  Mock Data 
     const skills = ref<Skill[]>([

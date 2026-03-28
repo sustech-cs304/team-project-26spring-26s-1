@@ -1,12 +1,17 @@
 import axios from 'axios'
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 /** 统一的 API 根地址，去除末尾斜杠，供 fetch 等场景复用 */
-export const baseURL = ((import.meta.env.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8000/').replace(/\/+$/, '')
+const defaultBaseURL = import.meta.env.PROD
+    ? 'http://127.0.0.1:8000/'
+    : 'https://m1.apifoxmock.com/m1/7865145-7614648-default'
+
+export const baseURL = ((import.meta.env.VITE_API_BASE_URL as string) || defaultBaseURL).replace(/\/+$/, '')
 
 const http: AxiosInstance = axios.create({
     baseURL,
     timeout: 10000,
+    withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
     },
@@ -14,12 +19,11 @@ const http: AxiosInstance = axios.create({
 
 // Request Interceptor
 http.interceptors.request.use(
-    (config) => {
-        // TODO: Add token if authentication is implemented
-        // const token = localStorage.getItem('token')
-        // if (token) {
-        //   config.headers.Authorization = `Bearer ${token}`
-        // }
+    (config: InternalAxiosRequestConfig) => {
+        const token = localStorage.getItem('accessToken')
+        if (token && config.headers) {
+            config.headers.Authorization = `Bearer ${token}`
+        }
         return config
     },
     (error) => {

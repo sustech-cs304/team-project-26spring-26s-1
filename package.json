@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fontsource/roboto": "^5.2.9",
+    "@guolao/vue-monaco-editor": "^1.6.0",
     "@mdi/font": "7.4.47",
     "@tauri-apps/api": "^2.0.0",
     "@vscode/markdown-it-katex": "^1.1.2",

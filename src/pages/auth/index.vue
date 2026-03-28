@@ -168,7 +168,7 @@
         signInLoading.value = true
 
         try {
-            const { data: result } = await login({
+            const result = await login({
                 email: signInForm.email,
                 password: signInForm.password,
             })

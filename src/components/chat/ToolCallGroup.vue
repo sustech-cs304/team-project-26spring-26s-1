@@ -3,9 +3,9 @@
         <!-- 折叠态按钮 -->
         <v-btn variant="text" size="small" class="text-body-medium opacity-80 pa-1" :height="28"
             @click="expanded = !expanded" :ripple="false">
-            <v-icon size="14" class="mr-1">mdi-eye-outline</v-icon>
+            <v-icon size="16" class="mr-1">mdi-eye-outline</v-icon>
             View {{ steps.length }} step{{ steps.length > 1 ? 's' : '' }}
-            <v-icon size="14" class="ml-1">{{ expanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+            <v-icon size="16" class="ml-1">{{ expanded ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
         </v-btn>
 
         <!-- 展开内容 -->
@@ -117,7 +117,7 @@
 
 <style scoped>
     .tool-group-detail {
-        margin-left: 12px;
+        margin-left: 11px;
         padding-left: 8px;
         border-left: 2px solid rgba(var(--v-theme-on-surface), 0.12);
     }
