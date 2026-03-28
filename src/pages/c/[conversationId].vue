@@ -53,7 +53,7 @@
                                         :is-active="msg.thinkingActive" />
 
                                     <!-- 文本内容 -->
-                                    <v-sheet v-if="msg.content" rounded="lg" color="transparent" class="px-0 py-1 pl-3">
+                                    <v-sheet v-if="msg.content" rounded="lg" color="transparent" class="px-0 pt-4 pl-2">
                                         <MarkdownRenderer :content="msg.content" />
                                     </v-sheet>
                                 </div>
@@ -62,7 +62,7 @@
                         </v-row>
                     </template>
 
-                    <v-row v-if="shouldShowTurnActions(i)" align="center" class="ml-2 ga-0" style="opacity: 0.6;">
+                    <v-row v-if="shouldShowTurnActions(i)" align="center" class="ma-0 ga-0" style="opacity: 0.6;">
                         <v-tooltip text="重试" location="bottom">
                             <template v-slot:activator="{ props }">
                                 <v-btn v-bind="props" icon="mdi-reload" size="x-small" variant="text"
@@ -383,13 +383,13 @@
         },
 
         onDone: (_data: SseDoneData) => {
+            for (const msg of messages) {
+                if (msg.role === 'assistant' && msg.thinking) {
+                    msg.thinkingActive = false
+                }
+            }
             const last = getLastAssistantMsg()
             if (last) {
-                for (const msg of messages) {
-                    if (msg.role === 'assistant' && msg.thinking) {
-                        msg.thinkingActive = false
-                    }
-                }
                 last.created_at = Date.now()
             }
             loading.value = false
@@ -459,7 +459,7 @@
                 conversation_id: conversationId.value,
                 request_id: requestId,
                 content: options.content,
-                create_at: Date.now(),
+                created_at: Date.now(),
                 need_history: false,
                 message_id: options.messageId,
             },
@@ -493,7 +493,7 @@
                 {
                     conversation_id: conversationId.value,
                     request_id: generateUUID(),
-                    create_at: Date.now(),
+                    created_at: Date.now(),
                     need_history: true,
                 },
                 {

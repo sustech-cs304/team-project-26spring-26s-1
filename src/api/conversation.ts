@@ -61,7 +61,7 @@ export function deleteConversation (conversation_id: string) {
 
 /**
  * 流式聊天补全接口
- * POST /conversation/completion  (multipart/form-data, text/event-stream)
+ * POST /conversation/completion  (application/json, text/event-stream)
  *
  * 使用原生 fetch + ReadableStream 处理 SSE，
  * 返回 AbortController，调用方可随时调用 abort() 停止流。
@@ -71,7 +71,7 @@ export function chatCompletion (
         conversation_id: string;
         request_id: string;
         content?: string;
-        create_at: number;
+        created_at: number;
         attachments?: string[];
         need_history?: boolean;
         message_id?: string;
@@ -80,106 +80,108 @@ export function chatCompletion (
 ): AbortController {
     const controller = new AbortController()
 
-    const form = new FormData()
-    form.append('conversation_id', payload.conversation_id)
-    form.append('request_id', payload.request_id)
-    form.append('create_at', String(payload.create_at))
-    if (payload.content !== undefined) form.append('content', payload.content)
-    if (payload.need_history !== undefined) form.append('need_history', String(payload.need_history))
-    if (payload.message_id !== undefined) form.append('message_id', payload.message_id)
-    if (payload.attachments) {
-        payload.attachments.forEach(id => form.append('attachments', id))
-    }
+    const body = JSON.stringify({
+        conversation_id: payload.conversation_id,
+        request_id: payload.request_id,
+        content: payload.content ?? null,
+        created_at: payload.created_at,
+        attachments: payload.attachments ?? [],
+        need_history: payload.need_history ?? false,
+        message_id: payload.message_id ?? null,
+    })
 
-    ; (async () => {
-        try {
-            const response = await fetch(`${baseURL}/conversation/completion`, {
-                method: 'POST',
-                body: form,
-                signal: controller.signal,
-            })
+        ; (async () => {
+            try {
+                const response = await fetch(`${baseURL}/conversation/completion`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body,
+                    signal: controller.signal,
+                })
 
-            if (!response.ok || !response.body) {
-                handlers.onFetchError?.(new Error(`HTTP ${response.status}`))
-                return
-            }
-
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder()
-
-            // SSE 解析状态
-            let buffer = ''
-            let currentEvent = ''
-            let currentData = ''
-
-            const processFrame = () => {
-                if (!currentData) {
-                    currentEvent = ''
-                    currentData = ''
+                if (!response.ok || !response.body) {
+                    handlers.onFetchError?.(new Error(`HTTP ${response.status}`))
                     return
                 }
-                try {
-                    const parsed = JSON.parse(currentData)
-                    switch (currentEvent as SseEventTypes) {
-                        case 'history':
-                            handlers.onHistory?.(parsed as SseHistoryResponse)
-                            break
-                        case 'delta':
-                            handlers.onDelta?.(parsed as SseMessageDeltaData)
-                            break
-                        case 'meta_data':
-                            handlers.onMetaData?.(parsed as SseMetaData)
-                            break
-                        case 'tool_call':
-                            handlers.onToolCall?.(parsed as SseToolCallData)
-                            break
-                        case 'error':
-                            handlers.onError?.(parsed as SseErrorData)
-                            break
-                        case 'done':
-                            handlers.onDone?.(parsed as SseDoneData)
-                            break
-                        case 'keep_alive':
-                            handlers.onKeepAlive?.(parsed as SseKeepAliveData)
-                            break
-                    }
-                } catch (e) {
-                    console.warn('[SSE] JSON parse error:', currentData, e)
-                } finally {
-                    currentEvent = ''
-                    currentData = ''
-                }
-            }
 
-            while (true) {
-                const { value, done } = await reader.read()
-                if (done) break
+                const reader = response.body.getReader()
+                const decoder = new TextDecoder()
 
-                buffer += decoder.decode(value, { stream: true })
-                const lines = buffer.split('\n')
-                buffer = lines.pop() ?? ''
+                // SSE 解析状态
+                let buffer = ''
+                let currentEvent = ''
+                let currentData = ''
 
-                for (const line of lines) {
-                    const trimmed = line.trim()
-                    if (trimmed.startsWith('event:')) {
-                        currentEvent = trimmed.slice(6).trim()
+                const processFrame = () => {
+                    if (!currentData) {
+                        currentEvent = ''
+                        currentData = ''
+                        return
                     }
-                    else if (trimmed.startsWith('data:')) {
-                        const chunk = trimmed.slice(5).trim()
-                        currentData += (currentData ? '\n' : '') + chunk
-                    }
-                    else if (trimmed === '') {
-                        processFrame()
+                    try {
+                        const parsed = JSON.parse(currentData)
+                        switch (currentEvent as SseEventTypes) {
+                            case 'history':
+                                handlers.onHistory?.(parsed as SseHistoryResponse)
+                                break
+                            case 'delta':
+                                handlers.onDelta?.(parsed as SseMessageDeltaData)
+                                break
+                            case 'meta_data':
+                                handlers.onMetaData?.(parsed as SseMetaData)
+                                break
+                            case 'tool_call':
+                                handlers.onToolCall?.(parsed as SseToolCallData)
+                                break
+                            case 'error':
+                                handlers.onError?.(parsed as SseErrorData)
+                                break
+                            case 'done':
+                                handlers.onDone?.(parsed as SseDoneData)
+                                break
+                            case 'keep_alive':
+                                handlers.onKeepAlive?.(parsed as SseKeepAliveData)
+                                break
+                        }
+                    } catch (e) {
+                        console.warn('[SSE] JSON parse error:', currentData, e)
+                    } finally {
+                        currentEvent = ''
+                        currentData = ''
                     }
                 }
+
+                while (true) {
+                    const { value, done } = await reader.read()
+                    if (done) break
+
+                    buffer += decoder.decode(value, { stream: true })
+                    const lines = buffer.split('\n')
+                    buffer = lines.pop() ?? ''
+
+                    for (const line of lines) {
+                        const trimmed = line.trim()
+                        if (trimmed.startsWith('event:')) {
+                            currentEvent = trimmed.slice(6).trim()
+                        }
+                        else if (trimmed.startsWith('data:')) {
+                            const chunk = trimmed.slice(5).trim()
+                            currentData += (currentData ? '\n' : '') + chunk
+                        }
+                        else if (trimmed === '') {
+                            processFrame()
+                        }
+                    }
+                }
+                processFrame()
+            } catch (err) {
+                if ((err as DOMException)?.name !== 'AbortError') {
+                    handlers.onFetchError?.(err)
+                }
             }
-            processFrame()
-        } catch (err) {
-            if ((err as DOMException)?.name !== 'AbortError') {
-                handlers.onFetchError?.(err)
-            }
-        }
-    })()
+        })()
 
     return controller
 }
