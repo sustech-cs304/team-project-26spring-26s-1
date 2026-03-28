@@ -113,11 +113,21 @@ export function chatCompletion (
                 let buffer = ''
                 let currentEvent = ''
                 let currentData = ''
+                let doneEventReceived = false
 
                 const processFrame = () => {
+                    if (!currentData && !currentEvent) {
+                        return
+                    }
+                    // 处理空数据的 done 事件（无 data: 只有 event: done）
+                    if (currentEvent === 'done' && !currentData) {
+                        doneEventReceived = true
+                        handlers.onDone?.({} as SseDoneData)
+                        currentEvent = ''
+                        return
+                    }
                     if (!currentData) {
                         currentEvent = ''
-                        currentData = ''
                         return
                     }
                     try {
@@ -139,6 +149,7 @@ export function chatCompletion (
                                 handlers.onError?.(parsed as SseErrorData)
                                 break
                             case 'done':
+                                doneEventReceived = true
                                 handlers.onDone?.(parsed as SseDoneData)
                                 break
                             case 'keep_alive':
@@ -175,7 +186,26 @@ export function chatCompletion (
                         }
                     }
                 }
-                processFrame()
+                // 处理剩余的 buffer 数据
+                if (buffer.trim()) {
+                    const lines = buffer.trim().split('\n')
+                    for (const line of lines) {
+                        const trimmed = line.trim()
+                        if (trimmed.startsWith('event:')) {
+                            currentEvent = trimmed.slice(6).trim()
+                        }
+                        else if (trimmed.startsWith('data:')) {
+                            const chunk = trimmed.slice(5).trim()
+                            currentData += (currentData ? '\n' : '') + chunk
+                        }
+                    }
+                    processFrame()
+                }
+
+                // 如果流结束但未收到 done 事件，说明是断连
+                if (!doneEventReceived) {
+                    handlers.onFetchError?.(new Error('Connection closed by server'))
+                }
             } catch (err) {
                 if ((err as DOMException)?.name !== 'AbortError') {
                     handlers.onFetchError?.(err)
