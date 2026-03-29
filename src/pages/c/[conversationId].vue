@@ -104,13 +104,14 @@
     import type {
         SseHistoryData,
         SseHistoryResponse,
+        SseHistoryMessageData,
+        SseHistoryToolData,
         SseMessageDeltaData,
         SseToolCallData,
         SseMetaData,
         SseDoneData,
         SseErrorData,
         SseHandlers,
-        Message,
     } from '@/types/conversation'
     import { chatCompletion, cancelChat, generateUUID } from '@/api/conversation'
     import { pendingPrompt } from '@/utils/pendingPrompt'
@@ -294,23 +295,24 @@
 
     /** 将后端历史消息转换为 ChatMessage */
     const historyToMessage = (m: SseHistoryData): ChatMessage => {
+        const historyData = m.data
         const base: ChatMessage = {
-            role: m.type,
+            role: historyData.type === 'tool' ? 'tools' : historyData.role,
             content: '',
             message_id: m.message_id,
             created_at: Number(m.created_at) || Date.now(),
         }
 
-        if (m.type === 'tools') {
-            const toolData = m.data as ToolCallMessage
+        if (historyData.type === 'tool') {
+            const toolData = historyData as SseHistoryToolData
             base.toolCall = toolData
             return base
         }
 
-        const msgData = m.data as Message
+        const msgData = historyData as SseHistoryMessageData
         base.content = msgData.content || ''
 
-        if (m.type === 'assistant' && msgData.thought) {
+        if (msgData.role === 'assistant' && msgData.thought) {
             base.thinking = msgData.thought
             base.thinkingActive = false
         }

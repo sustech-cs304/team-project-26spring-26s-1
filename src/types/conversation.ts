@@ -43,6 +43,7 @@ export interface SseHandlers {
 export type SseEventTypes = 'history' | 'delta' | 'meta_data' | 'tool_call' | 'error' | 'done' | 'keep_alive'
 
 export type MsgRole = 'user' | 'assistant' | 'system' | 'tools'
+export type HistoryMessageRole = Exclude<MsgRole, 'tools'>
 
 export interface ToolCallMessage {
   tool_name: string
@@ -56,21 +57,28 @@ export interface ToolCallMessage {
 }
 
 export interface Message {
-  role: MsgRole;
+  role: HistoryMessageRole;
   content: string
   attachments?: Array<{
     attachment_id: string
     attachment_name: string
   }>
-  thought: string
+  thought?: string
+}
+
+export interface SseHistoryToolData extends ToolCallMessage {
+  type: 'tool'
+}
+
+export interface SseHistoryMessageData extends Message {
+  type: 'message'
 }
 
 export interface SseHistoryData {
   message_id: string;
-  type: MsgRole;
   created_at: string;
   finished_at: string;
-  data: ToolCallMessage | Message;
+  data: SseHistoryToolData | SseHistoryMessageData;
 }
 
 export interface SseHistoryResponse {
