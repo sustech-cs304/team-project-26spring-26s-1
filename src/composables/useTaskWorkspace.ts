@@ -25,32 +25,32 @@ export interface TaskEditorForm {
 }
 
 export const statusFilters = [
-    { label: 'All', value: 'all' },
-    { label: 'Enabled', value: 'enabled' },
-    { label: 'Running', value: 'running' },
-    { label: 'Disabled', value: 'disabled' },
+    { label: '全部', value: 'all' },
+    { label: '启用中', value: 'enabled' },
+    { label: '运行中', value: 'running' },
+    { label: '已禁用', value: 'disabled' },
 ] as const
 
 export const runStatusFilters = [
-    { label: 'All', value: 'all' },
-    { label: 'Success', value: 'success' },
-    { label: 'Failed', value: 'failed' },
-    { label: 'Running', value: 'running' },
-    { label: 'Pending', value: 'pending' },
-    { label: 'Cancelled', value: 'cancelled' },
+    { label: '全部', value: 'all' },
+    { label: '成功', value: 'success' },
+    { label: '失败', value: 'failed' },
+    { label: '运行中', value: 'running' },
+    { label: '等待中', value: 'pending' },
+    { label: '已取消', value: 'cancelled' },
 ] as const
 
 export type StatusFilter = (typeof statusFilters)[number]['value']
 export type RunFilter = (typeof runStatusFilters)[number]['value']
 
 export const cronPresets = [
-    { label: 'Every hour', cron: '0 * * * *' },
-    { label: 'Daily 09:00', cron: '0 9 * * *' },
-    { label: 'Weekdays 09:00', cron: '0 9 * * 1-5' },
-    { label: 'Every 5 min', cron: '*/5 * * * *' },
+    { label: '每小时', cron: '0 * * * *' },
+    { label: '每天 09:00', cron: '0 9 * * *' },
+    { label: '工作日 09:00', cron: '0 9 * * 1-5' },
+    { label: '每 5 分钟', cron: '*/5 * * * *' },
 ]
 
-export function useTaskWorkspace() {
+export function useTaskWorkspace () {
     const tasks = ref<Task[]>([])
     const loading = ref(false)
     const search = ref('')
@@ -114,27 +114,27 @@ export function useTaskWorkspace() {
 
     const editorTitle = computed(() =>
         editorMode.value === 'edit'
-            ? 'Edit task'
+            ? '编辑任务'
             : editorMode.value === 'duplicate'
-                ? 'Duplicate task'
-                : 'New task'
+                ? '复制任务'
+                : '新建任务'
     )
 
     const editorActionLabel = computed(() =>
         editorMode.value === 'edit'
-            ? 'Save changes'
+            ? '保存修改'
             : editorMode.value === 'duplicate'
-                ? 'Create copy'
-                : 'Create task'
+                ? '创建副本'
+                : '创建任务'
     )
 
-    function showSnackbar(text: string, color: 'success' | 'error' = 'success') {
+    function showSnackbar (text: string, color: 'success' | 'error' = 'success') {
         snackbar.text = text
         snackbar.color = color
         snackbar.show = true
     }
 
-    function makeEditorForm(task?: Task | null, duplicate = false): TaskEditorForm {
+    function makeEditorForm (task?: Task | null, duplicate = false): TaskEditorForm {
         return {
             name: duplicate && task ? `${task.name} Copy` : task?.name ?? '',
             description: task?.description ?? '',
@@ -145,44 +145,44 @@ export function useTaskWorkspace() {
         }
     }
 
-    function applyEditorForm(task?: Task | null, duplicate = false) {
+    function applyEditorForm (task?: Task | null, duplicate = false) {
         Object.assign(editorForm, makeEditorForm(task, duplicate))
     }
 
-    function selectTask(taskId: string) {
+    function selectTask (taskId: string) {
         selectedTaskId.value = taskId
         activeTab.value = 'details'
     }
 
-    function openCreate() {
+    function openCreate () {
         editorMode.value = 'create'
         applyEditorForm()
         editorDialog.value = true
     }
 
-    function openEdit() {
+    function openEdit () {
         if (!selectedTask.value) return
         editorMode.value = 'edit'
         applyEditorForm(selectedTask.value)
         editorDialog.value = true
     }
 
-    function openDuplicate() {
+    function openDuplicate () {
         if (!selectedTask.value) return
         editorMode.value = 'duplicate'
         applyEditorForm(selectedTask.value, true)
         editorDialog.value = true
     }
 
-    function addEnvVar() {
+    function addEnvVar () {
         editorForm.env_var_refs.push({ key: '', secret_ref: '' })
     }
 
-    function removeEnvVar(index: number) {
+    function removeEnvVar (index: number) {
         editorForm.env_var_refs.splice(index, 1)
     }
 
-    function normalizeEditorPayload(): TaskCreateForm {
+    function normalizeEditorPayload (): TaskCreateForm {
         return {
             name: editorForm.name.trim(),
             description: editorForm.description.trim(),
@@ -195,7 +195,7 @@ export function useTaskWorkspace() {
         }
     }
 
-    async function loadTasksList() {
+    async function loadTasksList () {
         loading.value = true
         try {
             const response = await getTasks()
@@ -212,13 +212,13 @@ export function useTaskWorkspace() {
             }
         } catch (error) {
             console.error('Failed to load tasks:', error)
-            showSnackbar('Failed to load tasks', 'error')
+            showSnackbar('加载任务失败', 'error')
         } finally {
             loading.value = false
         }
     }
 
-    async function saveTask() {
+    async function saveTask () {
         const payload = normalizeEditorPayload()
         if (!payload.name) return
 
@@ -228,10 +228,10 @@ export function useTaskWorkspace() {
             if (editorMode.value === 'edit' && selectedTask.value) {
                 const updatePayload: TaskUpdateForm = payload
                 savedTask = await updateTask(selectedTask.value.id, updatePayload)
-                showSnackbar('Task updated')
+                showSnackbar('任务已更新')
             } else {
                 savedTask = await createTask(payload)
-                showSnackbar(editorMode.value === 'duplicate' ? 'Task duplicated' : 'Task created')
+                showSnackbar(editorMode.value === 'duplicate' ? '任务已复制' : '任务已创建')
             }
 
             editorDialog.value = false
@@ -239,63 +239,63 @@ export function useTaskWorkspace() {
             selectedTaskId.value = savedTask.id
         } catch (error) {
             console.error('Failed to save task:', error)
-            showSnackbar('Failed to save task', 'error')
+            showSnackbar('保存任务失败', 'error')
         } finally {
             saving.value = false
         }
     }
 
-    async function confirmDelete() {
+    async function confirmDelete () {
         if (!selectedTask.value) return
 
         deleting.value = true
         try {
             await deleteTask(selectedTask.value.id)
             deleteDialog.value = false
-            showSnackbar('Task deleted')
+            showSnackbar('任务已删除')
             await loadTasksList()
         } catch (error) {
             console.error('Failed to delete task:', error)
-            showSnackbar('Failed to delete task', 'error')
+            showSnackbar('删除任务失败', 'error')
         } finally {
             deleting.value = false
         }
     }
 
-    async function toggleTaskStatus() {
+    async function toggleTaskStatus () {
         if (!selectedTask.value) return
         try {
             if (selectedTask.value.status === 'disabled') {
                 await enableTask(selectedTask.value.id)
-                showSnackbar('Task enabled')
+                showSnackbar('任务已启用')
             } else {
                 await disableTask(selectedTask.value.id)
-                showSnackbar('Task disabled')
+                showSnackbar('任务已禁用')
             }
             await loadTasksList()
         } catch (error) {
             console.error('Failed to toggle task:', error)
-            showSnackbar('Failed to update task status', 'error')
+            showSnackbar('更新任务状态失败', 'error')
         }
     }
 
-    async function triggerNow() {
+    async function triggerNow () {
         if (!selectedTask.value) return
         triggering.value = true
         try {
             await triggerTask(selectedTask.value.id)
-            showSnackbar('Task triggered')
+            showSnackbar('任务已触发')
             activeTab.value = 'runs'
             await Promise.all([loadTasksList(), loadRuns()])
         } catch (error) {
             console.error('Failed to trigger task:', error)
-            showSnackbar('Failed to trigger task', 'error')
+            showSnackbar('触发任务失败', 'error')
         } finally {
             triggering.value = false
         }
     }
 
-    async function loadRuns() {
+    async function loadRuns () {
         if (!selectedTask.value) return
         runsLoading.value = true
         try {
@@ -317,29 +317,29 @@ export function useTaskWorkspace() {
             }
         } catch (error) {
             console.error('Failed to load runs:', error)
-            showSnackbar('Failed to load runs', 'error')
+            showSnackbar('加载运行记录失败', 'error')
         } finally {
             runsLoading.value = false
         }
     }
 
-    function selectRun(runId: string) {
+    function selectRun (runId: string) {
         selectedRunId.value = runId
     }
 
-    async function cancelSelectedRun() {
+    async function cancelSelectedRun () {
         if (!selectedRun.value || (selectedRun.value.status !== 'pending' && selectedRun.value.status !== 'running')) return
         try {
             await cancelRun(selectedRun.value.id)
-            showSnackbar('Run cancelled')
+            showSnackbar('运行已取消')
             await loadRuns()
         } catch (error) {
             console.error('Failed to cancel run:', error)
-            showSnackbar('Failed to cancel run', 'error')
+            showSnackbar('取消运行失败', 'error')
         }
     }
 
-    function formatLogLine(log: LogEntry) {
+    function formatLogLine (log: LogEntry) {
         const pieces = [formatDateTime(log.timestamp)]
         if (log.log_type === 'tool_call') pieces.push(`[tool] ${log.tool_name ?? 'unknown'}`)
         else if (log.content) pieces.push(String(log.content))
@@ -357,7 +357,7 @@ export function useTaskWorkspace() {
         } catch (error) {
             console.error('Failed to load logs:', error)
             logCache.value[runId] = []
-            showSnackbar('Failed to load logs', 'error')
+            showSnackbar('加载日志失败', 'error')
         } finally {
             logsLoading.value = false
         }

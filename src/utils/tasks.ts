@@ -117,9 +117,9 @@ export const TRIGGER_ICON: Record<RunTrigger, string> = {
 }
 
 export const TRIGGER_LABEL: Record<RunTrigger, string> = {
-    cron: 'Cron',
-    manual: 'Manual',
-    agent: 'Agent',
+    cron: '定时',
+    manual: '手动',
+    agent: '智能体',
     telegram: 'Telegram',
 }
 
@@ -129,18 +129,32 @@ export const MODE_ICON: Record<ExecutionMode, string> = {
 }
 
 export const MODE_LABEL: Record<ExecutionMode, string> = {
-    prompt: 'Prompt',
-    script: 'Script',
+    prompt: '提示词',
+    script: '脚本',
 }
 
-export function formatDuration(ms?: number | null): string {
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+    enabled: '启用中',
+    disabled: '已禁用',
+    running: '运行中',
+}
+
+export const RUN_STATUS_LABEL: Record<RunStatus, string> = {
+    pending: '等待中',
+    running: '运行中',
+    success: '成功',
+    failed: '失败',
+    cancelled: '已取消',
+}
+
+export function formatDuration (ms?: number | null): string {
     if (ms == null) return '—'
     if (ms < 1000) return `${ms}ms`
     if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
     return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
 }
 
-export function formatDateTime(iso?: string | null): string {
+export function formatDateTime (iso?: string | null): string {
     if (!iso) return '—'
     try {
         // Handle numeric string timestamps (seconds or milliseconds)
@@ -157,17 +171,17 @@ export function formatDateTime(iso?: string | null): string {
     }
 }
 
-export function cronToHuman(cron: string | null): string {
-    if (!cron) return 'Manual only'
+export function cronToHuman (cron: string | null): string {
+    if (!cron) return '仅手动执行'
     const parts = cron.trim().split(/\s+/)
     if (parts.length !== 5) return cron
 
     const [min, hour, dom, mon, dow] = parts
 
-    if (min === '*' && hour === '*') return 'Every minute'
-    if (min!.startsWith('*/')) return `Every ${min!.slice(2)} minutes`
-    if (hour === '*') return `Every hour at :${min!.padStart(2, '0')}`
-    if (dom === '*' && mon === '*' && dow === '*') return `Daily at ${hour!.padStart(2, '0')}:${min!.padStart(2, '0')}`
-    if (dom === '*' && mon === '*' && dow === '1-5') return `Weekdays at ${hour!.padStart(2, '0')}:${min!.padStart(2, '0')}`
+    if (min === '*' && hour === '*') return '每分钟'
+    if (min!.startsWith('*/')) return `每 ${min!.slice(2)} 分钟`
+    if (hour === '*') return `每小时 :${min!.padStart(2, '0')}`
+    if (dom === '*' && mon === '*' && dow === '*') return `每天 ${hour!.padStart(2, '0')}:${min!.padStart(2, '0')}`
+    if (dom === '*' && mon === '*' && dow === '1-5') return `工作日 ${hour!.padStart(2, '0')}:${min!.padStart(2, '0')}`
     return cron
 }

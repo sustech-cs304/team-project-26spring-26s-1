@@ -1,75 +1,47 @@
 <template>
-    <v-card rounded="lg" elevation="0" border>
-        <v-card-text class="pb-2">
-            <v-text-field
-                :model-value="search"
-                variant="solo-filled"
-                flat
-                hide-details
-                rounded="lg"
-                density="compact"
-                prepend-inner-icon="mdi-magnify"
-                placeholder="Search tasks"
-                @update:model-value="emit('update:search', String($event ?? ''))"
-            />
-            <v-chip-group
-                :model-value="statusFilter"
-                selected-class="text-primary"
-                class="mt-3"
-                mandatory
-                @update:model-value="emit('update:statusFilter', $event)"
-            >
-                <v-chip
-                    v-for="item in statusFilters"
-                    :key="item.value"
-                    :value="item.value"
-                    rounded="lg"
-                    filter
-                    variant="text"
-                    size="small"
-                >
+    <div>
+        <div class="px-2 pt-1">
+            <v-text-field :model-value="search" variant="solo-filled" flat hide-details rounded="lg" density="compact"
+                prepend-inner-icon="mdi-magnify" placeholder="搜索任务"
+                @update:model-value="emit('update:search', String($event ?? ''))" />
+            <v-chip-group :model-value="statusFilter" selected-class="text-primary"
+                @update:model-value="emit('update:statusFilter', $event)">
+                <v-chip v-for="item in statusFilters" :key="item.value" :value="item.value" rounded="lg" filter
+                    variant="text" size="small">
                     {{ item.label }}
                 </v-chip>
             </v-chip-group>
-        </v-card-text>
+        </div>
 
         <v-divider />
 
-        <v-progress-linear v-if="loading" indeterminate />
+        <div v-if="loading" class="d-flex justify-center py-4">
+            <v-progress-circular indeterminate size="24" color="primary" />
+        </div>
 
-        <v-list v-else-if="tasks.length" lines="two" class="py-1">
-            <v-list-item
-                v-for="task in tasks"
-                :key="task.id"
-                :active="selectedTaskId === task.id"
-                rounded="lg"
-                class="mx-2 mb-1"
-                @click="emit('select', task.id)"
-            >
+        <v-list v-else-if="tasks.length" nav density="compact" class="py-1">
+            <v-list-item v-for="task in tasks" :key="task.id" :active="selectedTaskId === task.id" rounded="lg"
+                color="primary" slim prepend-gap="10" :ripple="false" class="task-item"
+                @click="emit('select', task.id)">
                 <template #prepend>
-                    <v-avatar size="32" rounded="lg" color="surface-variant">
-                        <v-icon size="16">{{ MODE_ICON[task.execution_mode] }}</v-icon>
-                    </v-avatar>
+                    <v-icon size="small">{{ MODE_ICON[task.execution_mode] }}</v-icon>
                 </template>
-                <v-list-item-title class="font-weight-medium text-body-2">{{ task.name }}</v-list-item-title>
-                <v-list-item-subtitle class="text-caption">
-                    {{ task.cron_expression ? cronToHuman(task.cron_expression) : 'Manual only' }}
+                <v-list-item-title class="task-item__title">{{ task.name }}</v-list-item-title>
+                <v-list-item-subtitle class="task-item__subtitle">
+                    {{ task.last_run_at ? formatRelativeRun(task.last_run_at) : '暂无运行记录' }}
                 </v-list-item-subtitle>
                 <template #append>
-                    <div class="d-flex flex-column align-end ga-1">
-                        <v-chip :color="TASK_STATUS_COLOR[task.status]" size="x-small" variant="tonal">
-                            {{ task.status }}
-                        </v-chip>
-                        <span class="text-caption text-medium-emphasis">
-                            {{ task.last_run_at ? formatRelativeRun(task.last_run_at) : 'No runs' }}
-                        </span>
-                    </div>
+                    <v-chip :color="TASK_STATUS_COLOR[task.status]" size="x-small" variant="tonal">
+                        {{ task.status }}
+                    </v-chip>
                 </template>
             </v-list-item>
         </v-list>
 
-        <v-empty-state v-else icon="mdi-format-list-checks" text="No tasks found" title="" />
-    </v-card>
+        <div v-else class="text-center py-4 text-body-medium opacity-70">
+            暂无任务
+        </div>
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -91,7 +63,7 @@
         select: [taskId: string]
     }>()
 
-    function formatRelativeRun(value: string) {
+    function formatRelativeRun (value: string) {
         const date = new Date(value)
         if (Number.isNaN(date.getTime())) return formatDateTime(value)
 
@@ -105,3 +77,15 @@
         return `${minutes}m ago`
     }
 </script>
+
+<style scoped>
+    .task-item__title {
+        font-size: 0.92rem;
+        font-weight: 500;
+    }
+
+    .task-item__subtitle {
+        font-size: 0.78rem;
+        margin-top: 2px;
+    }
+</style>

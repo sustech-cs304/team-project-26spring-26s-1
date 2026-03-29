@@ -1,5 +1,5 @@
 <template>
-    <v-sheet rounded="lg" border class="my-2 pa-3 text-body-2">
+    <v-sheet rounded="lg" border class="my-2 pa-3 text-body-large">
         <!-- 标题行：工具名左侧，审批标签右侧 -->
         <div class="d-flex align-center mb-2">
             <v-icon size="16" color="warning" class="mr-2">mdi-shield-alert-outline</v-icon>
