@@ -1,12 +1,26 @@
 ﻿// ─── Calendar Types ────────────────────────────────────────────────────────────
 export type EventType = 'exam' | 'class' | 'personal' | 'deadline' | 'meeting'
+export type EventSource = string
+export type CalendarColorName = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'pink' | 'gray'
+export type CalendarInformType = 'none' | '10_minutes_before' | '5_minutes_before' | '1_hour_before' | '30_minutes_before' | 'at_start'
 
 export interface CalEvent {
     id: number
     title: string
     type: EventType
+    source: EventSource
+    sourceId?: number
+    sourceVisible?: boolean
+    /** Backend field mirror */
+    informType?: CalendarInformType
+    /** Backend field mirror */
+    color?: string
     /** HH:MM or HH:MM - HH:MM */
     time: string
+    /** HH:MM */
+    startTime?: string
+    /** HH:MM */
+    endTime?: string
     /** YYYY-MM-DD */
     date: string
     /** YYYY-MM-DD – only set when event spans multiple days (end date) */
@@ -14,6 +28,7 @@ export interface CalEvent {
     location?: string
     courseId?: string
     description?: string
+    link?: string
     allDay?: boolean
 }
 
@@ -32,6 +47,34 @@ export const getDaysInMonth = (year: number, month: number): number =>
 /** Returns the day-of-week offset so the grid starts on Sunday */
 export const firstDayOfWeekOffset = (year: number, month: number): number =>
     new Date(year, month, 1).getDay()
+
+export const EVENT_SOURCES: { value: EventSource; label: string }[] = [
+    { value: 'course', label: 'Course' },
+    { value: 'work', label: 'Work' },
+    { value: 'life', label: 'Life' },
+    { value: 'club', label: 'Club' },
+    { value: 'family', label: 'Family' },
+]
+
+export const CALENDAR_COLOR_HEX: Record<CalendarColorName, string> = {
+    red: '#ef4444',
+    orange: '#f97316',
+    yellow: '#eab308',
+    green: '#22c55e',
+    blue: '#3b82f6',
+    purple: '#8b5cf6',
+    pink: '#ec4899',
+    gray: '#6b7280',
+}
+
+export const CALENDAR_INFORM_OPTIONS: { value: CalendarInformType; label: string }[] = [
+    { value: 'none', label: 'None' },
+    { value: '10_minutes_before', label: '10 minutes before' },
+    { value: '5_minutes_before', label: '5 minutes before' },
+    { value: '30_minutes_before', label: '30 minutes before' },
+    { value: '1_hour_before', label: '1 hour before' },
+    { value: 'at_start', label: 'At start' },
+]
 
 /**
  * Build the full 6-row (42-cell) calendar grid for a given month.
@@ -52,7 +95,7 @@ export function buildMonthGrid (year: number, month: number): CalendarCell[] {
         const dateKey = toDateKey(d)
         cells.push({
             date: d, dateKey, currentMonth: false, isToday: dateKey === todayKey,
-            day: undefined
+            day: d.getDate()
         })
     }
 
@@ -62,7 +105,7 @@ export function buildMonthGrid (year: number, month: number): CalendarCell[] {
         const dateKey = toDateKey(date)
         cells.push({
             date, dateKey, currentMonth: true, isToday: dateKey === todayKey,
-            day: undefined
+            day: d
         })
     }
 
@@ -75,7 +118,7 @@ export function buildMonthGrid (year: number, month: number): CalendarCell[] {
         const dateKey = toDateKey(date)
         cells.push({
             date, dateKey, currentMonth: false, isToday: dateKey === todayKey,
-            day: undefined
+            day: date.getDate()
         })
     }
 
@@ -116,8 +159,24 @@ export const EVENT_TYPE_RAW_COLOR: Record<EventType, string> = {
     meeting: 'var(--v-theme-secondary)',
 }
 
+export const EVENT_SOURCE_RAW_COLOR: Record<string, string> = {
+    course: '#2563eb',
+    work: '#475569',
+    life: '#059669',
+    club: '#9333ea',
+    family: '#ea580c',
+}
+
 export const eventTypeColor = (type: EventType) => EVENT_TYPE_COLOR[type] ?? 'primary'
 export const eventTypeIcon = (type: EventType) => EVENT_TYPE_ICON[type] ?? 'mdi-calendar'
+export const eventSourceRawColor = (source: EventSource) => EVENT_SOURCE_RAW_COLOR[source] ?? '#2563eb'
+export const colorNameToHex = (name: CalendarColorName) => CALENDAR_COLOR_HEX[name]
+export const colorHexToName = (hex?: string): CalendarColorName | null => {
+    if (!hex) return null
+    const normalized = hex.trim().toLowerCase()
+    const entry = Object.entries(CALENDAR_COLOR_HEX).find(([, v]) => v.toLowerCase() === normalized)
+    return entry ? entry[0] as CalendarColorName : null
+}
 
 /** Get all events for a specific date key */
 export const getEventsForDate = (events: CalEvent[], dateKey: string): CalEvent[] =>
@@ -125,7 +184,18 @@ export const getEventsForDate = (events: CalEvent[], dateKey: string): CalEvent[
 
 /** Sort events by time ascending */
 export const sortEvents = (events: CalEvent[]): CalEvent[] =>
-    [...events].sort((a, b) => a.time.localeCompare(b.time))
+    [...events].sort((a, b) => getEventStartTime(a).localeCompare(getEventStartTime(b)))
+
+export const getEventStartTime = (event: CalEvent): string => event.startTime ?? event.time ?? ''
+
+export const getEventEndTime = (event: CalEvent): string => event.endTime ?? ''
+
+export const getEventDisplayTime = (event: CalEvent): string => {
+    const start = getEventStartTime(event)
+    const end = getEventEndTime(event)
+    if (start && end) return `${start} - ${end}`
+    return start
+}
 
 /** Generate a new unique id */
 export const nextId = (items: { id: number }[]): number =>

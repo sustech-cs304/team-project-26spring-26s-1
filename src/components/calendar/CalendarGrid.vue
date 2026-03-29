@@ -19,6 +19,7 @@
             <!-- 事件 chips -->
             <div class="cell-events">
                 <CalendarEventChip v-for="ev in visibleEvents(cell)" :key="ev.id" :event="ev"
+                    :dimmed="isDimmed(ev)"
                     @click="$emit('eventClick', ev)" />
                 <span v-if="hiddenCount(cell) > 0" class="text-caption text-disabled"
                     style="font-size:10px;padding-left:5px;">+{{ hiddenCount(cell) }} more</span>
@@ -35,6 +36,7 @@
     const props = defineProps<{
         cells: CalendarCell[]
         events: CalEvent[]
+        highlightedSources?: CalEvent['source'][]
         selectedCell?: CalendarCell | null
         dragFrom?: CalendarCell | null
         dragTo?: CalendarCell | null
@@ -56,6 +58,11 @@
     const visibleEvents = (cell: CalendarCell) => cellEvents(cell).slice(0, MAX_CHIPS)
     const hiddenCount = (cell: CalendarCell) => Math.max(0, cellEvents(cell).length - MAX_CHIPS)
 
+    const isDimmed = (event: CalEvent) => {
+        const sourceOn = props.highlightedSources?.includes(event.source) ?? true
+        return !sourceOn
+    }
+
     const isSelected = (cell: CalendarCell) => props.selectedCell?.dateKey === cell.dateKey
 
     const inDragRange = (cell: CalendarCell) => {
@@ -72,9 +79,10 @@
     .cal-grid {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
+        grid-template-rows: 28px repeat(6, minmax(0, 1fr));
         border-left: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
         border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        flex: 1;
+        height: 100%;
         min-height: 0;
     }
 
@@ -94,13 +102,14 @@
         border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
         border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
         padding: 4px 5px 3px;
-        min-height: 80px;
+        min-height: 0;
         cursor: pointer;
         display: flex;
         flex-direction: column;
         gap: 2px;
         user-select: none;
         transition: background 0.1s;
+        overflow: hidden;
     }
 
     .cal-cell:hover {
@@ -140,6 +149,14 @@
         display: flex;
         flex-direction: column;
         gap: 1px;
+        min-height: 0;
+        flex: 1;
         overflow: hidden;
+    }
+
+    .cell-events .text-caption {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 </style>

@@ -1,100 +1,141 @@
-﻿<template>
+<template>
     <div class="cal-page d-flex flex-column h-100">
 
-        <!-- 顶栏 -->
-        <div class="cal-toolbar px-5 py-2 border-b d-flex align-center justify-space-between flex-shrink-0">
+        <div class="cal-toolbar px-4 py-2 border-b d-flex align-center justify-space-between flex-shrink-0">
             <div class="d-flex align-center ga-2">
                 <v-btn icon size="x-small" variant="text" @click="prevMonth">
                     <v-icon size="16">mdi-chevron-left</v-icon>
                 </v-btn>
-                <span class="text-subtitle-2 font-weight-bold" style="min-width:130px;text-align:center;">
-                    {{ monthLabel }}
-                </span>
+                <span class="text-subtitle-2 font-weight-bold toolbar-month">{{ monthLabel }}</span>
                 <v-btn icon size="x-small" variant="text" @click="nextMonth">
                     <v-icon size="16">mdi-chevron-right</v-icon>
                 </v-btn>
                 <v-btn size="x-small" variant="outlined" class="ml-1" @click="goToday">Today</v-btn>
             </div>
+
             <div class="d-flex align-center ga-2">
-                <!-- type filter chips -->
-                <v-chip v-for="f in typeFilters" :key="f.value" :prepend-icon="f.icon" size="x-small"
-                    :variant="activeFilters.includes(f.value) ? 'tonal' : 'text'"
-                    :color="activeFilters.includes(f.value) ? 'primary' : undefined" @click="toggleFilter(f.value)">{{
-                        f.label }}</v-chip>
-                <v-btn size="x-small" color="primary" @click="openCreate(todayKey)">
+                <v-btn icon size="x-small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
+                    <v-icon size="14">{{ searchRailCollapsed ? 'mdi-dock-right' : 'mdi-dock-window' }}</v-icon>
+                    <v-tooltip activator="parent">{{ searchRailCollapsed ? 'Show search' : 'Hide search' }}</v-tooltip>
+                </v-btn>
+                <v-btn size="x-small" color="primary" @click="openCreate(selectedCell?.dateKey ?? todayKey)">
                     <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
                 </v-btn>
             </div>
         </div>
 
-        <!-- 主体 -->
         <div class="cal-body d-flex flex-grow-1 min-height-0">
+            <aside class="left-rail border-e d-flex flex-column">
+                <div class="mini-card pa-3 border-b">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <span class="text-caption text-medium-emphasis">Mini Calendar</span>
+                        <span class="text-caption font-weight-bold">{{ monthLabel }}</span>
+                    </div>
+                    <div class="mini-grid">
+                        <span v-for="h in miniHeaders" :key="h" class="mini-weekday">{{ h }}</span>
+                        <button v-for="c in cells" :key="`mini-${c.dateKey}`" class="mini-day"
+                            :class="{ muted: !c.currentMonth, today: c.isToday, active: selectedCell?.dateKey === c.dateKey }"
+                            @click="onCellClick(c)">
+                            {{ c.day }}
+                        </button>
+                    </div>
+                </div>
 
-            <!-- 日历网格 -->
-            <div class="cal-grid-wrap flex-grow-1 d-flex flex-column min-width-0">
-                <CalendarGrid :cells="cells" :events="filteredEvents" :selected-cell="selectedCell"
-                    :drag-from="dragFrom" :drag-to="dragTo" @cell-click="onCellClick" @event-click="onEventClick"
-                    @drag-start="onDragStart" @drag-enter="onDragEnter" @drag-end="onDragEnd"
-                    @context-menu="onContextMenu" />
-            </div>
+                <div class="pa-3 border-b">
+                    <div class="text-caption text-medium-emphasis mb-2">Source</div>
+                    <div class="filter-strip-list">
+                        <v-chip v-for="src in sourceOptions" :key="src.value" class="filter-strip source-strip" size="small" label
+                            :variant="activeSource === src.value ? 'flat' : 'outlined'" :style="sourceChipStyle(src.value)"
+                            @click="toggleSourceSelection(src.value)">
+                            {{ src.label }}
+                            <v-btn icon size="x-small" variant="text" class="chip-eye-btn"
+                                :aria-label="sourceHighlighted(src.value) ? 'Hide highlight' : 'Show highlight'"
+                                @click.stop="toggleSourceHighlight(src.value)">
+                                <v-icon size="14">{{ sourceHighlighted(src.value) ? 'mdi-eye' : 'mdi-eye-off' }}</v-icon>
+                            </v-btn>
+                        </v-chip>
+                    </div>
+                </div>
 
-            <!-- 右侧事件面板 -->
-            <transition name="panel-slide">
-                <CalendarEventPanel v-if="selectedCell" :date-key="selectedCell.dateKey" :events="selectedDayEvents"
-                    :selected-event-id="selectedEventId" class="flex-shrink-0" @close="selectedCell = null"
-                    @create="openCreate(selectedCell!.dateKey)" @select="ev => selectedEventId = ev.id" @edit="openEdit"
-                    @delete="deleteEvent" />
-            </transition>
+            </aside>
 
+            <CalendarEventPanel :title="panelTitle" :subtitle="panelSubtitle" :events="panelEvents"
+                :selected-event-id="selectedEventId" @create="openCreate(selectedCell?.dateKey ?? todayKey)"
+                @select="onEventClick" @edit="openEdit" @delete="deleteEvent" />
+
+            <section class="cal-grid-wrap flex-grow-1 d-flex flex-column min-width-0" @wheel.prevent="onCalendarWheel">
+                <CalendarGrid :cells="cells" :events="displayEvents" :highlighted-sources="highlightedSourceList"
+                    :selected-cell="selectedCell" @cell-click="onCellClick" @event-click="onEventClick" />
+
+                <v-card v-if="selectedEventDetail" class="event-floating-card" rounded="lg" elevation="6">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <div class="text-caption text-medium-emphasis">Event Details</div>
+                        <v-btn icon size="x-small" variant="text" @click="selectedEventId = null">
+                            <v-icon size="14">mdi-close</v-icon>
+                        </v-btn>
+                    </div>
+
+                    <div class="text-body-2 font-weight-bold mb-2">{{ selectedEventDetail.title }}</div>
+
+                    <div class="floating-row"><span class="label">Event ID</span><span>{{ selectedEventDetail.id }}</span></div>
+                    <div class="floating-row"><span class="label">Source</span><span>{{ selectedEventDetail.source }}</span></div>
+                    <div class="floating-row"><span class="label">Color</span><span>{{ selectedEventDetail.color || '-' }}</span></div>
+                    <div class="floating-row"><span class="label">Start Time</span><span>{{ getEventStartTime(selectedEventDetail) || '-' }}</span></div>
+                    <div class="floating-row"><span class="label">End Time</span><span>{{ getEventEndTime(selectedEventDetail) || '-' }}</span></div>
+                    <div class="floating-row"><span class="label">Time</span><span>{{ getEventDisplayTime(selectedEventDetail) || '-' }}</span></div>
+                    <div class="floating-row"><span class="label">Location</span><span>{{ selectedEventDetail.location || '-' }}</span></div>
+                    <div class="floating-row"><span class="label">Description</span><span>{{ selectedEventDetail.description || '-' }}</span></div>
+                    <div class="floating-row"><span class="label">Link</span>
+                        <a v-if="selectedEventDetail.link" class="floating-link" :href="selectedEventDetail.link" target="_blank" rel="noopener noreferrer">
+                            {{ selectedEventDetail.link }}
+                        </a>
+                        <span v-else>-</span>
+                    </div>
+                </v-card>
+            </section>
+
+            <aside v-if="!searchRailCollapsed" class="search-rail border-s d-flex flex-column">
+                <div class="pa-3 border-b">
+                    <div class="text-subtitle-2 font-weight-bold">Search Events</div>
+                </div>
+
+                <div class="pa-3 d-flex flex-column ga-2">
+                    <v-text-field v-model="searchForm.keyword" label="Keyword" density="compact" variant="outlined"
+                        hide-details placeholder="title / location / link" />
+
+                    <v-btn size="x-small" variant="text" class="justify-start advanced-toggle"
+                        @click="showAdvanced = !showAdvanced">
+                        <v-icon size="14" class="mr-1">{{ showAdvanced ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>
+                        Advanced
+                    </v-btn>
+
+                    <v-expand-transition>
+                        <div v-show="showAdvanced" class="d-flex flex-column ga-2">
+                            <v-text-field v-model="searchForm.id" label="Event ID" density="compact" variant="outlined"
+                                hide-details type="number" />
+                            <v-select v-model="searchForm.source" :items="dialogSourceItems" label="Source"
+                                density="compact" variant="outlined" hide-details clearable />
+                            <v-text-field v-model="searchForm.startDate" label="Start Date" density="compact" variant="outlined"
+                                type="date" hide-details />
+                            <v-text-field v-model="searchForm.endDate" label="End Date" density="compact" variant="outlined"
+                                type="date" hide-details />
+                        </div>
+                    </v-expand-transition>
+
+                    <div class="d-flex ga-2 mt-1">
+                        <v-btn size="small" color="primary" :loading="searchLoading" @click="runSearch">Search</v-btn>
+                        <v-btn size="small" variant="outlined" @click="resetSearch">Reset</v-btn>
+                    </div>
+
+                    <div class="text-caption text-medium-emphasis mt-2">{{ events.length }} result{{ events.length === 1 ? '' : 's' }}</div>
+                    <div v-if="searchError" class="text-caption text-error mt-1">{{ searchError }}</div>
+                </div>
+            </aside>
         </div>
 
-        <!-- 右键菜单 -->
-        <div v-if="ctxMenu.show" class="ctx-menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
-            @click.stop>
-            <button class="ctx-item" @click="openCreate(ctxMenu.dateKey); ctxMenu.show = false">
-                <v-icon size="13" class="mr-2">mdi-calendar-plus</v-icon>New Event
-            </button>
-            <button class="ctx-item" @click="pasteEvent(); ctxMenu.show = false" :disabled="!clipboard">
-                <v-icon size="13" class="mr-2">mdi-content-paste</v-icon>Paste Event
-            </button>
-        </div>
-
-        <!-- 拖选批量建事件提示 -->
-        <v-snackbar v-model="dragSnackbar" timeout="4000" location="bottom center" color="primary">
-            <span class="text-caption">Drag-selected <strong>{{ dragRangeCount }}</strong> day(s).
-                <v-btn size="x-small" variant="text" color="white" @click="openBatchCreate">Create Events</v-btn>
-            </span>
-        </v-snackbar>
-
-        <!-- 事件编辑弹窗 -->
         <CalendarEventDialog v-model="dialogOpen" :event="editingEvent" :default-date="dialogDefaultDate"
+            :source-items="dialogSourceItems"
             @submit="saveEvent" />
-
-        <!-- 批量建事件弹窗 -->
-        <v-dialog v-model="batchDialogOpen" max-width="380">
-            <v-card rounded="lg">
-                <v-card-title class="text-body-2 font-weight-bold px-4 pt-4 pb-2">
-                    Batch Create Events
-                </v-card-title>
-                <v-card-text class="px-4 py-2 text-caption text-medium-emphasis">
-                    Create the same event for {{ dragRangeCount }} selected days ({{ dragFrom?.dateKey }} {{
-                        dragTo?.dateKey }}).
-                </v-card-text>
-                <v-card-text class="px-4 pt-0 pb-3">
-                    <v-text-field v-model="batchTitle" label="Event title" density="compact" variant="outlined"
-                        hide-details autofocus />
-                </v-card-text>
-                <v-card-actions class="px-4 py-3 justify-end ga-2">
-                    <v-btn variant="outlined" size="small" @click="batchDialogOpen = false">Cancel</v-btn>
-                    <v-btn color="primary" size="small" :disabled="!batchTitle.trim()"
-                        @click="confirmBatch">Create</v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
-
-        <!-- 全局点击关闭右键菜单 -->
-        <div v-if="ctxMenu.show" class="ctx-overlay" @click="ctxMenu.show = false"
-            @contextmenu.prevent="ctxMenu.show = false" />
     </div>
 </template>
 
@@ -102,222 +143,507 @@
     import CalendarGrid from '@/components/calendar/CalendarGrid.vue'
     import CalendarEventPanel from '@/components/calendar/CalendarEventPanel.vue'
     import CalendarEventDialog from '@/components/calendar/CalendarEventDialog.vue'
-    import type { CalEvent, CalendarCell, EventType } from '@/utils/calendar'
-    import { buildDefaultEvents } from '@/api/calendar'
     import {
-        buildMonthGrid, getEventsForDate,
-        nextId, toDateKey, EVENT_TYPE_ICON, EVENT_TYPE_COLOR,
+        buildDefaultEvents,
+        createCalendarEvent,
+        deleteCalendarEvent,
+        getCalendarSources,
+        searchCalendarEvents,
+        updateCalendarEvent,
+    } from '@/api/calendar'
+    import type { CalEvent, CalendarCell } from '@/utils/calendar'
+    import {
+        EVENT_SOURCES,
+        colorNameToHex,
+        eventSourceRawColor,
+        getEventDisplayTime,
+        getEventEndTime,
+        getEventStartTime,
+        getEventsForDate,
+        nextId,
+        toDateKey,
     } from '@/utils/calendar'
 
-    //  State 
+    const DAY_MS = 24 * 60 * 60 * 1000
+
+    const startOfWeek = (input: Date) => {
+        const d = new Date(input.getFullYear(), input.getMonth(), input.getDate())
+        d.setDate(d.getDate() - d.getDay())
+        return d
+    }
+
+    const addDays = (input: Date, days: number) => {
+        const d = new Date(input)
+        d.setDate(d.getDate() + days)
+        return d
+    }
+
+    const shiftVisibleMonth = (offset: number) => {
+        const centerDate = addDays(viewStartDate.value, 21)
+        const targetMonthStart = new Date(centerDate.getFullYear(), centerDate.getMonth() + offset, 1)
+        viewStartDate.value = startOfWeek(targetMonthStart)
+    }
+
     const today = new Date()
-    const year = ref(today.getFullYear())
-    const month = ref(today.getMonth())
+    const viewStartDate = ref(startOfWeek(new Date(today.getFullYear(), today.getMonth(), 1)))
     const todayKey = toDateKey(today)
 
-    const events = ref<CalEvent[]>(buildDefaultEvents())
+    const events = ref<CalEvent[]>([])
     const selectedCell = ref<CalendarCell | null>(null)
     const selectedEventId = ref<number | null>(null)
-    const clipboard = ref<CalEvent | null>(null)
+    const activeSource = ref<CalEvent['source'] | null>(null)
+    const sourceCatalog = ref<{ id: number; title: string; isVisible: boolean; colorHex: string }[]>([])
 
-    // Drag-select
-    const dragFrom = ref<CalendarCell | null>(null)
-    const dragTo = ref<CalendarCell | null>(null)
-    const isDragging = ref(false)
-    const dragSnackbar = ref(false)
-    const batchDialogOpen = ref(false)
-    const batchTitle = ref('')
+    const searchForm = reactive({
+        keyword: '',
+        id: '',
+        source: '',
+        startDate: '',
+        endDate: '',
+    })
+    const searchLoading = ref(false)
+    const searchError = ref('')
+    const showAdvanced = ref(false)
+    const searchRailCollapsed = ref(false)
 
-    // Dialog
     const dialogOpen = ref(false)
     const editingEvent = ref<CalEvent | null>(null)
     const dialogDefaultDate = ref('')
+    const lastWheelAt = ref(0)
 
-    // Right-click menu
-    const ctxMenu = reactive({ show: false, x: 0, y: 0, dateKey: '' })
+    const miniHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+    const sourceOptions = computed<{ value: string; label: string }[]>(() => {
+        if (sourceCatalog.value.length === 0) return EVENT_SOURCES
+        return sourceCatalog.value.map(item => ({ value: item.title, label: item.title }))
+    })
+    const dialogSourceItems = computed(() => sourceOptions.value.map(item => ({ title: item.label, value: item.value })))
 
-    // Type filters
-    const typeFilters = [
-        { value: 'class', label: 'Class', icon: EVENT_TYPE_ICON.class },
-        { value: 'exam', label: 'Exam', icon: EVENT_TYPE_ICON.exam },
-        { value: 'deadline', label: 'Deadline', icon: EVENT_TYPE_ICON.deadline },
-        { value: 'personal', label: 'Personal', icon: EVENT_TYPE_ICON.personal },
-        { value: 'meeting', label: 'Meeting', icon: EVENT_TYPE_ICON.meeting },
-    ]
-    const activeFilters = ref<string[]>([])
+    const sourceColorMap = computed(() => {
+        const map = new Map<string, string>()
+        sourceCatalog.value.forEach(item => map.set(item.title, item.colorHex))
+        return map
+    })
 
-    //  Computed 
-    const cells = computed(() => buildMonthGrid(year.value, month.value))
+    const highlightedSources = ref(new Set<CalEvent['source']>())
+
+    watch(sourceOptions, (items) => {
+        highlightedSources.value = new Set(items.map(item => item.value))
+    }, { immediate: true })
+
+    const sourceHighlighted = (source: CalEvent['source']) => highlightedSources.value.has(source)
+
+    const toggleSourceHighlight = (source: CalEvent['source']) => {
+        const next = new Set(highlightedSources.value)
+        if (next.has(source)) next.delete(source)
+        else next.add(source)
+        highlightedSources.value = next
+    }
+
+    const toggleSourceSelection = (source: CalEvent['source']) => {
+        activeSource.value = activeSource.value === source ? null : source
+    }
+
+    const highlightedSourceList = computed(() => Array.from(highlightedSources.value))
+
+    const cells = computed<CalendarCell[]>(() => {
+        const centerDate = addDays(viewStartDate.value, 21)
+        const anchorYear = centerDate.getFullYear()
+        const anchorMonth = centerDate.getMonth()
+        const todayDateKey = toDateKey(new Date())
+
+        return Array.from({ length: 42 }, (_, index) => {
+            const date = addDays(viewStartDate.value, index)
+            return {
+                day: date.getDate(),
+                date,
+                dateKey: toDateKey(date),
+                currentMonth: date.getFullYear() === anchorYear && date.getMonth() === anchorMonth,
+                isToday: toDateKey(date) === todayDateKey,
+            }
+        })
+    })
 
     const monthLabel = computed(() => {
-        const d = new Date(year.value, month.value, 1)
+        const d = addDays(viewStartDate.value, 21)
         return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     })
 
-    const filteredEvents = computed(() =>
-        activeFilters.value.length === 0
-            ? events.value
-            : events.value.filter(e => activeFilters.value.includes(e.type))
+    const visibleStart = computed(() => cells.value[0]?.dateKey ?? '')
+    const visibleEnd = computed(() => cells.value[cells.value.length - 1]?.dateKey ?? '')
+
+    const toUnixByDateKey = (dateKey: string, tail = '00:00:00') =>
+        Math.floor(new Date(`${dateKey}T${tail}`).getTime() / 1000)
+
+    const buildSearchQuery = () => {
+        const query: { id?: number; start_time?: number; end_time?: number; source?: string; key_word?: string } = {}
+
+        const id = Number.parseInt(searchForm.id, 10)
+        if (Number.isFinite(id)) query.id = id
+
+        const startDate = searchForm.startDate
+        const endDate = searchForm.endDate
+        if (startDate) query.start_time = toUnixByDateKey(startDate)
+        if (endDate) query.end_time = toUnixByDateKey(endDate, '23:59:59')
+
+        const source = `${searchForm.source ?? ''}`.trim()
+        if (source) query.source = source
+
+        const keyword = searchForm.keyword.trim()
+        if (keyword) query.key_word = keyword
+
+        return query
+    }
+
+    const runSearch = async (silent = false): Promise<boolean> => {
+        searchLoading.value = true
+        if (!silent) searchError.value = ''
+        try {
+            events.value = await searchCalendarEvents(buildSearchQuery())
+            return true
+        } catch (error) {
+            if (!silent) {
+                searchError.value = 'Search failed, showing local fallback data.'
+            }
+            if (events.value.length === 0) events.value = buildDefaultEvents()
+            console.error(error)
+            return false
+        } finally {
+            searchLoading.value = false
+        }
+    }
+
+    const resetSearch = async () => {
+        searchForm.keyword = ''
+        searchForm.id = ''
+        searchForm.source = ''
+        searchForm.startDate = ''
+        searchForm.endDate = ''
+        showAdvanced.value = false
+        await runSearch()
+    }
+
+    const loadSources = async () => {
+        try {
+            const rows = await getCalendarSources()
+            sourceCatalog.value = rows.map(row => ({
+                id: row.id,
+                title: row.title,
+                isVisible: row.is_visible,
+                colorHex: colorNameToHex(row.color),
+            }))
+        } catch (error) {
+            console.error(error)
+            sourceCatalog.value = []
+        }
+    }
+
+    const visibleRangeEvents = computed(() =>
+        events.value.filter(e => {
+            const end = e.endDate ?? e.date
+            return end >= visibleStart.value && e.date <= visibleEnd.value
+        })
     )
+
+    const filteredEvents = computed(() =>
+        visibleRangeEvents.value.filter(e => {
+            const sourcePass = !activeSource.value || e.source === activeSource.value
+            return sourcePass
+        })
+    )
+
+    const displayEvents = computed(() => visibleRangeEvents.value)
 
     const selectedDayEvents = computed(() =>
         selectedCell.value ? getEventsForDate(filteredEvents.value, selectedCell.value.dateKey) : []
     )
 
-    const dragRangeKeys = computed(() => {
-        if (!dragFrom.value || !dragTo.value) return []
-        const a = dragFrom.value.dateKey, b = dragTo.value.dateKey
-        const lo = a <= b ? a : b, hi = a <= b ? b : a
-        return cells.value.filter(c => c.dateKey >= lo && c.dateKey <= hi).map(c => c.dateKey)
+    const panelEvents = computed(() => {
+        const sorted = [...filteredEvents.value].sort((a, b) => {
+            const dateCmp = a.date.localeCompare(b.date)
+            return dateCmp !== 0 ? dateCmp : getEventStartTime(a).localeCompare(getEventStartTime(b))
+        })
+        if (!activeSource.value) return selectedDayEvents.value
+        return sorted
     })
 
-    const dragRangeCount = computed(() => dragRangeKeys.value.length)
+    const panelTitle = computed(() => {
+        if (activeSource.value) {
+            return `Source: ${activeSource.value}`
+        }
+        if (!selectedCell.value) return 'Events'
+        return `Date: ${selectedCell.value.dateKey}`
+    })
 
-    //  Navigation 
-    const prevMonth = () => { if (month.value === 0) { month.value = 11; year.value-- } else month.value-- }
-    const nextMonth = () => { if (month.value === 11) { month.value = 0; year.value++ } else month.value++ }
-    const goToday = () => { year.value = today.getFullYear(); month.value = today.getMonth() }
+    const panelSubtitle = computed(() => `${panelEvents.value.length} event${panelEvents.value.length === 1 ? '' : 's'}`)
+    const selectedEventDetail = computed(() => {
+        if (!selectedEventId.value) return null
+        return events.value.find(ev => ev.id === selectedEventId.value) ?? null
+    })
 
-    //  Filter 
-    const toggleFilter = (v: string) => {
-        const i = activeFilters.value.indexOf(v)
-        i >= 0 ? activeFilters.value.splice(i, 1) : activeFilters.value.push(v)
+    const prevMonth = () => {
+        shiftVisibleMonth(-1)
     }
 
-    //  Grid events 
+    const nextMonth = () => {
+        shiftVisibleMonth(1)
+    }
+
+    const goToday = () => {
+        viewStartDate.value = startOfWeek(new Date())
+        const cell = cells.value.find(c => c.dateKey === todayKey)
+        if (cell) selectedCell.value = cell
+    }
+
     const onCellClick = (cell: CalendarCell) => {
-        if (isDragging.value) return
-        selectedCell.value = (selectedCell.value?.dateKey === cell.dateKey) ? null : cell
+        selectedCell.value = cell
         selectedEventId.value = null
     }
 
     const onEventClick = (ev: CalEvent) => {
         selectedEventId.value = ev.id
-        const cell = cells.value.find(c => c.dateKey === ev.date) ?? null
+        const cell = cells.value.find(c => c.dateKey === ev.date)
         if (cell) selectedCell.value = cell
     }
 
-    //  Drag-select 
-    const onDragStart = (cell: CalendarCell) => { dragFrom.value = cell; dragTo.value = cell; isDragging.value = true }
-    const onDragEnter = (cell: CalendarCell) => { if (isDragging.value) dragTo.value = cell }
-    const onDragEnd = (cell: CalendarCell) => {
-        isDragging.value = false
-        dragTo.value = cell
-        if (dragRangeCount.value > 1) dragSnackbar.value = true
-        else { dragFrom.value = null; dragTo.value = null }
+    const onCalendarWheel = (event: WheelEvent) => {
+        if (Math.abs(event.deltaY) < 10) return
+
+        const now = Date.now()
+        if (now - lastWheelAt.value < 220) return
+        lastWheelAt.value = now
+
+        if (event.deltaY > 0) {
+            viewStartDate.value = addDays(viewStartDate.value, 7)
+            return
+        }
+        viewStartDate.value = addDays(viewStartDate.value, -7)
     }
 
-    const openBatchCreate = () => { batchTitle.value = ''; batchDialogOpen.value = true; dragSnackbar.value = false }
-
-    const confirmBatch = () => {
-        const title = batchTitle.value.trim()
-        if (!title) return
-        dragRangeKeys.value.forEach(dateKey => {
-            events.value.push({ id: nextId(events.value), title, type: 'personal', date: dateKey, time: '' })
-        })
-        batchDialogOpen.value = false
-        dragFrom.value = null; dragTo.value = null
+    const sourceChipStyle = (source: CalEvent['source']) => {
+        const color = sourceColorMap.value.get(source) ?? eventSourceRawColor(source)
+        const accent = `color-mix(in srgb, ${color} 48%, #7f8794)`
+        const selected = activeSource.value === source
+        return sourceHighlighted(source)
+            ? {
+                '--strip-accent': accent,
+                background: `color-mix(in srgb, ${color} 13%, rgb(var(--v-theme-surface)))`,
+                color: 'rgba(var(--v-theme-on-surface), 0.9)',
+                borderColor: selected ? `color-mix(in srgb, ${color} 45%, rgba(var(--v-theme-on-surface), 0.3))` : 'rgba(var(--v-theme-on-surface), 0.18)',
+                boxShadow: selected ? `inset 0 0 0 1px color-mix(in srgb, ${color} 50%, transparent)` : 'none'
+            }
+            : {
+                '--strip-accent': accent,
+                background: 'rgba(var(--v-theme-on-surface), 0.02)',
+                color: 'rgba(var(--v-theme-on-surface), 0.78)',
+                borderColor: selected ? `color-mix(in srgb, ${color} 38%, rgba(var(--v-theme-on-surface), 0.24))` : 'rgba(var(--v-theme-on-surface), 0.12)',
+                boxShadow: selected ? `inset 0 0 0 1px color-mix(in srgb, ${color} 42%, transparent)` : 'none'
+            }
     }
 
-    //  Context menu 
-    const onContextMenu = ({ cell, event }: { cell: CalendarCell; event: MouseEvent }) => {
-        ctxMenu.show = true
-        ctxMenu.x = event.clientX
-        ctxMenu.y = event.clientY
-        ctxMenu.dateKey = cell.dateKey
-    }
-
-    const pasteEvent = () => {
-        if (!clipboard.value) return
-        events.value.push({ ...clipboard.value, id: nextId(events.value), date: ctxMenu.dateKey })
-    }
-
-    //  CRUD 
     const openCreate = (date: string) => {
-        editingEvent.value = null; dialogDefaultDate.value = date; dialogOpen.value = true
+        editingEvent.value = null
+        dialogDefaultDate.value = date
+        dialogOpen.value = true
     }
-    const openEdit = (ev: CalEvent) => { editingEvent.value = ev; dialogOpen.value = true }
 
-    const saveEvent = (form: any) => {
-        if (editingEvent.value) {
-            Object.assign(editingEvent.value, form)
-        } else {
+    const openEdit = (ev: CalEvent) => {
+        editingEvent.value = ev
+        dialogOpen.value = true
+    }
+
+    const saveEvent = async (form: Omit<CalEvent, 'id'>) => {
+        try {
+            if (editingEvent.value) {
+                await updateCalendarEvent(editingEvent.value.id, form)
+            } else {
+                await createCalendarEvent(form)
+            }
+            await runSearch()
+        } catch (error) {
+            console.error(error)
+            if (editingEvent.value) {
+                Object.assign(editingEvent.value, form)
+                return
+            }
             events.value.push({ id: nextId(events.value), ...form })
         }
     }
 
-    const deleteEvent = (ev: CalEvent) => {
-        clipboard.value = ev
-        events.value = events.value.filter(e => e.id !== ev.id)
-        if (selectedEventId.value === ev.id) selectedEventId.value = null
+    const deleteEvent = async (ev: CalEvent) => {
+        try {
+            await deleteCalendarEvent(ev.id)
+            await runSearch()
+        } catch (error) {
+            console.error(error)
+            events.value = events.value.filter(e => e.id !== ev.id)
+            if (selectedEventId.value === ev.id) selectedEventId.value = null
+        }
     }
+
+    watch(cells, () => {
+        if (selectedCell.value && cells.value.some(c => c.dateKey === selectedCell.value!.dateKey)) return
+        selectedCell.value = cells.value.find(c => c.dateKey === todayKey) ?? cells.value[0] ?? null
+    }, { immediate: true })
+
+    onMounted(async () => {
+        await loadSources()
+        const ok = await runSearch(true)
+        if (!ok && events.value.length === 0) {
+            events.value = buildDefaultEvents()
+        }
+    })
 </script>
 
 <style scoped>
-    .cal-page {
-        overflow: hidden;
-    }
-
-    .cal-body {
-        overflow: hidden;
-    }
-
+    .cal-page,
+    .cal-body,
     .cal-grid-wrap {
         overflow: hidden;
     }
 
-    /* right-click menu */
-    .ctx-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 999;
+    .cal-grid-wrap {
+        position: relative;
     }
 
-    .ctx-menu {
-        position: fixed;
-        z-index: 1000;
-        min-width: 160px;
-        background: rgb(var(--v-theme-surface));
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 8px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-        padding: 4px;
-        overflow: hidden;
+    .toolbar-month {
+        min-width: 130px;
+        text-align: center;
     }
 
-    .ctx-item {
+    .left-rail {
+        width: 260px;
+        min-width: 260px;
+        overflow-y: auto;
+    }
+
+    .search-rail {
+        width: 280px;
+        min-width: 280px;
+        overflow-y: auto;
+        background: color-mix(in srgb, rgb(var(--v-theme-surface)) 92%, #0f172a);
+    }
+
+    .advanced-toggle {
+        padding-left: 0;
+        min-height: 24px;
+        color: rgba(var(--v-theme-on-surface), 0.72);
+    }
+
+    .filter-strip-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .filter-strip {
+        width: 100%;
+        min-height: 30px;
+        justify-content: flex-start;
+        position: relative;
+        font-weight: 500;
+    }
+
+    .filter-strip :deep(.v-chip__content) {
+        width: 100%;
         display: flex;
         align-items: center;
-        width: 100%;
-        padding: 6px 10px;
+        gap: 8px;
+    }
+
+    .source-strip {
+        border-radius: 8px;
+        padding-left: 10px;
+    }
+
+    .source-strip::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 6px;
+        bottom: 6px;
+        width: 3px;
+        border-radius: 999px;
+        background: var(--strip-accent);
+    }
+
+    .chip-eye-btn {
+        width: 22px;
+        height: 22px;
+        margin-left: auto;
+        margin-right: -4px;
+        color: rgba(var(--v-theme-on-surface), 0.62);
+    }
+
+    .event-floating-card {
+        position: absolute;
+        right: 12px;
+        top: 44px;
+        width: 320px;
+        max-height: calc(100% - 56px);
+        overflow: auto;
+        padding: 10px 12px;
+        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        background: rgba(var(--v-theme-surface), 0.96);
+        backdrop-filter: blur(6px);
+        z-index: 3;
+    }
+
+    .floating-row {
+        display: flex;
+        gap: 8px;
         font-size: 12px;
-        font-weight: 500;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        color: rgba(var(--v-theme-on-surface), 0.85);
+        line-height: 1.4;
+        margin-top: 6px;
+    }
+
+    .floating-row .label {
+        width: 72px;
+        flex-shrink: 0;
+        color: rgba(var(--v-theme-on-surface), 0.58);
+    }
+
+    .floating-link {
+        color: rgb(var(--v-theme-primary));
+        text-decoration: none;
+        word-break: break-all;
+    }
+
+    .floating-link:hover {
+        text-decoration: underline;
+    }
+
+    .mini-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
+    }
+
+    .mini-weekday {
+        font-size: 10px;
+        text-align: center;
+        color: rgba(var(--v-theme-on-surface), 0.5);
+    }
+
+    .mini-day {
+        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-radius: 6px;
         background: transparent;
-        transition: background 0.12s;
+        color: rgba(var(--v-theme-on-surface), 0.88);
+        font-size: 11px;
+        height: 24px;
+        cursor: pointer;
     }
 
-    .ctx-item:hover {
-        background: rgba(var(--v-theme-surface-variant), 0.5);
-    }
-
-    .ctx-item:disabled {
+    .mini-day.muted {
         opacity: 0.4;
-        cursor: default;
     }
 
-    /* panel slide animation */
-    .panel-slide-enter-active,
-    .panel-slide-leave-active {
-        transition: all 0.2s ease;
+    .mini-day.today {
+        border-color: rgb(var(--v-theme-primary));
     }
 
-    .panel-slide-enter-from,
-    .panel-slide-leave-to {
-        transform: translateX(20px);
-        opacity: 0;
+    .mini-day.active {
+        background: rgba(var(--v-theme-primary), 0.15);
+        border-color: rgb(var(--v-theme-primary));
     }
 </style>
