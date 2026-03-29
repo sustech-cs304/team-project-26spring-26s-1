@@ -1,5 +1,21 @@
 import asyncio
 from typing import Dict
+import langgraph.graph.state
+from agent.core.state import AgentState
+from langchain.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+import agent.db.models as db_models
+from sqlalchemy import select
+import langgraph.graph.state
+from agent.api.models import (
+    CompletionResponseDelta,
+    CompletionResponseHistory,
+    CompletionResponseMetadata,
+    CompletionResponseToolCall,
+    CompletionResponseError,
+    CompletionEventKeepAlive
+)
 
 class _ConversationJobState:
     def __init__(self):
@@ -9,27 +25,62 @@ class _ConversationJobState:
         self.task : asyncio.Task = None # type: ignore
         
 class ConversationRunner:
-    def __init__(self):
+    def __init__(self, graph : langgraph.graph.state.CompiledStateGraph, session_factory : async_sessionmaker):
         self._conversation_jobs: Dict[str, _ConversationJobState] = {}
+        self.graph = graph
+        self.session_factory = session_factory
         pass
     
     def is_running(self, conversation_id: str) -> bool:
         return conversation_id in self._conversation_jobs
     
-    def run(self, conversation_id : str):
+    async def run(self, conversation_id : str, user_message : str):
         if conversation_id not in self._conversation_jobs:
             self._conversation_jobs[conversation_id] = _ConversationJobState()
         else:
             raise ValueError(f"Conversation {conversation_id} is already running")
+        
+        async with self.session_factory() as session:
+            session : AsyncSession
+            
+            conversation_row = await session.execute(
+                select(db_models.Conversation).where(db_models.Conversation.id == conversation_id)
+            )
+            conversation = conversation_row.scalars().first()
+            if not conversation:
+                raise ValueError(f"Conversation {conversation_id} not found in database")
+            
+            checkpoint_message_row = await session.execute(
+                select(db_models.Message).where(db_models.Message.conversation_id == conversation_id)
+            )
+            checkpoint_message = checkpoint_message_row.scalars().first()
+            if checkpoint_message:
+                checkpoint_id = checkpoint_message.checkpoint_id
+                assert checkpoint_id is not None
+        
+        config = {
+            "configurable": {
+                "thread_id": conversation_id,
+                "__utility_model": None,
+                # "checkpoint_id": checkpoint_id
+            }
+        }
+        # snapshot = await self.graph.aget_state(config)
+        # result = self.graph.invoke(user_message,config)
+        
+        state = AgentState(
+            messages=[HumanMessage(
+                role="user",
+                content=user_message or ""
+            )],
+        )
 
-        async def _test_generate():
-            for i in range(100):
-                await asyncio.sleep(1)
-                yield f"message {i}"
+        gen =  self.graph.astream(state, config, version="v2",stream_mode=["messages","values","checkpoints"])
+        
         
         async def _run(job: _ConversationJobState):
             try:
-                async for message in _test_generate():
+                async for message in gen:
                     async with job.cond:
                         job.history.append(message)
                         job.cond.notify_all()

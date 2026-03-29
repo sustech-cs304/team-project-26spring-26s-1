@@ -34,7 +34,7 @@ async def lifespan(app: fastapi.FastAPI):
  
 	app.state.engine = engine
 	app.state.async_session = async_session
-	app.state.ConversationRunner = ConversationRunner()
+	app.state.ConversationRunner = ConversationRunner(graph, async_session)
 	app.state.config = config
 	app.state.graph = graph
 

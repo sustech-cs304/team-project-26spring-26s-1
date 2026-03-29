@@ -14,6 +14,14 @@ import langgraph.graph.state
 from agent.core.state import AgentState
 from langchain.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from agent.api.models import (
+    CompletionResponseDelta,
+    CompletionResponseHistory,
+    CompletionResponseMetadata,
+    CompletionResponseToolCall,
+    CompletionResponseError,
+    CompletionEventKeepAlive
+)
 
 
 router = APIRouter()
@@ -25,82 +33,24 @@ class ConversationCompletionRequest(pydantic.BaseModel):
     created_at: int
     attachments: list[str] = []
     need_history: bool
-    
-class CompletionResponseHistory(pydantic.BaseModel):
-    message_id: str
-    type: str
-    created_at: int
-    finished_at: int
-    data: api_models.AnyMessage    
-    _event_type: ClassVar[str] = "history"
-        
-class CompletionResponseDelta(pydantic.BaseModel):
-    message_id: str
-    delta: str
-    is_thinking: bool
-    _event_type: ClassVar[str] = "delta"
-    
-class CompletionResponseMetadata(pydantic.BaseModel):
-    title: str
-    _event_type: ClassVar[str] = "meta_data"
-
-class CompletionResponseToolCall(api_models.ToolMessage):
-    message_id: str
-    _event_type: ClassVar[str] = "tool_call"
-
-class CompletionResponseError(pydantic.BaseModel):
-    error_message: str
-    _event_type: ClassVar[str] = "error"
-
-class CompletionEventKeepAlive(pydantic.BaseModel):
-    data : list = []
-    _event_type: Literal["keep_alive"]= "keep_alive"
 
 @router.post("/conversation/completion", response_class=EventSourceResponse)
 async def conversation_completion(params: ConversationCompletionRequest, request: Request):
-    graph : langgraph.graph.state.CompiledStateGraph = request.app.state.graph
-    
-    state = AgentState(
-        messages=[HumanMessage(
-            role="user",
-            content=params.content or ""
-        )],
-    )
-    
-    thread_config : RunnableConfig = {
-        "configurable": {
-            "thread_id": "my-thread",
-            "__utility_model": None
-    }}
-    
     id = str(uuid4())
     
-    async for event in graph.astream(state, thread_config, version="v2",stream_mode=["messages","values"]):
+    ConversationRunner = request.app.state.ConversationRunner
+    await ConversationRunner.run(params.conversation_id, params.content or "")
+    
+    async for event in ConversationRunner.listen(params.conversation_id):
         print(f"Yielding event: {event}")
         yield ServerSentEvent(
             data=CompletionResponseDelta(
-                message_id=id,
+                message_id=str(uuid4()),
                 delta=str(event),
                 is_thinking=False
             ),
             event=CompletionResponseDelta._event_type
         )
-        
-    # runner : ConversationRunner = request.app.state.ConversationRunner
-    
-    # if not runner.is_running(params.conversation_id):
-    #     runner.run(params.conversation_id)
-    
-    # async for event in runner.listen(params.conversation_id):
-    #     print(f"Yielding event: {event}")
-    #     yield ServerSentEvent(
-    #         data=CompletionResponseDelta(
-    #             message_id=str(uuid4()),
-    #             delta=event,
-    #             is_thinking=False
-    #         ),
-    #         event=CompletionResponseDelta._event_type
-    #     )
     yield ServerSentEvent(event='done')
     
 
