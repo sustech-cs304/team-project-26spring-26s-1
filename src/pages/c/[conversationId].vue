@@ -431,6 +431,31 @@
         },
     })
 
+    const createHistoryResumeHandlers = (): SseHandlers => {
+        const baseHandlers = createSseHandlers()
+
+        return {
+            ...baseHandlers,
+            onHistory: (data: SseHistoryResponse) => {
+                if (!data.history_messages) {
+                    return
+                }
+                messages.splice(0, messages.length, ...data.history_messages.map(historyToMessage))
+                syncMessageMap()
+                void scrollToBottom()
+            },
+            onDone: (data: SseDoneData) => {
+                baseHandlers.onDone?.(data)
+            },
+            onError: (data: SseErrorData) => {
+                baseHandlers.onError?.(data)
+            },
+            onFetchError: (err: unknown) => {
+                baseHandlers.onFetchError?.(err)
+            },
+        }
+    }
+
     /** 统一的消息发送函数 */
     const sendChatRequest = async (options: SendChatRequestOptions) => {
         stop()
@@ -496,18 +521,7 @@
                     created_at: Date.now(),
                     need_history: true,
                 },
-                {
-                    onHistory: (data: SseHistoryResponse) => {
-                        if (!data.history_messages) { loading.value = false; return }
-                        messages.splice(0, messages.length, ...data.history_messages.map(historyToMessage))
-                        syncMessageMap()
-                        loading.value = false
-                        void scrollToBottom()
-                    },
-                    onDone: () => { loading.value = false },
-                    onError: () => { loading.value = false },
-                    onFetchError: () => { loading.value = false },
-                }
+                createHistoryResumeHandlers()
             )
         }
     }
