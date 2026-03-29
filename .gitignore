@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# uv files
+uv.lock
+
+# Virtual environments
+.venv
+
+# IDE
+.vscode
+
+# data files
+*.db
+config.yaml
