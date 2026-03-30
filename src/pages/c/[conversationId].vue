@@ -103,7 +103,6 @@
     import type { ToolCallMessage, MsgRole } from '@/types/conversation'
     import type {
         SseHistoryData,
-        SseHistoryResponse,
         SseHistoryMessageData,
         SseHistoryToolData,
         SseMessageDeltaData,
@@ -438,12 +437,13 @@
 
         return {
             ...baseHandlers,
-            onHistory: (data: SseHistoryResponse) => {
-                if (!data.history_messages) {
+            onHistory: (data: SseHistoryData) => {
+                if (!data?.message_id || messageMap.has(data.message_id)) {
                     return
                 }
-                messages.splice(0, messages.length, ...data.history_messages.map(historyToMessage))
-                syncMessageMap()
+                const msg = historyToMessage(data)
+                messages.push(msg)
+                messageMap.set(data.message_id, msg)
                 void scrollToBottom()
             },
             onDone: (data: SseDoneData) => {

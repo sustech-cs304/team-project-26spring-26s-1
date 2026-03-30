@@ -30,7 +30,7 @@ export interface SseFrame<T = unknown> {
 }
 
 export interface SseHandlers {
-  onHistory?: (data: SseHistoryResponse) => void;
+  onHistory?: (data: SseHistoryData) => void;
   onDelta?: (data: SseMessageDeltaData) => void;
   onMetaData?: (data: SseMetaData) => void;
   onToolCall?: (data: SseToolCallData) => void;
@@ -79,10 +79,6 @@ export interface SseHistoryData {
   created_at: string;
   finished_at: string;
   data: SseHistoryToolData | SseHistoryMessageData;
-}
-
-export interface SseHistoryResponse {
-  history_messages: SseHistoryData[];
 }
 
 export interface SseMessageDeltaData {

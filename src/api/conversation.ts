@@ -1,6 +1,6 @@
 import http, { baseURL } from '@/utils/http'
 import type {
-    Conversation, CreateConversationResponse, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseHistoryResponse, SseMessageDeltaData, SseToolCallData, SseErrorData, SseKeepAliveData, SseDoneData,
+    Conversation, CreateConversationResponse, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseHistoryData, SseMessageDeltaData, SseToolCallData, SseErrorData, SseKeepAliveData, SseDoneData,
     SseEventTypes,
     SseMetaData
 } from '@/types/conversation.ts'
@@ -138,7 +138,7 @@ export function chatCompletion (
                         const parsed = JSON.parse(currentData)
                         switch (currentEvent as SseEventTypes) {
                             case 'history':
-                                handlers.onHistory?.(parsed as SseHistoryResponse)
+                                handlers.onHistory?.(parsed as SseHistoryData)
                                 break
                             case 'delta':
                                 handlers.onDelta?.(parsed as SseMessageDeltaData)
