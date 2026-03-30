@@ -39,14 +39,19 @@ async def conversation_completion(params: ConversationCompletionRequest, request
     id = str(uuid4())
     
     ConversationRunner = request.app.state.ConversationRunner
-    await ConversationRunner.run(params.conversation_id, params.content or "", params.need_history)
+    await ConversationRunner.run(params.conversation_id, params.content or "")
     
-    async for delta in ConversationRunner.listen(params.conversation_id):
+    async for event in ConversationRunner.listen(params.conversation_id):
+        print(f"Yielding event: {event}")
         yield ServerSentEvent(
-            data=delta,
-            event=delta._event_type
+            data=CompletionResponseDelta(
+                message_id=str(uuid4()),
+                delta=str(event),
+                is_thinking=False
+            ),
+            event=CompletionResponseDelta._event_type
         )
-    yield ServerSentEvent(event="done")
+    yield ServerSentEvent(event='done')
     
 
 class ConversationCreateResponse(pydantic.BaseModel):

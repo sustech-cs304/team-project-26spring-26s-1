@@ -1,10 +1,8 @@
 import pydantic
-from typing import Literal, Union, ClassVar, Annotated
-from pydantic import Field
+from typing import Literal, Union
+from typing import Dict, Any, List, ClassVar
 
 class ConversationMessage(pydantic.BaseModel):
-    type : Literal["message"] = "message"
-    
     role: str
     content: str
     attachments: list[str] = []
@@ -15,21 +13,19 @@ class ToolArgument(pydantic.BaseModel):
     argument: str
     
 class ToolMessage(pydantic.BaseModel):
-    type : Literal["tool"] = "tool"
-    
     tool_name: str
     tool_arguments: list[ToolArgument] = []
     status: Literal["approved", "rejected", "pending"] = "pending"
     pending_reason: str = ""
     tool_response: str = ""
 
-HistoryMessage = Annotated[Union[ConversationMessage, ToolMessage], Field(discriminator="type")]
-
+AnyMessage = Union[ConversationMessage, ToolMessage]
 class CompletionResponseHistory(pydantic.BaseModel):
     message_id: str
+    type: str
     created_at: int
     finished_at: int
-    data: HistoryMessage
+    data: AnyMessage    
     _event_type: ClassVar[str] = "history"
         
 class CompletionResponseDelta(pydantic.BaseModel):
