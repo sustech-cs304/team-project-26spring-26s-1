@@ -105,6 +105,7 @@
         SseHistoryData,
         SseHistoryMessageData,
         SseHistoryToolData,
+        SseUserMessageData,
         SseMessageDeltaData,
         SseToolCallData,
         SseMetaData,
@@ -135,9 +136,10 @@
 
     interface SendChatRequestOptions {
         content: string
-        messageId?: string
+        restartMessageId?: string
         addUserMessage?: boolean
         clearFromIndex?: number
+        pendingUserMessage?: ChatMessage
     }
 
     const scrollEl = ref<InstanceType<typeof import('vuetify/components').VSheet> | null>(null)
@@ -267,7 +269,7 @@
         // clearFromIndex 从用户消息开始清除，addUserMessage: true 会重新添加用户消息
         await sendChatRequest({
             content: newContent,
-            messageId: messages[userMsgIndex]?.message_id,
+            restartMessageId: messages[userMsgIndex]?.message_id,
             addUserMessage: true,
             clearFromIndex: userMsgIndex,
         })
@@ -289,6 +291,16 @@
 
     let currentAbortCtrl: AbortController | null = null
     let currentMessageId: string | null = null
+    let pendingUserMessageForCurrentRequest: ChatMessage | null = null
+
+    const setMessageId = (message: ChatMessage, nextMessageId: string) => {
+        const prevMessageId = message.message_id
+        if (prevMessageId && prevMessageId !== nextMessageId) {
+            messageMap.delete(prevMessageId)
+        }
+        message.message_id = nextMessageId
+        messageMap.set(nextMessageId, message)
+    }
 
     // ── 历史消息转换 ──
 
@@ -339,6 +351,14 @@
 
     /** 创建统一的 SSE 回调处理器（不再绑定单一 assistantMsg） */
     const createSseHandlers = (): SseHandlers => ({
+        onUserMessage: (data: SseUserMessageData) => {
+            if (!data.message_id) return
+
+            if (pendingUserMessageForCurrentRequest) {
+                setMessageId(pendingUserMessageForCurrentRequest, data.message_id)
+                pendingUserMessageForCurrentRequest = null
+            }
+        },
 
         onDelta: (data: SseMessageDeltaData) => {
             if (data.message_id) currentMessageId = data.message_id
@@ -396,6 +416,7 @@
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
+            pendingUserMessageForCurrentRequest = null
         },
 
         onError: (data: SseErrorData) => {
@@ -412,6 +433,7 @@
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
+            pendingUserMessageForCurrentRequest = null
         },
 
         onFetchError: (err: unknown) => {
@@ -429,6 +451,7 @@
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
+            pendingUserMessageForCurrentRequest = null
         },
     })
 
@@ -461,6 +484,7 @@
     /** 统一的消息发送函数 */
     const sendChatRequest = async (options: SendChatRequestOptions) => {
         stop()
+        const requestId = generateUUID()
 
         if (options.clearFromIndex !== undefined) {
             // 清除被删消息在 messageMap 中的引用
@@ -472,14 +496,21 @@
         }
 
         if (options.addUserMessage !== false) {
-            messages.push({ role: 'user', content: options.content, created_at: Date.now() })
+            const userMessage: ChatMessage = {
+                role: 'user',
+                content: options.content,
+                created_at: Date.now(),
+                message_id: requestId,
+            }
+            messages.push(userMessage)
+            pendingUserMessageForCurrentRequest = userMessage
             await scrollToBottom()
+        } else {
+            pendingUserMessageForCurrentRequest = options.pendingUserMessage ?? null
         }
 
         loading.value = true
         await scrollToBottom()
-
-        const requestId = generateUUID()
 
         currentAbortCtrl = chatCompletion(
             {
@@ -488,7 +519,7 @@
                 content: options.content,
                 created_at: Date.now(),
                 need_history: false,
-                message_id: options.messageId,
+                restart_message_id: options.restartMessageId ?? null,
             },
             createSseHandlers()
         )
@@ -506,6 +537,7 @@
         currentAbortCtrl?.abort()
         currentAbortCtrl = null
         currentMessageId = null
+        pendingUserMessageForCurrentRequest = null
         messages.splice(0)
         messageMap.clear()
         loading.value = false
@@ -552,6 +584,7 @@
         currentAbortCtrl?.abort()
         currentAbortCtrl = null
         currentMessageId = null
+        pendingUserMessageForCurrentRequest = null
         loading.value = false
         const last = getLastAssistantMsg()
         if (last) {
@@ -568,9 +601,10 @@
 
         await sendChatRequest({
             content: info.userMsg.content,
-            messageId: info.userMsg.message_id,
+            restartMessageId: info.userMsg.message_id,
             addUserMessage: false,
             clearFromIndex: info.start + 1,
+            pendingUserMessage: info.userMsg,
         })
     }
 </script>

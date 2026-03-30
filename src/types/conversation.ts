@@ -31,6 +31,7 @@ export interface SseFrame<T = unknown> {
 
 export interface SseHandlers {
   onHistory?: (data: SseHistoryData) => void;
+  onUserMessage?: (data: SseUserMessageData) => void;
   onDelta?: (data: SseMessageDeltaData) => void;
   onMetaData?: (data: SseMetaData) => void;
   onToolCall?: (data: SseToolCallData) => void;
@@ -40,7 +41,7 @@ export interface SseHandlers {
   onFetchError?: (error: any) => void;
 }
 
-export type SseEventTypes = 'history' | 'delta' | 'meta_data' | 'tool_call' | 'error' | 'done' | 'keep_alive'
+export type SseEventTypes = 'history' | 'user_message' | 'delta' | 'meta_data' | 'tool_call' | 'error' | 'done' | 'keep_alive'
 
 export type MsgRole = 'user' | 'assistant' | 'system' | 'tools'
 export type HistoryMessageRole = Exclude<MsgRole, 'tools'>
@@ -79,6 +80,10 @@ export interface SseHistoryData {
   created_at: string;
   finished_at: string;
   data: SseHistoryToolData | SseHistoryMessageData;
+}
+
+export interface SseUserMessageData {
+  message_id: string;
 }
 
 export interface SseMessageDeltaData {

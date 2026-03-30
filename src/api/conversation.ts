@@ -1,6 +1,6 @@
 import http, { baseURL } from '@/utils/http'
 import type {
-    Conversation, CreateConversationResponse, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseHistoryData, SseMessageDeltaData, SseToolCallData, SseErrorData, SseKeepAliveData, SseDoneData,
+    Conversation, CreateConversationResponse, ConversationListResponse, SearchConversationResponse, MessageResponse, SseHandlers, SseHistoryData, SseUserMessageData, SseMessageDeltaData, SseToolCallData, SseErrorData, SseKeepAliveData, SseDoneData,
     SseEventTypes,
     SseMetaData
 } from '@/types/conversation.ts'
@@ -74,7 +74,7 @@ export function chatCompletion (
         created_at: number;
         attachments?: string[];
         need_history?: boolean;
-        message_id?: string;
+        restart_message_id?: string | null;
     },
     handlers: SseHandlers
 ): AbortController {
@@ -88,7 +88,7 @@ export function chatCompletion (
         created_at: payload.created_at,
         attachments: payload.attachments ?? [],
         need_history: payload.need_history ?? false,
-        message_id: payload.message_id ?? null,
+        restart_message_id: payload.restart_message_id ?? null,
     })
 
         ; (async () => {
@@ -139,6 +139,9 @@ export function chatCompletion (
                         switch (currentEvent as SseEventTypes) {
                             case 'history':
                                 handlers.onHistory?.(parsed as SseHistoryData)
+                                break
+                            case 'user_message':
+                                handlers.onUserMessage?.(parsed as SseUserMessageData)
                                 break
                             case 'delta':
                                 handlers.onDelta?.(parsed as SseMessageDeltaData)
