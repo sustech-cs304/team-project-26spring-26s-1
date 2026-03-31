@@ -51,6 +51,8 @@ class CompletionResponseError(pydantic.BaseModel):
     _event_type: ClassVar[str] = "error"
 
 class CompletionEventKeepAlive(pydantic.BaseModel):
-    data : list = []
     _event_type: Literal["keep_alive"]= "keep_alive"
 
+class CompletionUserMessage(pydantic.BaseModel):
+    message_id : str
+    _event_type: ClassVar[str] = "user_message"
