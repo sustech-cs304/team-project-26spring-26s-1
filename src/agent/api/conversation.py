@@ -20,7 +20,8 @@ from agent.api.models import (
     CompletionResponseMetadata,
     CompletionResponseToolCall,
     CompletionResponseError,
-    CompletionEventKeepAlive
+    CompletionEventKeepAlive,
+    CompletionUserMessage,
 )
 
 
@@ -33,15 +34,16 @@ class ConversationCompletionRequest(pydantic.BaseModel):
     created_at: int
     attachments: list[str] = []
     need_history: bool
+    restart_message_id: str | None = None
 
 @router.post("/conversation/completion", response_class=EventSourceResponse)
 async def conversation_completion(params: ConversationCompletionRequest, request: Request):
     id = str(uuid4())
     
     ConversationRunner = request.app.state.ConversationRunner
-    await ConversationRunner.run(params.conversation_id, params.content or "", params.need_history)
+    await ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id)
     
-    async for delta in ConversationRunner.listen(params.conversation_id):
+    async for delta in await ConversationRunner.stream(params.conversation_id, params.need_history):
         yield ServerSentEvent(
             data=delta,
             event=delta._event_type

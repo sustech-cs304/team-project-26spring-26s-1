@@ -18,7 +18,6 @@ class Conversation(Base):
         index=True,
     )
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
-    message_seq: Mapped[int] = mapped_column(Integer, default=0)
 
     messages: Mapped[list["Message"]] = relationship("Message", back_populates="conversation")
 
@@ -29,7 +28,7 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id"), nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     checkpoint_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
