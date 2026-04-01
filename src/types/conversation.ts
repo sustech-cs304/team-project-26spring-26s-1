@@ -57,6 +57,22 @@ export interface ToolCallMessage {
   tool_response?: string
 }
 
+export type QuizType = 'single' | 'multiple'
+
+export interface QuizOption {
+  id: string
+  content: string
+}
+
+export interface QuizCardData {
+  title: string
+  description?: string
+  type: QuizType
+  options: QuizOption[]
+  answers: string[]
+  explanation: string
+}
+
 export interface Message {
   role: HistoryMessageRole;
   content: string

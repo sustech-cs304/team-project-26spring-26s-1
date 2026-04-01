@@ -61,9 +61,9 @@
 
                 <v-expand-transition>
                     <v-sheet v-if="submitted" rounded="lg" border class="pa-3 mt-2">
-                        <v-alert :type="isCorrect ? 'success' : 'error'" variant="tonal" rounded="lg" class="mb-2">
+                        <v-chip :color="isCorrect ? 'success' : 'error'" variant="tonal" size="small" class="mb-2">
                             {{ isCorrect ? '回答正确' : '回答错误' }}
-                        </v-alert>
+                        </v-chip>
 
                         <v-sheet color="transparent" class="mb-2 d-flex align-center flex-wrap ga-1">
                             <v-sheet color="transparent"
