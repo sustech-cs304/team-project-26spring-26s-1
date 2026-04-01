@@ -5,7 +5,7 @@ from agent.core.state import AgentState
 from langchain_core.runnables import RunnableConfig
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 import agent.db.models as db_models
-from sqlalchemy import select
+from sqlalchemy import select, text
 import langgraph.graph.state
 from agent.api.models import (
     ConversationMessage,
@@ -27,6 +27,7 @@ import datetime as dt
 from langchain.messages import AnyMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 from pydantic import TypeAdapter
 from agent.api.utils import decode_message
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 class _ConversationJobState:
     def __init__(self):
@@ -61,57 +62,75 @@ class ConversationRunner:
         
         async with self.session_factory() as session:
             session : AsyncSession
-            
-            conversation_row = await session.execute(
-                select(db_models.Conversation).where(db_models.Conversation.id == conversation_id)
-            )
-            conversation = conversation_row.scalars().first()
-            if not conversation:
-                raise ValueError(f"Conversation {conversation_id} not found in database")
-            
-            if restart_message_id:
-                restart_message_row = await session.execute(
-                    select(db_models.Message).where(db_models.Message.conversation_id == conversation_id)
-                        .where(db_models.Message.id == restart_message_id)
+            async with session.begin():
+                conversation_row = await session.execute(
+                    select(db_models.Conversation).where(db_models.Conversation.id == conversation_id)
                 )
-                restart_message = restart_message_row.scalars().first()
-                if restart_message:
+                conversation = conversation_row.scalars().first()
+                if not conversation:
+                    raise ValueError(f"Conversation {conversation_id} not found in database")
+                
+                if restart_message_id:
+                    restart_message_row = await session.execute(
+                        select(db_models.Message).where(db_models.Message.conversation_id == conversation_id)
+                            .where(db_models.Message.id == restart_message_id)
+                    )
+                    restart_message = restart_message_row.scalars().first()
+                    if restart_message:
+                        checkpoint_message_row = await session.execute(
+                            select(db_models.Message).where(db_models.Message.conversation_id == conversation_id)
+                                .where(db_models.Message.seq < restart_message.seq)
+                                .where(db_models.Message.checkpoint_id.is_not(None))
+                                .order_by(db_models.Message.seq.desc())
+                        )
+                        checkpoint_message = checkpoint_message_row.scalars().first()
+                        if checkpoint_message:
+                            checkpoint_id = checkpoint_message.checkpoint_id
+                            assert checkpoint_id is not None, "Checkpoint message must have a checkpoint_id"
+                        
+                        self.seq = checkpoint_message.seq + 1 if checkpoint_message else 1
+                        
+                        #delete messages after restart_message
+                        await session.execute(
+                            db_models.Message.__table__.delete().where(db_models.Message.conversation_id == conversation_id)
+                                .where(db_models.Message.seq >= restart_message.seq)
+                        )
+                        
+                        #TODO: delete attachments that are no longer referenced by any messages after deleting messages
+                    else:
+                        raise ValueError(f"Restart message {restart_message_id} not found in conversation {conversation_id}")
+                else:
                     checkpoint_message_row = await session.execute(
                         select(db_models.Message).where(db_models.Message.conversation_id == conversation_id)
-                            .where(db_models.Message.seq < restart_message.seq)
-                            .where(db_models.Message.checkpoint_id != None)
+                            .where(db_models.Message.checkpoint_id.is_not(None))
                             .order_by(db_models.Message.seq.desc())
                     )
                     checkpoint_message = checkpoint_message_row.scalars().first()
                     if checkpoint_message:
                         checkpoint_id = checkpoint_message.checkpoint_id
-                        assert checkpoint_id is not None, "Checkpoint message must have a checkpoint_id"
-                    
+                        assert checkpoint_id is not None
+                        print(f"Resuming conversation {conversation_id} from checkpoint {checkpoint_id}")
                     self.seq = checkpoint_message.seq + 1 if checkpoint_message else 1
-                    
-                    #delete messages after restart_message
-                    await session.execute(
-                        db_models.Message.__table__.delete().where(db_models.Message.conversation_id == conversation_id)
-                            .where(db_models.Message.seq >= restart_message.seq)
-                    )
-                    
-                    #TODO: delete attachments that are no longer referenced by any messages after deleting messages
-                    #TODO: delete checkpoints after deleting messages
-                    
-                else:
-                    raise ValueError(f"Restart message {restart_message_id} not found in conversation {conversation_id}")
+        
+        
+        
+        #delete checkpoints after deleting messages, here we cannot use ORM
+        if restart_message_id:
+            conn = self.graph.checkpointer.conn
+            if checkpoint_id:
+                stmt_checkpoints = "DELETE FROM checkpoints WHERE thread_id = ? AND checkpoint_id > ?"
+                stmt_writes = "DELETE FROM writes WHERE thread_id = ? AND checkpoint_id > ?"
+                params = (conversation_id, checkpoint_id)
+                await conn.execute(stmt_checkpoints, params)
+                await conn.execute(stmt_writes, params)
+                await conn.commit()
             else:
-                checkpoint_message_row = await session.execute(
-                    select(db_models.Message).where(db_models.Message.conversation_id == conversation_id)
-                        .where(db_models.Message.checkpoint_id != None)
-                        .order_by(db_models.Message.seq.desc()
-                    )
-                )
-                checkpoint_message = checkpoint_message_row.scalars().first()
-                if checkpoint_message:
-                    checkpoint_id = checkpoint_message.checkpoint_id
-                    assert checkpoint_id is not None
-                self.seq = checkpoint_message.seq + 1 if checkpoint_message else 1
+                stmt_checkpoints = "DELETE FROM checkpoints WHERE thread_id = ?"
+                stmt_writes = "DELETE FROM writes WHERE thread_id = ?"
+                params = (conversation_id,)
+                await conn.execute(stmt_checkpoints, params)
+                await conn.execute(stmt_writes, params)
+                await conn.commit()
         
         config : RunnableConfig = {
             "configurable": {
@@ -120,8 +139,6 @@ class ConversationRunner:
                 "checkpoint_id": checkpoint_id
             }
         }
-        # snapshot = await self.graph.aget_state(config)
-        # result = self.graph.invoke(user_message,config)
         
         state = AgentState(messages=([HumanMessage(role="user",content=user_message)]))
         
@@ -154,12 +171,12 @@ class ConversationRunner:
         
         #give back and insert user message
         user_message_id = restart_message_id or str(uuid4())
+        self._conversation_jobs[conversation_id].user_message_id = user_message_id
         await _db_update(conversation_id, user_message_id, HumanMessage(role = "user", content=user_message).model_dump_json(), checkpoint_id, self.seq)
+        
         gen =  self.graph.astream(state, config, version="v2",stream_mode=["messages","checkpoints"])
         
         async def _run(job: _ConversationJobState):
-            job.user_message_id = user_message_id
-            
             parser = MinimaxEventParser()
             current_message = None
             last_message = None
@@ -195,7 +212,7 @@ class ConversationRunner:
                                         is_thinking = parsed.is_thinking
                                     )
                                 )
-                                job.history_message_seq.append((last_uuid, len(job.history)))
+                                job.history_message_seq.append(self.seq)
                                 job.cond.notify_all()
 
                 await _db_update(conversation_id, last_uuid, current_message.model_dump_json(), last_checkpoint, self.seq)
@@ -219,35 +236,39 @@ class ConversationRunner:
                     messages_row = await session.execute(
                         select(db_models.Message).where(db_models.Message.conversation_id == conversation_id).order_by(db_models.Message.seq)
                     )
-                    messages = messages_row.scalars().all()
-                    h_messages : list[CompletionResponseHistory] = []
-                    for message in messages:
-                        h_messages.append(
-                            CompletionResponseHistory(
-                                message_id = message.id,
-                                created_at = int(message.created_at.timestamp()),
-                                finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
-                                data = decode_message(message)
-                            )
-                        )
+                messages = messages_row.scalars().all()
+                h_messages : list[(CompletionResponseHistory, int)] = []
+                for message in messages:
+                    h_messages.append((
+                        CompletionResponseHistory(
+                            message_id = message.id,
+                            created_at = int(message.created_at.timestamp()),
+                            finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
+                            data = decode_message(message)
+                        ), message.seq)
+                    )
             async def _stream(job: _ConversationJobState):
                 #send user_message_id here
                 if job.user_message_id:
                     yield CompletionUserMessage(message_id=job.user_message_id)
                     job.user_message_id = None
                 
-                db_message_ids = set()
+                idx = 0
+                
                 if need_history:
                     for h_message in h_messages:
-                        db_message_ids.add(h_message.message_id)
-                        yield h_message
-                idx = 0
-                async with job.cond:
-                    if job.history_message_seq:
-                        for message_id, index in job.history_message_seq:
-                            if message_id not in db_message_ids:
-                                idx = index
-                                break
+                        yield h_message[0]
+                    L_tmp = 0
+                    R_tmp = len(job.history_message_seq) - 1
+                    X = h_messages[-1][1] if h_messages else 0
+                    while L_tmp <= R_tmp:
+                        mid = (L_tmp + R_tmp) // 2
+                        if job.history_message_seq[mid] > X:
+                            idx = mid
+                            R_tmp = mid - 1
+                        else:
+                            L_tmp = mid + 1
+                    print(f"Starting stream from idx {idx} with seq {X}")
                 while True:
                     async with job.cond:
                         while idx < len(job.history):
