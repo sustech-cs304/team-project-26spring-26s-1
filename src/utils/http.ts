@@ -4,8 +4,14 @@ import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError, Inte
 const API_MODE_KEY = 'defaultBaseURLIsCloud'
 const LOCAL_DEFAULT_BASE_URL = 'http://127.0.0.1:8000/api'
 const CLOUD_DEFAULT_BASE_URL = `${window.location.origin}/api`
+const LOCAL_DEFAULT_WS_URL = 'ws://127.0.0.1:8000'
 
 const stripTrailingSlash = (url: string) => url.replace(/\/+$/, '')
+
+function resolveCloudWebSocketURL (): string {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.hostname}:80`
+}
 
 function resolveBaseURL (): string {
     const envBaseURL = import.meta.env.VITE_API_BASE_URL as string
@@ -15,8 +21,18 @@ function resolveBaseURL (): string {
     return stripTrailingSlash(getDefaultBaseURLIsCloud() ? CLOUD_DEFAULT_BASE_URL : LOCAL_DEFAULT_BASE_URL)
 }
 
+function resolveWebSocketURL (): string {
+    const envWebSocketURL = import.meta.env.VITE_WS_BASE_URL as string
+    if (envWebSocketURL) {
+        return stripTrailingSlash(envWebSocketURL)
+    }
+    return stripTrailingSlash(getDefaultBaseURLIsCloud() ? resolveCloudWebSocketURL() : LOCAL_DEFAULT_WS_URL)
+}
+
 /** 统一的 API 根地址，去除末尾斜杠，供 fetch 等场景复用 */
 export let baseURL = resolveBaseURL()
+/** 统一的 WS 根地址，供 ASR 等 WebSocket 场景复用 */
+export let wsBaseURL = resolveWebSocketURL()
 
 const http: AxiosInstance = axios.create({
     baseURL,
@@ -32,11 +48,14 @@ export function getDefaultBaseURLIsCloud (): boolean {
 }
 
 function syncBaseURL (): void {
-    if (import.meta.env.VITE_API_BASE_URL) {
-        return
+    if (!import.meta.env.VITE_API_BASE_URL) {
+        baseURL = resolveBaseURL()
+        http.defaults.baseURL = baseURL
     }
-    baseURL = resolveBaseURL()
-    http.defaults.baseURL = baseURL
+
+    if (!import.meta.env.VITE_WS_BASE_URL) {
+        wsBaseURL = resolveWebSocketURL()
+    }
 }
 
 export function setDefaultBaseURLIsCloud (isCloud: boolean): void {

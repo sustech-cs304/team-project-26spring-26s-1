@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue'
+import { wsBaseURL } from '@/utils/http'
 
 export interface AsrCallbacks {
     onTranscript?: (text: string) => void
@@ -16,7 +17,7 @@ export function useAsr ({ onTranscript, onError, onFinished }: AsrCallbacks = {}
 
     let processor: any = null
     let stream: MediaStream | null = null
-    const WS_URL = 'ws://localhost:4000'
+    const WS_URL = `${wsBaseURL}/conversation/asr`
 
     let completedText = ''
     let currentText = ''
