@@ -22,8 +22,24 @@ export function useAsr ({ onTranscript, onError, onFinished }: AsrCallbacks = {}
     let completedText = ''
     let currentText = ''
     let timeoutId: number | null = null
+    let taskId = ''
     const TIMEOUT_MS = 15000
     const START_TIMEOUT_MS = 10000
+    const RUN_PAYLOAD = {
+        task_group: 'audio',
+        task: 'asr',
+        function: 'recognition',
+        model: 'fun-asr-realtime',
+        parameters: { sample_rate: 16000, format: 'pcm' },
+        input: {},
+    }
+
+    function buildTaskMessage (action: 'run-task' | 'finish-task') {
+        return JSON.stringify({
+            header: { action, task_id: taskId, streaming: 'duplex' },
+            payload: action === 'run-task' ? RUN_PAYLOAD : { input: {} },
+        })
+    }
 
     function floatTo16BitPCM (input: Float32Array) {
         const output = new Int16Array(input.length)
@@ -55,6 +71,7 @@ export function useAsr ({ onTranscript, onError, onFinished }: AsrCallbacks = {}
         if (isStarting.value || isRecording.value) return
 
         isStarting.value = true
+        taskId = crypto.randomUUID().replace(/-/g, '').slice(0, 32)
         let startTimeoutId: number | null = null
 
         try {
@@ -68,7 +85,7 @@ export function useAsr ({ onTranscript, onError, onFinished }: AsrCallbacks = {}
             ws = new WebSocket(WS_URL)
 
             ws.onopen = () => {
-                ws?.send(JSON.stringify({ type: 'START_ASR' }))
+                ws?.send(buildTaskMessage('run-task'))
             }
 
             ws.onmessage = (e) => {
@@ -153,12 +170,13 @@ export function useAsr ({ onTranscript, onError, onFinished }: AsrCallbacks = {}
         isStarting.value = false
         isRecording.value = false
         if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'FINISH_TASK' }))
+            ws.send(buildTaskMessage('finish-task'))
         }
         stopAudio()
         transcript.value = ''
         completedText = ''
         currentText = ''
+        taskId = ''
         clearAsrTimeout()
     }
 
@@ -180,6 +198,7 @@ export function useAsr ({ onTranscript, onError, onFinished }: AsrCallbacks = {}
             ws.close()
             ws = null
         }
+        taskId = ''
     }
 
     onUnmounted(() => {
