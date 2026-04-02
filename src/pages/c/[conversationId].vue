@@ -578,9 +578,7 @@
     }
 
     const stop = () => {
-        if (currentMessageId) {
-            cancelChat(conversationId.value, currentMessageId).catch(() => { })
-        }
+        cancelChat(conversationId.value).catch(() => { })
         currentAbortCtrl?.abort()
         currentAbortCtrl = null
         currentMessageId = null

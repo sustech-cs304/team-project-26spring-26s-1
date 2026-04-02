@@ -227,8 +227,8 @@ export function chatCompletion (
  * 停止对话接口：通知后端终止当前对话流并更新状态
  * POST /conversation/cancelchat
  */
-export function cancelChat (conversation_id: string, message_id: string): Promise<MessageResponse> {
+export function cancelChat (conversation_id: string): Promise<MessageResponse> {
     return http.post<MessageResponse>('/conversation/cancelchat', null, {
-        params: { conversation_id, message_id },
+        params: { conversation_id },
     })
 }

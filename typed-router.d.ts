@@ -73,6 +73,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/quiz-playground': RouteRecordInfo<
+      '/quiz-playground',
+      '/quiz-playground',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/settings/': RouteRecordInfo<
       '/settings/',
       '/settings',
@@ -148,6 +155,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/calendar/index.vue': {
       routes:
         | '/calendar/'
+      views:
+        | never
+    }
+    'src/pages/quiz-playground.vue': {
+      routes:
+        | '/quiz-playground'
       views:
         | never
     }
