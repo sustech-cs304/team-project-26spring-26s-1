@@ -36,20 +36,29 @@
                                 <v-window-item value="environment">
                                     <v-sheet color="transparent" class="pa-2 overflow-y-auto"
                                         style="max-height: 260px;">
+                                        <v-alert v-if="!savedEnvVars.length" type="warning" variant="tonal" rounded="lg"
+                                            density="comfortable" icon="mdi-alert-outline" class="mb-3">
+                                            <div class="d-flex align-center justify-space-between ga-2 flex-wrap">
+                                                <span class="text-body-small">还没有可用环境变量，请先前往环境变量页面创建。</span>
+                                                <v-btn size="small" variant="text" rounded="lg"
+                                                    prepend-icon="mdi-open-in-new"
+                                                    @click="emit('request-env-vars-setup')">
+                                                    去配置
+                                                </v-btn>
+                                            </div>
+                                        </v-alert>
+
                                         <v-list v-if="form.env_var_refs.length" bg-color="transparent" class="pa-0">
                                             <v-list-item v-for="(env, index) in form.env_var_refs" :key="index"
                                                 class="px-0">
                                                 <v-row class="ma-0" density="compact">
-                                                    <v-col cols="5" class="pa-0">
-                                                        <v-text-field v-model="env.key" placeholder="变量名"
-                                                            variant="solo-filled" rounded="lg" hide-details flat
-                                                            density="compact" />
-                                                    </v-col>
-                                                    <v-col cols="6">
-                                                        <v-select v-model="env.secret_ref" :items="savedEnvVars"
-                                                            item-title="key" item-value="secret_ref"
-                                                            placeholder="选择 secret_ref" variant="solo-filled"
-                                                            rounded="lg" hide-details flat density="compact" />
+                                                    <v-col cols="11" class="pa-0">
+                                                        <v-select :model-value="env.secret_ref"
+                                                            :items="optionsForIndex(index)"
+                                                            :item-title="formatEnvVarOption" item-value="secret_ref"
+                                                            placeholder="选择 环境变量名 - secret_ref" variant="solo-filled"
+                                                            rounded="lg" hide-details flat density="compact"
+                                                            @update:model-value="handleEnvSelection(index, $event)" />
                                                     </v-col>
                                                     <v-col cols="1" class="d-flex align-center">
                                                         <v-btn icon="mdi-close" variant="text" size="x-small"
@@ -63,7 +72,7 @@
                                         </div>
                                         <div class="d-flex justify-end mb-3">
                                             <v-btn variant="text" rounded="lg" size="small" prepend-icon="mdi-plus"
-                                                @click="emit('add-env-var')">
+                                                :disabled="!canAddEnvVar" @click="emit('add-env-var')">
                                                 添加变量
                                             </v-btn>
                                         </div>
@@ -118,7 +127,7 @@
         env_var_refs: EnvVarRef[]
     }
 
-    defineProps<{
+    const props = defineProps<{
         modelValue: boolean
         title: string
         actionLabel: string
@@ -132,8 +141,60 @@
         'update:modelValue': [value: boolean]
         'add-env-var': []
         'remove-env-var': [index: number]
+        'request-env-vars-setup': []
         save: []
     }>()
 
     const activePanel = ref<'schedule' | 'environment'>('schedule')
+
+    const secretRefToKeyMap = computed(() => {
+        const map = new Map<string, string>()
+        props.savedEnvVars.forEach((item) => map.set(item.secret_ref, item.key))
+        return map
+    })
+
+    const hasUnselectedEnvRef = computed(() =>
+        props.form.env_var_refs.some((item) => !item.secret_ref.trim())
+    )
+
+    const canAddEnvVar = computed(() => {
+        if (!props.savedEnvVars.length) return false
+        if (hasUnselectedEnvRef.value) return false
+        return props.form.env_var_refs.length < props.savedEnvVars.length
+    })
+
+    watchEffect(() => {
+        props.form.env_var_refs.forEach((item) => {
+            if (!item.secret_ref) return
+            const mappedKey = secretRefToKeyMap.value.get(item.secret_ref)
+            if (mappedKey) item.key = mappedKey
+        })
+    })
+
+    function optionsForIndex (index: number): EnvVarRef[] {
+        const currentSecretRef = props.form.env_var_refs[index]?.secret_ref
+        const selectedByOthers = new Set(
+            props.form.env_var_refs
+                .filter((_, rowIndex) => rowIndex !== index)
+                .map((item) => item.secret_ref)
+                .filter(Boolean)
+        )
+
+        return props.savedEnvVars.filter((item) =>
+            item.secret_ref === currentSecretRef || !selectedByOthers.has(item.secret_ref)
+        )
+    }
+
+    function formatEnvVarOption (item: EnvVarRef) {
+        return `${item.key} - ${item.secret_ref}`
+    }
+
+    function handleEnvSelection (index: number, selectedSecretRef: string | null) {
+        const target = props.form.env_var_refs[index]
+        if (!target) return
+
+        const secretRef = selectedSecretRef ?? ''
+        target.secret_ref = secretRef
+        target.key = secretRef ? (secretRefToKeyMap.value.get(secretRef) ?? '') : ''
+    }
 </script>

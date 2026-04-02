@@ -87,6 +87,8 @@ export function useTaskWorkspace () {
         env_var_refs: [],
     })
 
+    const editorInitialSnapshot = ref<TaskEditorForm>(makeEditorForm())
+
     const filteredTasks = computed(() => {
         const query = search.value.trim().toLowerCase()
 
@@ -145,8 +147,41 @@ export function useTaskWorkspace () {
         }
     }
 
+    function cloneEditorForm (form: TaskEditorForm): TaskEditorForm {
+        return {
+            name: form.name,
+            description: form.description,
+            execution_mode: form.execution_mode,
+            payload: form.payload,
+            cron_expression: form.cron_expression,
+            env_var_refs: form.env_var_refs.map((item) => ({ ...item })),
+        }
+    }
+
+    function normalizeFormForCompare (form: TaskEditorForm) {
+        return {
+            name: form.name.trim(),
+            description: form.description.trim(),
+            execution_mode: form.execution_mode,
+            payload: form.payload,
+            cron_expression: form.cron_expression.trim(),
+            env_var_refs: form.env_var_refs.map((item) => ({
+                key: item.key.trim(),
+                secret_ref: item.secret_ref.trim(),
+            })),
+        }
+    }
+
+    const hasEditorChanges = computed(() => {
+        const current = normalizeFormForCompare(editorForm)
+        const initial = normalizeFormForCompare(editorInitialSnapshot.value)
+        return JSON.stringify(current) !== JSON.stringify(initial)
+    })
+
     function applyEditorForm (task?: Task | null, duplicate = false) {
-        Object.assign(editorForm, makeEditorForm(task, duplicate))
+        const form = makeEditorForm(task, duplicate)
+        editorInitialSnapshot.value = cloneEditorForm(form)
+        Object.assign(editorForm, form)
     }
 
     function selectTask (taskId: string) {
@@ -199,7 +234,8 @@ export function useTaskWorkspace () {
         loading.value = true
         try {
             const response = await getTasks()
-            tasks.value = response.items
+            const items = Array.isArray(response?.items) ? response.items : []
+            tasks.value = items
 
             if (!tasks.value.length) {
                 selectedTaskId.value = null
@@ -212,6 +248,8 @@ export function useTaskWorkspace () {
             }
         } catch (error) {
             console.error('Failed to load tasks:', error)
+            tasks.value = []
+            selectedTaskId.value = null
             showSnackbar('加载任务失败', 'error')
         } finally {
             loading.value = false
@@ -220,7 +258,7 @@ export function useTaskWorkspace () {
 
     async function saveTask () {
         const payload = normalizeEditorPayload()
-        if (!payload.name) return
+        if (!payload.name) return false
 
         saving.value = true
         try {
@@ -237,9 +275,12 @@ export function useTaskWorkspace () {
             editorDialog.value = false
             await loadTasksList()
             selectedTaskId.value = savedTask.id
+            editorInitialSnapshot.value = cloneEditorForm(editorForm)
+            return true
         } catch (error) {
             console.error('Failed to save task:', error)
             showSnackbar('保存任务失败', 'error')
+            return false
         } finally {
             saving.value = false
         }
@@ -304,7 +345,8 @@ export function useTaskWorkspace () {
                 page_size: 20,
                 status: runStatusFilter.value === 'all' ? undefined : runStatusFilter.value as RunStatus,
             })
-            runs.value = response.items
+            const items = Array.isArray(response?.items) ? response.items : []
+            runs.value = items
 
             if (!runs.value.length) {
                 selectedRunId.value = null
@@ -317,6 +359,8 @@ export function useTaskWorkspace () {
             }
         } catch (error) {
             console.error('Failed to load runs:', error)
+            runs.value = []
+            selectedRunId.value = null
             showSnackbar('加载运行记录失败', 'error')
         } finally {
             runsLoading.value = false
@@ -399,6 +443,7 @@ export function useTaskWorkspace () {
         editorForm,
         editorTitle,
         filteredTasks,
+        hasEditorChanges,
         loading,
         logsLoading,
         openCreate,

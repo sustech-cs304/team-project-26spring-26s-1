@@ -65,8 +65,8 @@
         </v-main>
 
         <TaskEditorDialog v-model="editorDialog" :title="editorTitle" :action-label="editorActionLabel" :saving="saving"
-            :form="editorForm" :cron-presets="cronPresets" :saved-env-vars="envVars" @add-env-var="addEnvVar"
-            @remove-env-var="removeEnvVar" @save="saveTask" />
+            :form="editorForm" :cron-presets="cronPresets" :saved-env-vars="envVars" @add-env-var="handleAddEnvVar"
+            @request-env-vars-setup="handleRequestEnvVarSetup" @remove-env-var="removeEnvVar" @save="saveTask" />
 
         <TaskDeleteDialog v-model="deleteDialog" :loading="deleting" @confirm="confirmDelete" />
 
@@ -107,6 +107,7 @@
         editorForm,
         editorTitle,
         filteredTasks,
+        hasEditorChanges,
         loading,
         logsLoading,
         openCreate,
@@ -142,9 +143,16 @@
     async function loadEnvVarList () {
         envVarsLoading.value = true
         try {
-            envVars.value = await getEnvVars()
+            const result = await getEnvVars()
+
+            if (!Array.isArray(result)) {
+                throw new Error('Invalid env vars response payload')
+            }
+
+            envVars.value = result
         } catch (error) {
             console.error('Failed to load environment variables:', error)
+            envVars.value = []
             showSnackbar('加载环境变量失败', 'error')
         } finally {
             envVarsLoading.value = false
@@ -177,6 +185,38 @@
         currentView.value = 'tasks'
         await ensureEnvVarsLoaded()
         openDuplicate()
+    }
+
+    async function handleRequestEnvVarSetup () {
+        if (editorDialog.value && hasEditorChanges.value) {
+            const shouldSave = window.confirm(
+                '当前任务有未保存修改。是否先保存再前往环境变量页面？\n点击“确定”保存并跳转，点击“取消”不保存直接跳转。'
+            )
+
+            if (shouldSave) {
+                const saved = await saveTask()
+                if (!saved) return
+            } else {
+                editorDialog.value = false
+            }
+        } else if (editorDialog.value) {
+            editorDialog.value = false
+        }
+
+        currentView.value = 'env-vars'
+        await loadEnvVarList()
+        showSnackbar('请先创建环境变量后再回到任务配置')
+    }
+
+    async function handleAddEnvVar () {
+        await ensureEnvVarsLoaded()
+
+        if (!envVars.value.length) {
+            await handleRequestEnvVarSetup()
+            return
+        }
+
+        addEnvVar()
     }
 
     async function saveEnvVar (payload?: { key: string, value: string }) {
