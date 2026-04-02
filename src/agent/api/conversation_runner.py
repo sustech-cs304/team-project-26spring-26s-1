@@ -26,6 +26,8 @@ from fastapi.sse import ServerSentEvent
 import datetime as dt
 from langchain.messages import AnyMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 from agent.api.utils import decode_message
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from bisect import bisect_right
 
 class _ConversationJobState:
     def __init__(self):
@@ -123,12 +125,7 @@ class ConversationRunner:
                 await conn.execute(stmt_writes, params)
                 await conn.commit()
             else:
-                stmt_checkpoints = "DELETE FROM checkpoints WHERE thread_id = ?"
-                stmt_writes = "DELETE FROM writes WHERE thread_id = ?"
-                params = (conversation_id,)
-                await conn.execute(stmt_checkpoints, params)
-                await conn.execute(stmt_writes, params)
-                await conn.commit()
+                await self.graph.checkpointer.adelete_thread(conversation_id)
         
         config : RunnableConfig = {
             "configurable": {
@@ -256,16 +253,9 @@ class ConversationRunner:
                 if need_history:
                     for h_message in h_messages:
                         yield h_message[0]
-                    L_tmp = 0
-                    R_tmp = len(job.history_message_seq) - 1
                     X = h_messages[-1][1] if h_messages else 0
-                    while L_tmp <= R_tmp:
-                        mid = (L_tmp + R_tmp) // 2
-                        if job.history_message_seq[mid] > X:
-                            idx = mid
-                            R_tmp = mid - 1
-                        else:
-                            L_tmp = mid + 1
+                    idx = bisect_right(job.history_message_seq, X)
+                    
                     print(f"Starting stream from idx {idx} with seq {X}")
                 while True:
                     async with job.cond:
