@@ -1,0 +1,22 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - backend-new
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: build container
+        run: docker build -t opencrab:latest .
+
+      - name: kill existing container if exists
+        run: docker rm -f opencrab || true
+      
+      - name: run container
+        run: docker run -d --name opencrab -p 8000:8000 -v /home/xciphand/config.yaml:/app/config.yaml opencrab:latest
