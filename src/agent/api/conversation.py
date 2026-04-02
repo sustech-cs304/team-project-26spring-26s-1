@@ -1,5 +1,5 @@
 from typing import Literal, Annotated, Union, ClassVar
-from unittest import runner
+import asyncio
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from uuid import uuid4
@@ -41,9 +41,14 @@ async def conversation_completion(params: ConversationCompletionRequest, request
     id = str(uuid4())
     
     ConversationRunner = request.app.state.ConversationRunner
-    await ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id)
+    run_task = asyncio.create_task(ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id))
+    await asyncio.shield(run_task)
     
-    async for delta in await ConversationRunner.stream(params.conversation_id, params.need_history):
+    stream_gen = await asyncio.shield(
+        asyncio.create_task(ConversationRunner.stream(params.conversation_id, params.need_history))
+    )
+    
+    async for delta in stream_gen:
         yield ServerSentEvent(
             data=delta,
             event=delta._event_type
