@@ -3,10 +3,10 @@ import asyncio
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from uuid import uuid4
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 import pydantic
-from agent.db.models import Conversation
+from agent.db.models import Conversation, Message
 import agent.api.models as api_models
 import datetime as dt
 from agent.api.conversation_runner import ConversationRunner
@@ -128,3 +128,24 @@ async def cancel_conversation(request: Request, conversation_id: str):
     
     runner.cancel(conversation_id)
     return {"status": "cancelled"}
+
+@router.delete("/conversation/{conversation_id}")
+async def delete_conversation(request: Request, conversation_id: str, restart_message_id: str | None = None):
+    session_factory = request.app.state.async_session
+    
+    async with session_factory() as session:
+        session : AsyncSession
+        
+        conversation = await session.get(Conversation, conversation_id)
+        if not conversation:
+            raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
+        
+        await session.execute(
+            delete(Message).where(Message.conversation_id == conversation_id)
+        )
+        await session.execute(
+            delete(Conversation).where(Conversation.id == conversation_id)
+        )
+        await session.commit()
+        
+        await request.app.state.graph.checkpointer.adelete_thread(conversation_id)
