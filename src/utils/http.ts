@@ -1,12 +1,22 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
 
-/** 统一的 API 根地址，去除末尾斜杠，供 fetch 等场景复用 */
-const defaultBaseURL = import.meta.env.PROD
-    ? 'http://127.0.0.1:8000/'
-    : 'https://m1.apifoxmock.com/m1/7865145-7614648-default'
+const API_MODE_KEY = 'defaultBaseURLIsCloud'
+const LOCAL_DEFAULT_BASE_URL = 'http://127.0.0.1:8000/api'
+const CLOUD_DEFAULT_BASE_URL = `${window.location.origin}/api`
 
-export const baseURL = ((import.meta.env.VITE_API_BASE_URL as string) || defaultBaseURL).replace(/\/+$/, '')
+const stripTrailingSlash = (url: string) => url.replace(/\/+$/, '')
+
+function resolveBaseURL (): string {
+    const envBaseURL = import.meta.env.VITE_API_BASE_URL as string
+    if (envBaseURL) {
+        return stripTrailingSlash(envBaseURL)
+    }
+    return stripTrailingSlash(getDefaultBaseURLIsCloud() ? CLOUD_DEFAULT_BASE_URL : LOCAL_DEFAULT_BASE_URL)
+}
+
+/** 统一的 API 根地址，去除末尾斜杠，供 fetch 等场景复用 */
+export let baseURL = resolveBaseURL()
 
 const http: AxiosInstance = axios.create({
     baseURL,
@@ -16,6 +26,23 @@ const http: AxiosInstance = axios.create({
         'Content-Type': 'application/json',
     },
 })
+
+export function getDefaultBaseURLIsCloud (): boolean {
+    return localStorage.getItem(API_MODE_KEY) === 'true'
+}
+
+function syncBaseURL (): void {
+    if (import.meta.env.VITE_API_BASE_URL) {
+        return
+    }
+    baseURL = resolveBaseURL()
+    http.defaults.baseURL = baseURL
+}
+
+export function setDefaultBaseURLIsCloud (isCloud: boolean): void {
+    localStorage.setItem(API_MODE_KEY, String(isCloud))
+    syncBaseURL()
+}
 
 // Request Interceptor
 http.interceptors.request.use(
