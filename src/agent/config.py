@@ -21,10 +21,16 @@ class EmbedEndpointConfig(BaseModel):
     model: str
     dims: int
 
+class ASREndpointConfig(BaseModel):
+    type: Literal["Qwen"]
+    base_url: str
+    api_key: str
+
 class ApiConfig(BaseModel):
     agent: ApiEndpointConfig
     utility: ApiEndpointConfig
     embed: EmbedEndpointConfig
+    asr: ASREndpointConfig
 
 class AppConfig(BaseModel):
     api: ApiConfig
