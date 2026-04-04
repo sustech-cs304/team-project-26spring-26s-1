@@ -1,11 +1,15 @@
 from typing import Literal, Annotated, Union, ClassVar
 import asyncio
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+import json
+import websockets
 from uuid import uuid4
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 import pydantic
+from agent.config import AppConfig
+from contextlib import suppress
 from agent.db.models import Conversation, Message
 import agent.api.models as api_models
 import datetime as dt
@@ -149,3 +153,49 @@ async def delete_conversation(request: Request, conversation_id: str, restart_me
         await session.commit()
         
         await request.app.state.graph.checkpointer.adelete_thread(conversation_id)
+        
+@router.websocket("/conversation/asr")
+async def conversation_asr(websocket: WebSocket):
+    config: AppConfig = websocket.app.state.config
+    await websocket.accept()
+ 
+    dashscope_ws = None
+ 
+    try:
+        dashscope_ws = await websockets.connect(
+            config.api.asr.base_url,
+            additional_headers={
+                'Authorization': f'bearer {config.api.asr.api_key}',
+            },
+            max_size=None,
+        )
+        
+        async def forward_client():
+            while True:
+                data = await websocket.receive()
+                if data['type'] == 'websocket.disconnect':
+                    break
+                
+                if 'text' in data:
+                    await dashscope_ws.send(data['text'])
+                elif 'bytes' in data:
+                    await dashscope_ws.send(data['bytes'])
+                
+        async def forward_asr():
+            while True:
+                result = await dashscope_ws.recv()
+                await websocket.send_text(result if isinstance(result, str) else result.decode('utf-8'))
+                
+        await asyncio.gather(forward_client(), forward_asr())
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        await websocket.send_json({"error": str(e)})
+        return
+    finally:
+        with suppress(Exception):
+            if dashscope_ws:
+                await dashscope_ws.close()
+        with suppress(Exception):
+            await websocket.close()
