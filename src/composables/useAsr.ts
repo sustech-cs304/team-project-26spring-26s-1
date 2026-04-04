@@ -17,7 +17,7 @@ export function useAsr ({ onTranscript, onError, onFinished }: AsrCallbacks = {}
 
     let processor: any = null
     let stream: MediaStream | null = null
-    const WS_URL = `${wsBaseURL}/conversation/asr`
+    const WS_URL = `${wsBaseURL}/api/conversation/asr`
 
     let completedText = ''
     let currentText = ''
