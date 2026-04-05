@@ -5,7 +5,7 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 import json
 import websockets
 from uuid import uuid4
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 import pydantic
 from agent.config import AppConfig
@@ -208,15 +208,17 @@ async def update_conversation_title(request: Request, conversation_id: str, para
     async with session_factory() as session:
         session : AsyncSession
         
-        conversation = await session.get(Conversation, conversation_id)
-        if not conversation:
-            raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
+        stmt = update(Conversation).where(Conversation.id == conversation_id)
         
         if params.title is not None:
-            conversation.title = params.title
+            stmt = stmt.values(title=params.title)
         if params.is_pinned is not None:
-            conversation.pinned = params.is_pinned
+            stmt = stmt.values(pinned=params.is_pinned)
+            
+        result = await session.execute(stmt)
         
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
         await session.commit()
-        
+
     return {"status": "updated"}
