@@ -84,8 +84,8 @@
     import TaskEditorDialog from '@/components/tasks/TaskEditorDialog.vue'
     import TaskEnvVarsPane from '@/components/tasks/TaskEnvVarsPane.vue'
     import TaskListPane from '@/components/tasks/TaskListPane.vue'
-    import type { EnvVarRef } from '@/utils/tasks'
     import { copyText } from '@/utils/copyText'
+    import { validateEnvVarKey, type EnvVarRef } from '@/utils/tasks'
 
     const drawer = ref(true)
     const currentView = ref<'tasks' | 'env-vars'>('tasks')
@@ -224,6 +224,12 @@
         const value = payload?.value.trim() ?? ''
         if (!key || !value || envVarSaving.value) return
 
+        const keyError = validateEnvVarKey(key)
+        if (keyError) {
+            showSnackbar(keyError, 'error')
+            return
+        }
+
         envVarSaving.value = true
         try {
             const saved = await upsertEnvVar({ key, value })
@@ -258,4 +264,5 @@
             onError: () => showSnackbar('复制 secret_ref 失败', 'error'),
         })
     }
+
 </script>

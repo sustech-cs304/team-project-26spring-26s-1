@@ -12,6 +12,69 @@ export interface EnvVarRef {
     secret_ref: string
 }
 
+export function validateEnvVarKey (key: string | null | undefined): string | null {
+    const value = key ?? ''
+    if (!value) return 'Name is required'
+    if (value.length > 1024) return 'Name must be at most 1024 characters'
+    if (/\s/.test(value)) return 'Name cannot contain spaces'
+    if (!/^[A-Za-z0-9_]+$/.test(value)) {
+        return 'Only letters, numbers, and underscores are allowed'
+    }
+    return null
+}
+
+function isValidCronNumber (value: string, min: number, max: number): boolean {
+    if (!/^\d+$/.test(value)) return false
+    const num = Number(value)
+    return num >= min && num <= max
+}
+
+function isValidCronAtom (value: string, min: number, max: number): boolean {
+    if (value === '*') return true
+
+    if (value.includes('/')) {
+        const [base, step] = value.split('/')
+        if (!base || !step || !/^\d+$/.test(step) || Number(step) <= 0) return false
+        return isValidCronAtom(base, min, max)
+    }
+
+    if (value.includes('-')) {
+        const [start, end] = value.split('-')
+        if (!start || !end) return false
+        if (!isValidCronNumber(start, min, max) || !isValidCronNumber(end, min, max)) return false
+        return Number(start) <= Number(end)
+    }
+
+    return isValidCronNumber(value, min, max)
+}
+
+function isValidCronField (field: string, min: number, max: number): boolean {
+    return field.split(',').every(part => isValidCronAtom(part, min, max))
+}
+
+export function validateCronExpression (cron: string | null | undefined): string | null {
+    const value = cron?.trim() ?? ''
+    if (!value) return null
+
+    const parts = value.split(/\s+/)
+    if (parts.length !== 5) return 'Cron expression must have 5 fields'
+
+    const ranges: Array<[number, number]> = [
+        [0, 59],
+        [0, 23],
+        [1, 31],
+        [1, 12],
+        [0, 6],
+    ]
+
+    const valid = parts.every((field, index) => {
+        const [min, max] = ranges[index] ?? [0, 0]
+        return isValidCronField(field, min, max)
+    })
+
+    return valid ? null : 'Invalid cron format'
+}
+
 export interface Task {
     id: string
     name: string

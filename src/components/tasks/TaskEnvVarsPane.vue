@@ -20,29 +20,15 @@
                         </v-card-item>
                         <v-card-text class="pt-2">
                             <v-text-field v-model="localKey" label="变量名" variant="outlined" rounded="lg"
-                                density="compact" hide-details="auto" class="mb-3" />
+                                density="compact" hide-details="auto" class="mb-3" :error="!!keyError"
+                                :error-messages="keyError ? [keyError] : []" />
 
                             <v-textarea v-model="localValue" label="变量值" variant="outlined" rounded="lg"
                                 density="compact" rows="4" auto-grow hide-details="auto" class="mb-3" />
 
-                            <v-alert v-if="latestSecretRef" type="success" variant="tonal" rounded="lg"
-                                density="compact" icon="false" class="mb-3">
-                                <div class="d-flex align-center ga-2 text-body-large font-weight-medium">
-                                    <v-icon size="14">mdi-check-circle-outline</v-icon>
-                                    <span>已保存为</span>
-                                </div>
-                                <div class="d-flex align-center justify-space-between ga-2 mt-2 flex-wrap">
-                                    <v-chip size="small" rounded="lg" variant="outlined">{{ latestSecretRef }}</v-chip>
-                                    <v-btn size="x-small" rounded="lg" variant="text" prepend-icon="mdi-content-copy"
-                                        @click="emit('copy', latestSecretRef)">
-                                        复制
-                                    </v-btn>
-                                </div>
-                            </v-alert>
-
                             <div class="d-flex justify-end">
                                 <v-btn color="primary" rounded="lg" size="small" prepend-icon="mdi-content-save-outline"
-                                    :loading="saving" :disabled="!localKey.trim() || !localValue.trim()"
+                                    :loading="saving" :disabled="!localKey.trim() || !localValue.trim() || !!keyError"
                                     @click="emit('save', { key: localKey.trim(), value: localValue.trim() })">
                                     保存变量
                                 </v-btn>
@@ -93,7 +79,7 @@
 </template>
 
 <script setup lang="ts">
-    import type { EnvVarRef } from '@/utils/tasks'
+    import { validateEnvVarKey, type EnvVarRef } from '@/utils/tasks'
     import { ref, watch } from 'vue'
 
     const emit = defineEmits<{
@@ -112,6 +98,10 @@
 
     const localKey = ref('')
     const localValue = ref('')
+    const keyError = computed(() => {
+        if (!localKey.value) return null
+        return validateEnvVarKey(localKey.value)
+    })
 
     watch(() => props.latestSecretRef, (value) => {
         if (!value) return

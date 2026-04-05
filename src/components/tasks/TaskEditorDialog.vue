@@ -21,8 +21,8 @@
                                 <v-window-item value="schedule">
                                     <v-sheet color="transparent" class="pa-4">
                                         <v-text-field v-model="form.cron_expression" label="Cron 表达式"
-                                            variant="solo-filled" rounded="lg" placeholder="留空则仅手动执行" hide-details
-                                            flat />
+                                            variant="solo-filled" rounded="lg" placeholder="留空则仅手动执行"
+                                            :error="!!cronError" :error-messages="cronError ? [cronError] : []" flat />
                                         <div class="d-flex flex-wrap ga-2 mt-3">
                                             <v-chip v-for="preset in cronPresets" :key="preset.cron" size="small"
                                                 rounded="lg" variant="outlined"
@@ -105,7 +105,8 @@
             <v-card-actions class="px-5 pb-4">
                 <v-spacer />
                 <v-btn variant="text" rounded="lg" size="small" @click="emit('update:modelValue', false)">取消</v-btn>
-                <v-btn color="primary" rounded="lg" size="small" :loading="saving" :disabled="!form.name.trim()"
+                <v-btn color="primary" rounded="lg" size="small" :loading="saving"
+                    :disabled="!form.name.trim() || !!cronError"
                     @click="emit('save')">
                     {{ actionLabel }}
                 </v-btn>
@@ -116,7 +117,7 @@
 
 <script setup lang="ts">
     import MonacoEditor from '@/components/editor/MonacoEditor.vue'
-    import { MODE_ICON, MODE_LABEL, type EnvVarRef, type Task } from '@/utils/tasks'
+    import { MODE_ICON, MODE_LABEL, validateCronExpression, type EnvVarRef, type Task } from '@/utils/tasks'
 
     interface EditorForm {
         name: string
@@ -146,6 +147,7 @@
     }>()
 
     const activePanel = ref<'schedule' | 'environment'>('schedule')
+    const cronError = computed(() => validateCronExpression(props.form.cron_expression))
 
     const secretRefToKeyMap = computed(() => {
         const map = new Map<string, string>()
