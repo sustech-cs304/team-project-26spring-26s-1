@@ -620,7 +620,6 @@
 
     /** 统一的消息发送函数 */
     const sendChatRequest = async (options: SendChatRequestOptions) => {
-        stop()
         const requestId = generateUUID()
 
         if (options.clearFromIndex !== undefined) {
