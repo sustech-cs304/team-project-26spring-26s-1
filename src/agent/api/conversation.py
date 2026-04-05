@@ -196,3 +196,27 @@ async def conversation_asr(websocket: WebSocket):
                 await dashscope_ws.close()
         with suppress(Exception):
             await websocket.close()
+            
+class ConversationUpdateRequest(pydantic.BaseModel):
+    title: str | None = None
+    is_pinned: bool | None = None
+            
+@router.patch("/conversation/{conversation_id}")
+async def update_conversation_title(request: Request, conversation_id: str, params: ConversationUpdateRequest):
+    session_factory = request.app.state.async_session
+    
+    async with session_factory() as session:
+        session : AsyncSession
+        
+        conversation = await session.get(Conversation, conversation_id)
+        if not conversation:
+            raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
+        
+        if params.title is not None:
+            conversation.title = params.title
+        if params.is_pinned is not None:
+            conversation.pinned = params.is_pinned
+        
+        await session.commit()
+        
+    return {"status": "updated"}
