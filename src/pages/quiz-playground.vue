@@ -13,7 +13,7 @@
                     <v-sheet color="transparent" class="text-subtitle-1 font-weight-medium mb-4">聊天框临时预览</v-sheet>
 
                     <v-sheet rounded="xl" border color="surface" class="pa-4">
-                        <v-row no-gutters class="ga-3" align="start">
+                        <v-row density="compact" class="ga-3" align="start">
                             <v-avatar size="34" color="surface-variant" class="flex-shrink-0">
                                 <v-icon size="18">mdi-robot-outline</v-icon>
                             </v-avatar>

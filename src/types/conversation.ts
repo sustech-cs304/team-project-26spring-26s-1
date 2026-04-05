@@ -46,12 +46,14 @@ export type SseEventTypes = 'history' | 'user_message' | 'delta' | 'meta_data' |
 export type MsgRole = 'user' | 'assistant' | 'system' | 'tools'
 export type HistoryMessageRole = Exclude<MsgRole, 'tools'>
 
+export interface ToolArgument {
+  argument_name: string
+  argument: string
+}
+
 export interface ToolCallMessage {
   tool_name: string
-  tool_arguments: Array<{
-    argument_name: string
-    argument: string
-  }>
+  tool_arguments: ToolArgument[]
   status: 'pending' | 'approved' | 'rejected'
   pending_reason?: string
   tool_response?: string
@@ -65,12 +67,62 @@ export interface QuizOption {
 }
 
 export interface QuizCardData {
+  quiz_id?: string
   title: string
   description?: string
   type: QuizType
   options: QuizOption[]
   answers: string[]
   explanation: string
+}
+
+export interface QuizCardPayload {
+  quizzes: QuizCardData[]
+}
+
+export interface QuizToolCard extends QuizCardPayload {
+  card_id: string
+}
+
+export interface QuizCardToolArgument extends ToolArgument {
+  argument_name: string
+  argument: string
+}
+
+export interface QuizCardToolMessage extends Omit<ToolCallMessage, 'tool_name' | 'tool_arguments'> {
+  tool_name: 'quiz_card'
+  tool_arguments: QuizCardToolArgument[]
+}
+
+export const isQuizCardToolMessage = (tool?: ToolCallMessage | null): tool is QuizCardToolMessage =>
+  tool?.tool_name === 'quiz_card'
+
+const isQuizCardPayload = (value: unknown): value is QuizCardPayload => {
+  if (!value || typeof value !== 'object') return false
+  return Array.isArray((value as QuizCardPayload).quizzes)
+}
+
+export const parseQuizCardPayload = (raw: string): QuizCardPayload | null => {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return isQuizCardPayload(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export const extractQuizCardsFromToolCall = (tool?: ToolCallMessage | null): QuizToolCard[] => {
+  if (!isQuizCardToolMessage(tool)) return []
+
+  return tool.tool_arguments.flatMap((item) => {
+    const payload = parseQuizCardPayload(item.argument)
+    if (!payload) return []
+
+    return [{
+      card_id: item.argument_name,
+      quizzes: payload.quizzes,
+    }]
+  })
 }
 
 export interface Message {

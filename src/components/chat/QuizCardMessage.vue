@@ -1,6 +1,6 @@
 <template>
     <v-sheet rounded="lg" border class="my-2 pa-3 text-body-2" width="100%" max-width="720">
-        <v-row align="center" class="ma-0 mb-2" no-gutters>
+        <v-row align="center" class="ma-0 mb-2" density="compact">
             <v-icon size="16" color="primary" class="mr-2">mdi-help-circle-outline</v-icon>
             <v-sheet color="transparent" class="font-weight-medium">Quiz</v-sheet>
             <v-spacer />
@@ -47,7 +47,7 @@
                     </v-checkbox>
                 </v-selection-control-group>
 
-                <v-row class="ma-0 ga-1 justify-end mb-1" no-gutters>
+                <v-row class="ma-0 ga-1 justify-end mb-1" density="compact">
                     <v-btn color="primary" variant="flat" size="small" rounded @click="submitAnswer"
                         :disabled="!canSubmit">
                         <v-icon start size="16">mdi-check-circle-outline</v-icon>

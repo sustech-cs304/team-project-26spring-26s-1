@@ -36,7 +36,11 @@
                     <v-row v-else-if="msg.role === 'tools' && msg.toolCall" justify="start" class="mb-1"
                         density="compact">
                         <v-col class="pa-0" style="min-width: 0; max-width: 100%;">
-                            <HumanInLoopCard v-if="msg.toolCall.status === 'pending'" :tool="msg.toolCall"
+                            <div v-if="msg.quizCards?.length" class="d-flex flex-column ga-2">
+                                <QuizCardMessage v-for="card in msg.quizCards"
+                                    :key="`${msg.message_id || 'quiz'}-${card.card_id}`" :quizzes="card.quizzes" />
+                            </div>
+                            <HumanInLoopCard v-else-if="msg.toolCall.status === 'pending'" :tool="msg.toolCall"
                                 @action="(action) => handleToolAction(msg.toolCall!, msg.message_id!, action)" />
                             <ToolCallGroup v-else :steps="[msg.toolCall]" :auto-collapse="false" />
                         </v-col>
@@ -99,8 +103,14 @@
     import ThinkingMsg from '@/components/chat/ThinkingMsg.vue'
     import ToolCallGroup from '@/components/chat/ToolCallGroup.vue'
     import HumanInLoopCard from '@/components/chat/HumanInLoopCard.vue'
+    import QuizCardMessage from '@/components/chat/QuizCardMessage.vue'
     import MarkdownRenderer from '@/components/chat/MarkdownRenderer.vue'
-    import type { ToolCallMessage, MsgRole } from '@/types/conversation'
+    import {
+        extractQuizCardsFromToolCall,
+        type MsgRole,
+        type QuizToolCard,
+        type ToolCallMessage,
+    } from '@/types/conversation'
     import type {
         SseHistoryData,
         SseHistoryMessageData,
@@ -128,6 +138,7 @@
         thinking?: string
         thinkingActive?: boolean
         toolCall?: ToolCallMessage
+        quizCards?: QuizToolCard[]
     }
 
     const route = useRoute()
@@ -305,6 +316,22 @@
     // ── 历史消息转换 ──
 
     /** 将后端历史消息转换为 ChatMessage */
+    const toToolCallMessage = (tool: ToolCallMessage): ToolCallMessage => ({
+        tool_name: tool.tool_name,
+        tool_arguments: tool.tool_arguments.map(item => ({
+            argument_name: item.argument_name,
+            argument: item.argument,
+        })),
+        status: tool.status,
+        pending_reason: tool.pending_reason,
+        tool_response: tool.tool_response,
+    })
+
+    const applyToolState = (target: ChatMessage, tool: ToolCallMessage) => {
+        target.toolCall = toToolCallMessage(tool)
+        target.quizCards = extractQuizCardsFromToolCall(target.toolCall)
+    }
+
     const historyToMessage = (m: SseHistoryData): ChatMessage => {
         const historyData = m.data
         const base: ChatMessage = {
@@ -316,7 +343,7 @@
 
         if (historyData.type === 'tool') {
             const toolData = historyData as SseHistoryToolData
-            base.toolCall = toolData
+            applyToolState(base, toolData)
             return base
         }
 
@@ -391,14 +418,21 @@
 
             // tool_call 始终作为独立的 tools 节点
             const msg = getOrCreateMessage(data.message_id, 'tools')
-            msg.toolCall = toolMsg
+            applyToolState(msg, toolMsg)
             void scrollToBottom()
         },
 
         onMetaData: (data: SseMetaData) => {
             if (data.message_id) currentMessageId = data.message_id
             const metadata = data.metadata
-            if (metadata?.title && metadata?.conversation_id) {
+            if (
+                metadata &&
+                typeof metadata === 'object' &&
+                'title' in metadata &&
+                'conversation_id' in metadata &&
+                metadata.title &&
+                metadata.conversation_id
+            ) {
                 appStore.setConversationTitle(metadata.conversation_id, metadata.title)
             }
         },
