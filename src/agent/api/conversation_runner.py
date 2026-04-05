@@ -22,12 +22,13 @@ from agent.api.models import (
 )
 from agent.parser import AnthropicEventParser
 from uuid import uuid4
-from fastapi.sse import ServerSentEvent
 import datetime as dt
 from langchain.messages import AnyMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
-from agent.parser.utils import decode_message
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from bisect import bisect_right
+from pydantic import BaseModel, Field, TypeAdapter
+
+message_type_adapter = TypeAdapter(AnyMessage)
 
 class _ConversationJobState:
     def __init__(self):
@@ -37,6 +38,7 @@ class _ConversationJobState:
         self.done = False
         self.task : asyncio.Task = None # type: ignore
         self.user_message_id = None
+        self.parser = AnthropicEventParser() # TODO: select parser based on model type
         
 class ConversationRunner:
     def __init__(self, graph : langgraph.graph.state.CompiledStateGraph, session_factory : async_sessionmaker):
@@ -50,7 +52,7 @@ class ConversationRunner:
     
     async def run(self, conversation_id : str, user_message : str, restart_message_id: str | None = None): # remove need_history and related logic
         if not user_message:# TODO: complete here when adding attachments
-            print("No user message provided, skipping graph execution and only loading history if needed")
+            # print("No user message provided, skipping graph execution and only loading history if needed")
             return
         
         if conversation_id not in self._conversation_jobs:
@@ -109,10 +111,8 @@ class ConversationRunner:
                     if checkpoint_message:
                         checkpoint_id = checkpoint_message.checkpoint_id
                         assert checkpoint_id is not None
-                        print(f"Resuming conversation {conversation_id} from checkpoint {checkpoint_id}")
+                        # print(f"Resuming conversation {conversation_id} from checkpoint {checkpoint_id}")
                     self.seq = checkpoint_message.seq + 1 if checkpoint_message else 1
-        
-        
         
         #delete checkpoints after deleting messages, here we cannot use ORM
         if restart_message_id:
@@ -162,49 +162,62 @@ class ConversationRunner:
                     
                     conversation.time_last_used = now
                     
-                print(f"Message {message_id} saved to database with checkpoint {checkpoint_id} and seq {seq}")
+                # print(f"Message {message_id} saved to database with checkpoint {checkpoint_id} and seq {seq}")
         
         #give back and insert user message
         user_message_id = restart_message_id or str(uuid4())
         self._conversation_jobs[conversation_id].user_message_id = user_message_id
         await _db_update(conversation_id, user_message_id, HumanMessage(role = "user", content=user_message).model_dump_json(), checkpoint_id, self.seq)
         
-        gen =  self.graph.astream(state, config, version="v2",stream_mode=["messages","checkpoints"])
+        gen =  self.graph.astream(state, config, version="v2",stream_mode=["messages","checkpoints","updates"])
         
         async def _run(job: _ConversationJobState):
-            parser = AnthropicEventParser() # TODO: select parser based on model type
-            last_message = None
-            last_id = None
             current_uuid = None
-            last_checkpoint = None
+            last_checkpoint = ""
+            
+            async with self.session_factory() as session:
+                session : AsyncSession
+                
+                conversation_history_messages_row = await session.execute(
+                    select(db_models.Message).where(db_models.Message.conversation_id == conversation_id).order_by(db_models.Message.seq)
+                )
+                conversation_history_messages = conversation_history_messages_row.scalars().all()
+                
+                job.parser.decode_history([
+                    message_type_adapter.validate_json(message.content) 
+                    for message in conversation_history_messages
+                ])
+            
+            id_map: Dict[str, str] = {}
             
             try:
                 async for event in gen:
-                    print(f"Received event: {event}")
+                    deltas = []
+                    # print(f"Received event: {event}")
                     if event["type"] == "checkpoints":
                         last_checkpoint = event["data"]["config"]["configurable"]["checkpoint_id"]
                     elif event["type"] == "messages":
                         message_chunk = event["data"][0]
-                        current_id = message_chunk.id
-                        if current_id != last_id:
-                            if last_id is not None:
-                                await _db_update(conversation_id, current_uuid, last_message.model_dump_json(), last_checkpoint, self.seq)
-                                last_message = current_message
-                            current_message = None
-                            last_id = current_id
+                        if id_map.get(message_chunk.id):
+                            current_uuid = id_map[message_chunk.id]
+                        else:
                             current_uuid = str(uuid4())
-                            self.seq += 1
-                        current_message = message_chunk if current_message is None else current_message + message_chunk
-                        print(f"Current message updated to: {current_message}")
-                        deltas = parser.parse_event(event, current_uuid) if current_message else None
-                        if deltas:
-                            async with job.cond:
-                                for delta in deltas:
-                                    job.history.append(delta)
-                                    job.history_message_seq.append(self.seq)
-                                job.cond.notify_all()
-
-                await _db_update(conversation_id, current_uuid, current_message.model_dump_json(), last_checkpoint, self.seq)
+                            id_map[message_chunk.id] = current_uuid
+                        deltas = job.parser.parse_event(event, current_uuid)
+                    elif event["type"] == "updates":
+                        if event["data"].get("chat"):
+                            print(f"Received chat update: {event['data']['chat']}")
+                            for msg in event["data"]["chat"]["messages"]:
+                                current_message_uuid = msg.id
+                                await _db_update(conversation_id, current_message_uuid, msg.model_dump_json(), last_checkpoint, self.seq)
+                                job.parser.decode_history([msg])
+                                
+                    if deltas:
+                        async with job.cond:
+                            for delta in deltas:
+                                job.history.append(delta)
+                                job.history_message_seq.append(self.seq)
+                            job.cond.notify_all()
                 self.seq += 1
                 
             except asyncio.CancelledError:
@@ -217,74 +230,59 @@ class ConversationRunner:
         
         self._conversation_jobs[conversation_id].task = asyncio.create_task(_run(self._conversation_jobs[conversation_id]))
         
-    async def stream(self, conversation_id : str, need_history: bool): # -> stream, add need_history
-        if conversation_id in self._conversation_jobs:
-            if need_history:
+    async def stream(self, conversation_id : str, need_history: bool):
+        if need_history:
+            async def _get_history():
                 async with self.session_factory() as session:
                     session : AsyncSession
                     messages_row = await session.execute(
                         select(db_models.Message).where(db_models.Message.conversation_id == conversation_id).order_by(db_models.Message.seq)
                     )
-                messages = messages_row.scalars().all()
-                h_messages : list[(CompletionResponseHistory, int)] = []
-                for message in messages:
-                    h_messages.append((
-                        CompletionResponseHistory(
+                    return messages_row.scalars().all()
+            history_messages = await asyncio.shield(_get_history())
+        else:
+            history_messages = []
+        
+        if conversation_id in self._conversation_jobs:
+            job = self._conversation_jobs[conversation_id]
+            if need_history:
+                for message in history_messages:
+                    yield CompletionResponseHistory(
                             message_id = message.id,
                             created_at = int(message.created_at.timestamp()),
                             finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
-                            data = decode_message(message)
-                        ), message.seq)
-                    )
-            async def _stream(job: _ConversationJobState):
-                #send user_message_id here
-                if job.user_message_id:
-                    yield CompletionUserMessage(message_id=job.user_message_id)
-                    job.user_message_id = None
+                            data = job.parser.parse_message(message_type_adapter.validate_json(message.content))
+                        )
                 
+                last_seq = history_messages[-1].seq if history_messages else -1
+                idx = bisect_right(job.history_message_seq, last_seq)
+            else:
                 idx = 0
                 
-                if need_history:
-                    for h_message in h_messages:
-                        yield h_message[0]
-                    X = h_messages[-1][1] if h_messages else 0
-                    idx = bisect_right(job.history_message_seq, X)
-                    
-                    print(f"Starting stream from idx {idx} with seq {X}")
-                while True:
-                    async with job.cond:
-                        while idx < len(job.history):
-                            yield job.history[idx]
-                            idx += 1
-                        if job.done:
-                            break
-                        try:
-                            await asyncio.wait_for(job.cond.wait(), timeout=2)
-                        except asyncio.TimeoutError:
-                            pass
-            return _stream(self._conversation_jobs[conversation_id])
+            print(f"Starting stream from idx {idx}")
+            while True:
+                async with job.cond:
+                    while idx < len(job.history):
+                        yield job.history[idx]
+                        idx += 1
+                    if job.done:
+                        break
+                    try:
+                        await asyncio.wait_for(job.cond.wait(), timeout=2)
+                    except asyncio.TimeoutError:
+                        pass
+        
         else:
-            async def _history_stream():
-                if need_history:
-                    async with self.session_factory() as session:
-                        session : AsyncSession
-                        messages_row = await session.execute(
-                            select(db_models.Message).where(db_models.Message.conversation_id == conversation_id).order_by(db_models.Message.seq)
-                        )
-                        messages = messages_row.scalars().all()
-                        h_messages : list[CompletionResponseHistory] = []
-                        for message in messages:
-                            h_messages.append(
-                                CompletionResponseHistory(
-                                    message_id = message.id,
-                                    created_at = int(message.created_at.timestamp()),
-                                    finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
-                                    data = decode_message(message)
-                                )
-                            )
-                    for h_message in h_messages:
-                        yield h_message
-            return _history_stream()
+            parser = AnthropicEventParser()
+            for message in history_messages:
+                message_object = message_type_adapter.validate_json(message.content)
+                yield CompletionResponseHistory(
+                        message_id = message.id,
+                        created_at = int(message.created_at.timestamp()),
+                        finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
+                        data = parser.parse_message(message_object)
+                    )
+                parser.decode_history([message_object])
 
     def cancel(self, conversation_id : str):
         if conversation_id in self._conversation_jobs:
