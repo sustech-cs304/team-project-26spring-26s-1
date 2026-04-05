@@ -48,11 +48,7 @@ async def conversation_completion(params: ConversationCompletionRequest, request
     run_task = asyncio.create_task(ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id))
     await asyncio.shield(run_task)
     
-    stream_gen = await asyncio.shield(
-        asyncio.create_task(ConversationRunner.stream(params.conversation_id, params.need_history))
-    )
-    
-    async for delta in stream_gen:
+    async for delta in ConversationRunner.stream(params.conversation_id, params.need_history):
         yield ServerSentEvent(
             data=delta,
             event=delta._event_type
