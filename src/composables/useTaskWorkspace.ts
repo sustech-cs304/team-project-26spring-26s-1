@@ -50,6 +50,8 @@ export const cronPresets = [
     { label: '每 5 分钟', cron: '*/5 * * * *' },
 ]
 
+const TASK_POLL_INTERVAL_MS = 10_000
+
 export function useTaskWorkspace () {
     const tasks = ref<Task[]>([])
     const loading = ref(false)
@@ -88,6 +90,7 @@ export function useTaskWorkspace () {
     })
 
     const editorInitialSnapshot = ref<TaskEditorForm>(makeEditorForm())
+    let pollTimer: ReturnType<typeof setInterval> | null = null
 
     const filteredTasks = computed(() => {
         const query = search.value.trim().toLowerCase()
@@ -230,8 +233,9 @@ export function useTaskWorkspace () {
         }
     }
 
-    async function loadTasksList () {
-        loading.value = true
+    async function loadTasksList (options?: { silent?: boolean }) {
+        const silent = options?.silent ?? false
+        if (!silent) loading.value = true
         try {
             const response = await getTasks()
             const items = Array.isArray(response?.items) ? response.items : []
@@ -250,9 +254,9 @@ export function useTaskWorkspace () {
             console.error('Failed to load tasks:', error)
             tasks.value = []
             selectedTaskId.value = null
-            showSnackbar('加载任务失败', 'error')
+            if (!silent) showSnackbar('加载任务失败', 'error')
         } finally {
-            loading.value = false
+            if (!silent) loading.value = false
         }
     }
 
@@ -336,9 +340,10 @@ export function useTaskWorkspace () {
         }
     }
 
-    async function loadRuns () {
+    async function loadRuns (options?: { silent?: boolean }) {
+        const silent = options?.silent ?? false
         if (!selectedTask.value) return
-        runsLoading.value = true
+        if (!silent) runsLoading.value = true
         try {
             const response = await getTaskRuns(selectedTask.value.id, {
                 page: 1,
@@ -361,9 +366,28 @@ export function useTaskWorkspace () {
             console.error('Failed to load runs:', error)
             runs.value = []
             selectedRunId.value = null
-            showSnackbar('加载运行记录失败', 'error')
+            if (!silent) showSnackbar('加载运行记录失败', 'error')
         } finally {
-            runsLoading.value = false
+            if (!silent) runsLoading.value = false
+        }
+    }
+
+    async function loadRunLogs (runId: string, options?: { silent?: boolean; force?: boolean }) {
+        const silent = options?.silent ?? false
+        const force = options?.force ?? false
+        if (!runId) return
+        if (!force && logCache.value[runId]) return
+
+        if (!silent) logsLoading.value = true
+        try {
+            const logs = await getRunLogs(runId)
+            logCache.value[runId] = logs.map(formatLogLine)
+        } catch (error) {
+            console.error('Failed to load logs:', error)
+            logCache.value[runId] = []
+            if (!silent) showSnackbar('加载日志失败', 'error')
+        } finally {
+            if (!silent) logsLoading.value = false
         }
     }
 
@@ -393,18 +417,8 @@ export function useTaskWorkspace () {
     }
 
     watch(selectedRunId, async (runId) => {
-        if (!runId || logCache.value[runId]) return
-        logsLoading.value = true
-        try {
-            const logs = await getRunLogs(runId)
-            logCache.value[runId] = logs.map(formatLogLine)
-        } catch (error) {
-            console.error('Failed to load logs:', error)
-            logCache.value[runId] = []
-            showSnackbar('加载日志失败', 'error')
-        } finally {
-            logsLoading.value = false
-        }
+        if (!runId) return
+        await loadRunLogs(runId)
     })
 
     watch(activeTab, (tab) => {
@@ -426,8 +440,31 @@ export function useTaskWorkspace () {
         }
     })
 
+    async function pollVisibleTaskData () {
+        if (document.hidden) return
+
+        await loadTasksList({ silent: true })
+
+        if (activeTab.value === 'runs' && selectedTask.value) {
+            await loadRuns({ silent: true })
+            if (selectedRunId.value) {
+                await loadRunLogs(selectedRunId.value, { silent: true, force: true })
+            }
+        }
+    }
+
     onMounted(() => {
         loadTasksList()
+        pollTimer = setInterval(() => {
+            void pollVisibleTaskData()
+        }, TASK_POLL_INTERVAL_MS)
+    })
+
+    onBeforeUnmount(() => {
+        if (pollTimer) {
+            clearInterval(pollTimer)
+            pollTimer = null
+        }
     })
 
     return {
