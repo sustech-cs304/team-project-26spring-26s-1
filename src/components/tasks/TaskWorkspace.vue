@@ -97,7 +97,6 @@
 
     const {
         activeTab,
-        addEnvVar,
         cancelSelectedRun,
         confirmDelete,
         deleteDialog,
@@ -216,7 +215,19 @@
             return
         }
 
-        addEnvVar()
+        const selectedSecretRefs = new Set(
+            editorForm.env_var_refs
+                .map(item => item.secret_ref.trim())
+                .filter(Boolean)
+        )
+        const firstAvailable = envVars.value.find(item => !selectedSecretRefs.has(item.secret_ref))
+
+        if (!firstAvailable) return
+
+        editorForm.env_var_refs.push({
+            key: firstAvailable.key,
+            secret_ref: firstAvailable.secret_ref,
+        })
     }
 
     async function saveEnvVar (payload?: { key: string, value: string }) {

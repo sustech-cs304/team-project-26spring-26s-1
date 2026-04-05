@@ -72,7 +72,7 @@
                                         </div>
                                         <div class="d-flex justify-end mb-3">
                                             <v-btn variant="text" rounded="lg" size="small" prepend-icon="mdi-plus"
-                                                :disabled="!canAddEnvVar" @click="emit('add-env-var')">
+                                                :disabled="addEnvVarDisabled" @click="handleAddEnvVarClick">
                                                 添加变量
                                             </v-btn>
                                         </div>
@@ -159,11 +159,13 @@
         props.form.env_var_refs.some((item) => !item.secret_ref.trim())
     )
 
-    const canAddEnvVar = computed(() => {
-        if (!props.savedEnvVars.length) return false
-        if (hasUnselectedEnvRef.value) return false
-        return props.form.env_var_refs.length < props.savedEnvVars.length
-    })
+    const canAddEnvVar = computed(() =>
+        props.savedEnvVars.length > 0 && !hasUnselectedEnvRef.value && props.form.env_var_refs.length < props.savedEnvVars.length
+    )
+
+    const addEnvVarDisabled = computed(() =>
+        hasUnselectedEnvRef.value || (props.savedEnvVars.length > 0 && props.form.env_var_refs.length >= props.savedEnvVars.length)
+    )
 
     watchEffect(() => {
         props.form.env_var_refs.forEach((item) => {
@@ -189,6 +191,15 @@
 
     function formatEnvVarOption (item: EnvVarRef) {
         return `${item.key} - ${item.secret_ref}`
+    }
+
+    function handleAddEnvVarClick () {
+        if (!props.savedEnvVars.length) {
+            emit('request-env-vars-setup')
+            return
+        }
+        if (!canAddEnvVar.value) return
+        emit('add-env-var')
     }
 
     function handleEnvSelection (index: number, selectedSecretRef: string | null) {
