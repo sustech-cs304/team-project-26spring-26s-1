@@ -20,12 +20,12 @@ from agent.api.models import (
     CompletionEventKeepAlive,
     CompletionUserMessage
 )
-from agent.parser.minimax import MinimaxEventParser
+from agent.parser import AnthropicEventParser
 from uuid import uuid4
 from fastapi.sse import ServerSentEvent
 import datetime as dt
 from langchain.messages import AnyMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
-from agent.api.utils import decode_message
+from agent.parser.utils import decode_message
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from bisect import bisect_right
 
@@ -172,11 +172,10 @@ class ConversationRunner:
         gen =  self.graph.astream(state, config, version="v2",stream_mode=["messages","checkpoints"])
         
         async def _run(job: _ConversationJobState):
-            parser = MinimaxEventParser()
-            current_message = None
+            parser = AnthropicEventParser() # TODO: select parser based on model type
             last_message = None
             last_id = None
-            last_uuid = None
+            current_uuid = None
             last_checkpoint = None
             
             try:
@@ -189,28 +188,23 @@ class ConversationRunner:
                         current_id = message_chunk.id
                         if current_id != last_id:
                             if last_id is not None:
-                                await _db_update(conversation_id, last_uuid, last_message.model_dump_json(), last_checkpoint, self.seq)
-                            last_message = current_message
+                                await _db_update(conversation_id, current_uuid, last_message.model_dump_json(), last_checkpoint, self.seq)
+                                last_message = current_message
                             current_message = None
                             last_id = current_id
-                            last_uuid = str(uuid4())
+                            current_uuid = str(uuid4())
                             self.seq += 1
                         current_message = message_chunk if current_message is None else current_message + message_chunk
                         print(f"Current message updated to: {current_message}")
-                        parseds = parser.parse_event(event) if current_message else None
-                        for parsed in parseds:
+                        deltas = parser.parse_event(event, current_uuid) if current_message else None
+                        if deltas:
                             async with job.cond:
-                                job.history.append(
-                                    CompletionResponseDelta(
-                                        message_id = last_uuid,
-                                        delta = parsed.delta,
-                                        is_thinking = parsed.is_thinking
-                                    )
-                                )
-                                job.history_message_seq.append(self.seq)
+                                for delta in deltas:
+                                    job.history.append(delta)
+                                    job.history_message_seq.append(self.seq)
                                 job.cond.notify_all()
 
-                await _db_update(conversation_id, last_uuid, current_message.model_dump_json(), last_checkpoint, self.seq)
+                await _db_update(conversation_id, current_uuid, current_message.model_dump_json(), last_checkpoint, self.seq)
                 self.seq += 1
                 
             except asyncio.CancelledError:

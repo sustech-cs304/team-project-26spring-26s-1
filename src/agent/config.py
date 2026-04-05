@@ -9,7 +9,7 @@ jinja_env = Environment(
 )
 
 class ApiEndpointConfig(BaseModel):
-    type: Literal["OpenAI", "Qwen"]
+    type: Literal["OpenAI", "Qwen", "Anthropic"]
     base_url: str
     api_key: str
     model: str

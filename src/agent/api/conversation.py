@@ -191,7 +191,8 @@ async def conversation_asr(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        await websocket.send_json({"error": str(e)})
+        with suppress(Exception):
+            await websocket.send_json({"error": str(e)})
         return
     finally:
         with suppress(Exception):
