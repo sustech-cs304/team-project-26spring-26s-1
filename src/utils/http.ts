@@ -10,7 +10,7 @@ const stripTrailingSlash = (url: string) => url.replace(/\/+$/, '')
 
 function resolveCloudWebSocketURL (): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${window.location.hostname}:80`
+    return `${protocol}//${window.location.host}`
 }
 
 function resolveBaseURL (): string {

@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import { wsBaseURL } from '@/utils/http'
+import { generateUUID } from '@/api/conversation'
 
 export interface AsrCallbacks {
     onTranscript?: (text: string) => void
@@ -71,10 +72,10 @@ export function useAsr ({ onTranscript, onError, onFinished }: AsrCallbacks = {}
         if (isStarting.value || isRecording.value) return
 
         isStarting.value = true
-        taskId = crypto.randomUUID().replace(/-/g, '').slice(0, 32)
         let startTimeoutId: number | null = null
 
         try {
+            taskId = generateUUID().replace(/-/g, '').slice(0, 32)
             startTimeoutId = window.setTimeout(() => {
                 if (isStarting.value) {
                     onError?.('ASR服务启动超时，请重试')
