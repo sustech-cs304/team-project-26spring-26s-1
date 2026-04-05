@@ -18,9 +18,11 @@ const MIME_CATEGORY_MAP: Record<string, FileCategory> = {
   'image/svg+xml': 'image',
   'application/pdf': 'pdf',
   'application/vnd.ms-powerpoint': 'ppt',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'ppt',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
   'text/markdown': 'markdown',
-  'text/plain': 'text',
+  'text/plain': 'txt',
 }
 
 /** 扩展名 → 文件类别映射（作为 MIME 类型的后备） */
@@ -34,10 +36,12 @@ const EXT_CATEGORY_MAP: Record<string, FileCategory> = {
   '.svg': 'image',
   '.pdf': 'pdf',
   '.ppt': 'ppt',
-  '.pptx': 'ppt',
+  '.pptx': 'pptx',
+  '.doc': 'doc',
+  '.docx': 'docx',
   '.md': 'markdown',
   '.markdown': 'markdown',
-  '.txt': 'text',
+  '.txt': 'txt',
 }
 
 /** 用于 <input accept> 属性的字符串 */
@@ -51,11 +55,14 @@ export const ACCEPT_STRING = [
   'application/pdf',
   'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/markdown',
   'text/plain',
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg',
   '.pdf',
   '.ppt', '.pptx',
+  '.doc', '.docx',
   '.md', '.markdown',
   '.txt',
 ].join(',')
@@ -73,13 +80,17 @@ const FILE_ICONS: Record<FileCategory, FileIconInfo> = {
   image: { icon: 'mdi-file-image-outline', color: 'green' },
   pdf: { icon: 'mdi-file-pdf-box', color: 'red' },
   ppt: { icon: 'mdi-file-powerpoint-box', color: 'orange-darken-1' },
+  pptx: { icon: 'mdi-file-powerpoint-box', color: 'orange-darken-1' },
+  doc: { icon: 'mdi-file-word-box', color: 'blue-darken-1' },
+  docx: { icon: 'mdi-file-word-box', color: 'blue-darken-1' },
   markdown: { icon: 'mdi-language-markdown', color: 'blue' },
-  text: { icon: 'mdi-file-document-outline', color: 'grey' },
+  txt: { icon: 'mdi-file-document-outline', color: 'grey' },
+  other: { icon: 'mdi-file-outline', color: 'grey-darken-1' },
 }
 
 /** 获取文件类别对应的图标和颜色 */
 export function getFileIcon(category: FileCategory): FileIconInfo {
-  return FILE_ICONS[category]
+  return FILE_ICONS[category] ?? FILE_ICONS.other
 }
 
 // ────────────────────────────────────────────
@@ -99,14 +110,30 @@ function getExtension(fileName: string): string {
 export function getFileCategory(file: File): FileCategory | null {
   // 优先 MIME
   if (file.type && MIME_CATEGORY_MAP[file.type] != null) {
-    return MIME_CATEGORY_MAP[file.type]!
+    return MIME_CATEGORY_MAP[file.type] ?? null
   }
   // 兜底扩展名
   const ext = getExtension(file.name)
   if (ext && EXT_CATEGORY_MAP[ext] != null) {
-    return EXT_CATEGORY_MAP[ext]!
+    return EXT_CATEGORY_MAP[ext] ?? null
   }
   return null
+}
+
+export function normalizeFileCategory(category?: string | null): FileCategory {
+  switch (category) {
+    case 'image':
+    case 'pdf':
+    case 'markdown':
+    case 'ppt':
+    case 'pptx':
+    case 'doc':
+    case 'docx':
+    case 'txt':
+      return category
+    default:
+      return 'other'
+  }
 }
 
 /** 校验结果 */

@@ -219,5 +219,12 @@
     }
 
     // ── 暴露给父组件（用于拖拽上传） ──────────
-    defineExpose({ addFiles, attachments })
+    const getAttachmentsSnapshot = (): AttachmentFile[] =>
+        attachments.value.map(file => ({ ...file }))
+
+    const clearAttachments = () => {
+        attachments.value = []
+    }
+
+    defineExpose({ addFiles, getAttachmentsSnapshot, clearAttachments })
 </script>

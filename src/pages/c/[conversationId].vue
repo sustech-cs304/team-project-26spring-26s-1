@@ -22,10 +22,13 @@
                                 </div>
                             </v-sheet>
                             <!-- 展示模式 -->
-                            <v-sheet v-else rounded="lg" class="px-3 py-2" style="cursor: pointer;" :color="cardColor"
-                                @click="startEdit(i, msg.content)">
-                                <MarkdownRenderer :content="msg.content" />
-                            </v-sheet>
+                            <div v-else class="d-flex flex-column align-end">
+                                <v-sheet v-if="msg.content" rounded="lg" class="px-3 py-2" style="cursor: pointer;"
+                                    :color="cardColor" @click="startEdit(i, msg.content)">
+                                    <MarkdownRenderer :content="msg.content" />
+                                </v-sheet>
+                                <UserMessageAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
+                            </div>
                             <v-avatar size="30" class="flex-shrink-0">
                                 <v-icon size="16">mdi-account</v-icon>
                             </v-avatar>
@@ -105,8 +108,12 @@
     import HumanInLoopCard from '@/components/chat/HumanInLoopCard.vue'
     import QuizCardMessage from '@/components/chat/QuizCardMessage.vue'
     import MarkdownRenderer from '@/components/chat/MarkdownRenderer.vue'
+    import UserMessageAttachments from '@/components/chat/UserMessageAttachments.vue'
+    import { getFileInfo } from '@/api/file'
+    import type { AttachmentFile, UserMessageAttachment } from '@/types/attachment'
     import {
         extractQuizCardsFromToolCall,
+        type MessageAttachmentReference,
         type MsgRole,
         type QuizToolCard,
         type ToolCallMessage,
@@ -127,12 +134,14 @@
     import { pendingPrompt } from '@/utils/pendingPrompt'
     import { useAppStore } from '@/stores/app'
     import { copyText } from '@/utils/copyText'
+    import { normalizeFileCategory } from '@/utils/fileUtils'
     import { useTheme } from 'vuetify'
 
     // ── 内部扩展的 ChatMessage 类型 ──
     interface ChatMessage {
         role: MsgRole
         content: string
+        attachments?: UserMessageAttachment[]
         message_id?: string
         created_at?: number
         thinking?: string
@@ -147,6 +156,7 @@
 
     interface SendChatRequestOptions {
         content: string
+        attachments?: UserMessageAttachment[]
         restartMessageId?: string
         addUserMessage?: boolean
         clearFromIndex?: number
@@ -154,7 +164,11 @@
     }
 
     const scrollEl = ref<InstanceType<typeof import('vuetify/components').VSheet> | null>(null)
-    const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
+    type MessageInputExposed = InstanceType<typeof MessageInput> & {
+        getAttachmentsSnapshot?: () => AttachmentFile[]
+        clearAttachments?: () => void
+    }
+    const messageInputRef = ref<MessageInputExposed | null>(null)
     const input = ref('')
     const loading = ref(false)
 
@@ -177,6 +191,86 @@
 
     const messages = reactive<ChatMessage[]>([])
     const messageMap = new Map<string, ChatMessage>()
+    const fileInfoCache = new Map<string, Promise<UserMessageAttachment | null>>()
+
+    const toLocalUserAttachment = (attachment: AttachmentFile): UserMessageAttachment => ({
+        id: attachment.id,
+        name: attachment.name,
+        category: attachment.category,
+        size: attachment.size,
+        dataUrl: attachment.dataUrl,
+        status: 'ready',
+        source: 'local',
+    })
+
+    const getAttachmentRefId = (attachment: MessageAttachmentReference): string | null =>
+        attachment.file_id || attachment.attachment_id || null
+
+    const toHistoryLoadingAttachment = (attachment: MessageAttachmentReference): UserMessageAttachment | null => {
+        const id = getAttachmentRefId(attachment)
+        if (!id) return null
+
+        return {
+            id,
+            name: attachment.attachment_name,
+            category: 'other',
+            status: 'loading',
+            source: 'history',
+        }
+    }
+
+    const fetchHistoryAttachmentDetail = (fileId: string): Promise<UserMessageAttachment | null> => {
+        const cached = fileInfoCache.get(fileId)
+        if (cached) return cached
+
+        const request = getFileInfo(fileId)
+            .then((detail) => ({
+                id: detail.file_id,
+                name: detail.file_name,
+                category: normalizeFileCategory(detail.file_type),
+                size: detail.file_size,
+                previewUrl: detail.preview_url,
+                status: 'ready' as const,
+                source: 'history' as const,
+            }))
+            .catch((error) => {
+                console.warn('[file-info] failed to load attachment detail:', fileId, error)
+                fileInfoCache.delete(fileId)
+                return null
+            })
+
+        fileInfoCache.set(fileId, request)
+        return request
+    }
+
+    const hydrateHistoryAttachments = (message: ChatMessage, attachments?: MessageAttachmentReference[]) => {
+        if (!attachments?.length) return
+
+        const refs = attachments
+            .map(toHistoryLoadingAttachment)
+            .filter((item): item is UserMessageAttachment => !!item)
+
+        if (!refs.length) return
+
+        message.attachments = refs
+
+        for (const attachment of refs) {
+            void fetchHistoryAttachmentDetail(attachment.id).then((detail) => {
+                const currentAttachments = message.attachments
+                if (!currentAttachments?.length) return
+
+                const index = currentAttachments.findIndex(item => item.id === attachment.id)
+                if (index < 0) return
+
+                if (!detail) {
+                    currentAttachments.splice(index, 1)
+                    return
+                }
+
+                currentAttachments[index] = detail
+            })
+        }
+    }
 
     /** 根据 message_id 查找或创建消息节点 */
     const getOrCreateMessage = (messageId: string, role: MsgRole): ChatMessage => {
@@ -280,6 +374,7 @@
         // clearFromIndex 从用户消息开始清除，addUserMessage: true 会重新添加用户消息
         await sendChatRequest({
             content: newContent,
+            attachments: messages[userMsgIndex]?.attachments,
             restartMessageId: messages[userMsgIndex]?.message_id,
             addUserMessage: true,
             clearFromIndex: userMsgIndex,
@@ -349,6 +444,11 @@
 
         const msgData = historyData as SseHistoryMessageData
         base.content = msgData.content || ''
+        if (msgData.role === 'user') {
+            base.attachments = msgData.attachments
+                ?.map(toHistoryLoadingAttachment)
+                .filter((item): item is UserMessageAttachment => !!item)
+        }
 
         if (msgData.role === 'assistant' && msgData.thought) {
             base.thinking = msgData.thought
@@ -498,9 +598,12 @@
                 if (!data?.message_id || messageMap.has(data.message_id)) {
                     return
                 }
-                const msg = historyToMessage(data)
+                const msg = reactive(historyToMessage(data)) as ChatMessage
                 messages.push(msg)
                 messageMap.set(data.message_id, msg)
+                if (data.data.type === 'message' && data.data.role === 'user') {
+                    hydrateHistoryAttachments(msg, data.data.attachments)
+                }
                 void scrollToBottom()
             },
             onDone: (data: SseDoneData) => {
@@ -530,12 +633,13 @@
         }
 
         if (options.addUserMessage !== false) {
-            const userMessage: ChatMessage = {
+            const userMessage = reactive({
                 role: 'user',
                 content: options.content,
+                attachments: options.attachments ? options.attachments.map(item => ({ ...item })) : [],
                 created_at: Date.now(),
                 message_id: requestId,
-            }
+            }) as ChatMessage
             messages.push(userMessage)
             pendingUserMessageForCurrentRequest = userMessage
             await scrollToBottom()
@@ -559,9 +663,10 @@
         )
     }
 
-    const processMessage = async (text: string) => {
+    const processMessage = async (text: string, attachments: UserMessageAttachment[] = []) => {
         await sendChatRequest({
             content: text,
+            attachments,
             addUserMessage: true,
         })
     }
@@ -579,7 +684,7 @@
         const prompt = pendingPrompt.value
         if (prompt) {
             pendingPrompt.value = null
-            await processMessage(prompt)
+            await processMessage(prompt.content, prompt.attachments)
         } else {
             loading.value = true
             currentAbortCtrl = chatCompletion(
@@ -606,9 +711,12 @@
 
     const send = async () => {
         const text = input.value.trim()
-        if (!text || loading.value) return
+        const attachments = messageInputRef.value?.getAttachmentsSnapshot?.() ?? []
+        if ((!text && attachments.length === 0) || loading.value) return
+
         input.value = ''
-        await processMessage(text)
+        messageInputRef.value?.clearAttachments?.()
+        await processMessage(text, attachments.map(toLocalUserAttachment))
     }
 
     const stop = () => {

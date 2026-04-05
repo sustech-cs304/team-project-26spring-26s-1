@@ -1,3 +1,9 @@
 import { ref } from 'vue'
+import type { UserMessageAttachment } from '@/types/attachment'
 
-export const pendingPrompt = ref<string | null>(null)
+export interface PendingPromptPayload {
+  content: string
+  attachments: UserMessageAttachment[]
+}
+
+export const pendingPrompt = ref<PendingPromptPayload | null>(null)

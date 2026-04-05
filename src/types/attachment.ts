@@ -1,5 +1,14 @@
 /** 支持的文件类别 */
-export type FileCategory = 'image' | 'pdf' | 'ppt' | 'markdown' | 'text'
+export type FileCategory =
+  | 'image'
+  | 'pdf'
+  | 'markdown'
+  | 'ppt'
+  | 'pptx'
+  | 'doc'
+  | 'docx'
+  | 'txt'
+  | 'other'
 
 /** 附件文件对象 */
 export interface AttachmentFile {
@@ -17,4 +26,15 @@ export interface AttachmentFile {
   dataUrl: string
   /** MD5 哈希值，用于重复检测 */
   md5: string
+}
+
+export interface UserMessageAttachment {
+  id: string
+  name?: string
+  category: FileCategory
+  size?: number
+  previewUrl?: string
+  dataUrl?: string
+  status: 'loading' | 'ready'
+  source: 'local' | 'history'
 }

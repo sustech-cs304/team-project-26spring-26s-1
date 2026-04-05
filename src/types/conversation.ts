@@ -128,11 +128,14 @@ export const extractQuizCardsFromToolCall = (tool?: ToolCallMessage | null): Qui
 export interface Message {
   role: HistoryMessageRole;
   content: string
-  attachments?: Array<{
-    attachment_id: string
-    attachment_name: string
-  }>
+  attachments?: MessageAttachmentReference[]
   thought?: string
+}
+
+export interface MessageAttachmentReference {
+  file_id?: string
+  attachment_id?: string
+  attachment_name?: string
 }
 
 export interface SseHistoryToolData extends ToolCallMessage {
