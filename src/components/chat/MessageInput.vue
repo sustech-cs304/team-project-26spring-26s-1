@@ -25,7 +25,7 @@
                     <v-btn v-else-if="asr.isRecording.value" key="recording" icon="mdi-microphone" size="small"
                         color="error" variant="flat" :ripple="false" @click="toggleRecording" />
                     <v-btn v-else key="send" icon="mdi-send" size="small" variant="flat" :ripple="false"
-                        @click="send" />
+                        :disabled="!canSend" @click="send" />
                 </v-scale-transition>
             </v-row>
         </v-sheet>
@@ -41,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+    import { uploadFile } from '@/api/file'
     import FilePreview from '@/components/chat/FilePreview.vue'
     import type { AttachmentFile } from '@/types/attachment'
     import {
@@ -110,7 +111,13 @@
         !!(props.modelValue.trim() || attachments.value.length > 0)
     )
 
-    const canSend = computed(() => hasContent.value && !props.loading && !props.disabled)
+    const hasUploadingAttachments = computed(() =>
+        attachments.value.some(file => file.uploadStatus === 'uploading')
+    )
+
+    const canSend = computed(() =>
+        hasContent.value && !props.loading && !props.disabled && !hasUploadingAttachments.value
+    )
 
     const toggleRecording = () => {
         if (asr.isStarting.value || asr.isRecording.value) {
@@ -129,6 +136,16 @@
      * 处理一组文件：校验 → MD5 计算 → 去重 → 添加到 attachments
      * 供 onFileChange、onPaste、以及父组件拖拽调用
      */
+    const updateAttachment = (attachmentId: string, updater: (attachment: AttachmentFile) => AttachmentFile) => {
+        attachments.value = attachments.value.map((attachment) =>
+            attachment.id === attachmentId ? updater(attachment) : attachment
+        )
+    }
+
+    const removeAttachment = (attachmentId: string) => {
+        attachments.value = attachments.value.filter(attachment => attachment.id !== attachmentId)
+    }
+
     const addFiles = async (files: FileList | File[]) => {
         for (const file of files) {
             // 1. 校验类型和大小
@@ -162,16 +179,32 @@
 
             // 5. 构建 AttachmentFile 并添加
             const category = getFileCategory(file)!
+            const attachmentId = generateFileId()
             const attachment: AttachmentFile = {
-                id: generateFileId(),
+                id: attachmentId,
                 name: file.name,
                 size: file.size,
                 type: file.type,
                 category,
                 dataUrl,
                 md5,
+                uploadStatus: 'uploading',
             }
             attachments.value = [...attachments.value, attachment]
+
+            // 6. 真正上传到后端，成功后写入 file_id
+            try {
+                const uploaded = await uploadFile(file)
+                updateAttachment(attachmentId, current => ({
+                    ...current,
+                    fileId: uploaded.file_id,
+                    type: uploaded.mime_type || current.type,
+                    uploadStatus: 'ready',
+                }))
+            } catch {
+                removeAttachment(attachmentId)
+                showError(`文件 "${file.name}" 上传失败，请重试`)
+            }
         }
     }
 

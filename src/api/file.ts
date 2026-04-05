@@ -1,5 +1,10 @@
-import http from '@/utils/http'
+import http, { baseURL } from '@/utils/http'
 import type { FileCategory } from '@/types/attachment'
+
+export interface UploadFileResponse {
+  file_id: string
+  mime_type?: string
+}
 
 export interface FileInfoResponse {
   file_id: string
@@ -22,4 +27,29 @@ export interface FileInfoResponse {
 
 export function getFileInfo(fileId: string): Promise<FileInfoResponse> {
   return http.post<FileInfoResponse>(`/files/${fileId}/info`)
+}
+
+export function uploadFile(file: File): Promise<UploadFileResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return http.post<UploadFileResponse>('/files/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+}
+
+export async function getFileBlob(fileId: string): Promise<Blob> {
+  const token = localStorage.getItem('accessToken')
+  const response = await fetch(`${baseURL}/file/${fileId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  return response.blob()
 }

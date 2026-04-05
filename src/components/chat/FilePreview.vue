@@ -4,24 +4,34 @@
 
             <!-- 图片类型：缩略图预览 -->
             <template v-if="file.category === 'image'">
-                <v-img :src="file.dataUrl" width="56" height="56" cover rounded="lg" class="border-thin" />
+                <div class="preview-item">
+                    <v-img :src="file.dataUrl" width="56" height="56" cover rounded="lg" class="border-thin" />
+                    <div v-if="file.uploadStatus === 'uploading'" class="preview-mask">
+                        <v-progress-circular indeterminate size="20" width="2" color="primary" />
+                    </div>
+                </div>
             </template>
 
             <!-- 非图片类型：图标卡片 -->
             <template v-else>
-                <v-sheet rounded="lg" :color="cardColor" class="d-flex align-center pa-1 px-2"
-                    style="width: 140px; height: 56px; overflow: hidden;">
-                    <v-icon :icon="getFileIcon(file.category).icon" :color="getFileIcon(file.category).color" size="28"
-                        class="flex-shrink-0" />
-                    <div class="ml-2 overflow-hidden" style="min-width: 0;">
-                        <div class="text-body-large text-truncate" style="line-height: 1.2;" :title="file.name">
-                            {{ file.name }}
+                <div class="preview-item">
+                    <v-sheet rounded="lg" :color="cardColor" class="d-flex align-center pa-1 px-2"
+                        style="width: 140px; height: 56px; overflow: hidden;">
+                        <v-icon :icon="getFileIcon(file.category).icon" :color="getFileIcon(file.category).color" size="28"
+                            class="flex-shrink-0" />
+                        <div class="ml-2 overflow-hidden" style="min-width: 0;">
+                            <div class="text-body-large text-truncate" style="line-height: 1.2;" :title="file.name">
+                                {{ file.name }}
+                            </div>
+                            <div class="text-body-medium text-medium-emphasis" style="line-height: 1.2;">
+                                {{ formatFileSize(file.size) }}
+                            </div>
                         </div>
-                        <div class="text-body-medium text-medium-emphasis" style="line-height: 1.2;">
-                            {{ formatFileSize(file.size) }}
-                        </div>
+                    </v-sheet>
+                    <div v-if="file.uploadStatus === 'uploading'" class="preview-mask preview-mask--wide">
+                        <v-progress-circular indeterminate size="20" width="2" color="primary" />
                     </div>
-                </v-sheet>
+                </div>
             </template>
 
             <!-- 关闭按钮 -->
@@ -47,3 +57,24 @@
     const theme = useTheme()
     const cardColor = computed(() => theme.current.value.dark ? 'grey-darken-3' : 'grey-lighten-3')
 </script>
+
+<style scoped>
+    .preview-item {
+        position: relative;
+    }
+
+    .preview-mask {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.35);
+        border-radius: 12px;
+    }
+
+    .preview-mask--wide {
+        width: 140px;
+        height: 56px;
+    }
+</style>

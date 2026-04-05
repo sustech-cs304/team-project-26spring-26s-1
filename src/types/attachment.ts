@@ -1,4 +1,3 @@
-/** 支持的文件类别 */
 export type FileCategory =
   | 'image'
   | 'pdf'
@@ -14,7 +13,7 @@ export type FileCategory =
 export interface AttachmentFile {
   /** 唯一标识（随机 ID） */
   id: string
-  /** 原始文件名 */
+  fileId?: string
   name: string
   /** 文件大小（字节） */
   size: number
@@ -26,10 +25,12 @@ export interface AttachmentFile {
   dataUrl: string
   /** MD5 哈希值，用于重复检测 */
   md5: string
+  uploadStatus: 'uploading' | 'ready'
 }
 
 export interface UserMessageAttachment {
   id: string
+  fileId?: string
   name?: string
   category: FileCategory
   size?: number

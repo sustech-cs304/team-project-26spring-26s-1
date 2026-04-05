@@ -109,7 +109,7 @@
     import QuizCardMessage from '@/components/chat/QuizCardMessage.vue'
     import MarkdownRenderer from '@/components/chat/MarkdownRenderer.vue'
     import UserMessageAttachments from '@/components/chat/UserMessageAttachments.vue'
-    import { getFileInfo } from '@/api/file'
+    import { getFileBlob, getFileInfo } from '@/api/file'
     import type { AttachmentFile, UserMessageAttachment } from '@/types/attachment'
     import {
         extractQuizCardsFromToolCall,
@@ -183,6 +183,7 @@
 
     onBeforeUnmount(() => {
         unregisterMessageInput?.()
+        clearAttachmentObjectUrls()
     })
 
     watch(messageInputRef, (ref) => {
@@ -192,9 +193,12 @@
     const messages = reactive<ChatMessage[]>([])
     const messageMap = new Map<string, ChatMessage>()
     const fileInfoCache = new Map<string, Promise<UserMessageAttachment | null>>()
+    const imagePreviewCache = new Map<string, Promise<string | null>>()
+    const objectUrls = new Set<string>()
 
     const toLocalUserAttachment = (attachment: AttachmentFile): UserMessageAttachment => ({
-        id: attachment.id,
+        id: attachment.fileId || attachment.id,
+        fileId: attachment.fileId,
         name: attachment.name,
         category: attachment.category,
         size: attachment.size,
@@ -202,6 +206,9 @@
         status: 'ready',
         source: 'local',
     })
+
+    const getOutgoingAttachmentId = (attachment: UserMessageAttachment): string | null =>
+        attachment.fileId || attachment.id || null
 
     const getAttachmentRefId = (attachment: MessageAttachmentReference): string | null =>
         attachment.file_id || attachment.attachment_id || null
@@ -224,15 +231,23 @@
         if (cached) return cached
 
         const request = getFileInfo(fileId)
-            .then((detail) => ({
-                id: detail.file_id,
-                name: detail.file_name,
-                category: normalizeFileCategory(detail.file_type),
-                size: detail.file_size,
-                previewUrl: detail.preview_url,
-                status: 'ready' as const,
-                source: 'history' as const,
-            }))
+            .then(async (detail) => {
+                const category = normalizeFileCategory(detail.file_type)
+                const previewUrl = category === 'image'
+                    ? (await fetchHistoryImagePreviewUrl(detail.file_id)) || undefined
+                    : undefined
+
+                return {
+                    id: detail.file_id,
+                    fileId: detail.file_id,
+                    name: detail.file_name,
+                    category,
+                    size: detail.file_size,
+                    previewUrl,
+                    status: 'ready' as const,
+                    source: 'history' as const,
+                }
+            })
             .catch((error) => {
                 console.warn('[file-info] failed to load attachment detail:', fileId, error)
                 fileInfoCache.delete(fileId)
@@ -241,6 +256,35 @@
 
         fileInfoCache.set(fileId, request)
         return request
+    }
+
+    const fetchHistoryImagePreviewUrl = (fileId: string): Promise<string | null> => {
+        const cached = imagePreviewCache.get(fileId)
+        if (cached) return cached
+
+        const request = getFileBlob(fileId)
+            .then((blob) => {
+                const objectUrl = URL.createObjectURL(blob)
+                objectUrls.add(objectUrl)
+                return objectUrl
+            })
+            .catch((error) => {
+                console.warn('[file-preview] failed to load image attachment:', fileId, error)
+                imagePreviewCache.delete(fileId)
+                return null
+            })
+
+        imagePreviewCache.set(fileId, request)
+        return request
+    }
+
+    const clearAttachmentObjectUrls = () => {
+        for (const url of objectUrls) {
+            URL.revokeObjectURL(url)
+        }
+        objectUrls.clear()
+        imagePreviewCache.clear()
+        fileInfoCache.clear()
     }
 
     const hydrateHistoryAttachments = (message: ChatMessage, attachments?: MessageAttachmentReference[]) => {
@@ -655,6 +699,9 @@
                 request_id: requestId,
                 content: options.content,
                 created_at: Date.now(),
+                attachments: (options.attachments ?? [])
+                    .map(getOutgoingAttachmentId)
+                    .filter((id): id is string => !!id),
                 need_history: false,
                 restart_message_id: options.restartMessageId ?? null,
             },
@@ -676,6 +723,7 @@
         currentAbortCtrl = null
         currentMessageId = null
         pendingUserMessageForCurrentRequest = null
+        clearAttachmentObjectUrls()
         messages.splice(0)
         messageMap.clear()
         loading.value = false

@@ -54,7 +54,8 @@
     })
 
     const toPendingAttachment = (attachment: AttachmentFile): UserMessageAttachment => ({
-        id: attachment.id,
+        id: attachment.fileId || attachment.id,
+        fileId: attachment.fileId,
         name: attachment.name,
         category: attachment.category,
         size: attachment.size,
