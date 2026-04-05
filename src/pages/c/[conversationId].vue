@@ -54,7 +54,7 @@
                                 <div class="assistant-turn">
                                     <!-- Thinking 展示 -->
                                     <ThinkingMsg v-if="msg.thinking" :content="msg.thinking"
-                                        :is-active="msg.thinkingActive" />
+                                        :is-active="msg.thinkingActive" :auto-collapse="!!msg.content" />
 
                                     <!-- 文本内容 -->
                                     <v-sheet v-if="msg.content" rounded="lg" color="transparent" class="px-0 pt-4 pl-2">
