@@ -36,18 +36,6 @@
                                 <v-window-item value="environment">
                                     <v-sheet color="transparent" class="pa-2 overflow-y-auto"
                                         style="max-height: 260px;">
-                                        <v-alert v-if="!savedEnvVars.length" type="warning" variant="tonal" rounded="lg"
-                                            density="comfortable" icon="mdi-alert-outline" class="mb-3">
-                                            <div class="d-flex align-center justify-space-between ga-2 flex-wrap">
-                                                <span class="text-body-small">还没有可用环境变量，请先前往环境变量页面创建。</span>
-                                                <v-btn size="small" variant="text" rounded="lg"
-                                                    prepend-icon="mdi-open-in-new"
-                                                    @click="emit('request-env-vars-setup')">
-                                                    去配置
-                                                </v-btn>
-                                            </div>
-                                        </v-alert>
-
                                         <v-list v-if="form.env_var_refs.length" bg-color="transparent" class="pa-0">
                                             <v-list-item v-for="(env, index) in form.env_var_refs" :key="index"
                                                 class="px-0">
