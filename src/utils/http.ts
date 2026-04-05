@@ -64,9 +64,6 @@ http.interceptors.response.use(
  * Generic request wrapper to fix return types
  */
 const request = {
-    request<T = any> (config: AxiosRequestConfig): Promise<T> {
-        return http.request(config) as Promise<T>
-    },
     get<T = any> (url: string, config?: AxiosRequestConfig): Promise<T> {
         return http.get(url, config) as Promise<T>
     },

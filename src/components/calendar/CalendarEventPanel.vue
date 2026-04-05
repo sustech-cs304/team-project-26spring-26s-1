@@ -1,5 +1,5 @@
 <template>
-    <v-sheet class="h-100 d-flex flex-column border-e" color="transparent" rounded="0" width="320">
+    <v-sheet class="h-100 d-flex flex-column border-e" color="transparent" rounded="0" :style="panelStyle">
         <div class="px-4 py-3 border-b flex-shrink-0 d-flex align-center justify-space-between">
             <div>
                 <div class="text-subtitle-2 font-weight-bold">{{ title }}</div>
@@ -10,7 +10,6 @@
                 <v-tooltip activator="parent">New event</v-tooltip>
             </v-btn>
         </div>
-
         <v-list density="compact" class="flex-grow-1 overflow-y-auto py-1 px-2">
             <div v-if="events.length === 0" class="d-flex flex-column align-center justify-center py-10">
                 <v-icon size="28" style="opacity:0.3;">mdi-calendar-blank</v-icon>
@@ -18,7 +17,8 @@
             </div>
 
             <v-list-item v-for="ev in events" :key="ev.id" :active="selectedEventId === ev.id" active-color="primary"
-                rounded="lg" class="mb-1 px-2 py-2" @click="$emit('select', ev)">
+                rounded="lg" class="mb-1 px-2 py-2" @click="$emit('select', ev)"
+                @contextmenu.prevent.stop="$emit('contextmenu', { event: ev, mouseEvent: $event })">
                 <template #prepend>
                     <v-sheet width="4" rounded class="mr-3" :style="{ background: sourceColor(ev.source), minHeight: '40px' }" />
                 </template>
@@ -53,14 +53,16 @@
 </template>
 
 <script setup lang="ts">
-    import type { CalEvent } from '@/utils/calendar'
-    import { eventSourceRawColor, getEventDisplayTime } from '@/utils/calendar'
+    import { useDisplay } from 'vuetify'
+    import type { CalEvent } from '@/types/calendar'
+    import { getEventDisplayTime } from '@/utils/calendar'
 
     const props = defineProps<{
         title: string
         subtitle: string
         events: CalEvent[]
         selectedEventId?: number | null
+        sourceColorMap?: Record<string, string>
     }>()
 
     defineEmits<{
@@ -68,11 +70,29 @@
         select: [ev: CalEvent]
         edit: [ev: CalEvent]
         delete: [ev: CalEvent]
+        contextmenu: [payload: { event: CalEvent; mouseEvent: MouseEvent }]
     }>()
 
-    const sourceColor = (source: CalEvent['source']) => eventSourceRawColor(source)
+    const sourceColor = (source: CalEvent['source']) => props.sourceColorMap?.[source] ?? '#2563eb'
     const sourceStyle = (source: CalEvent['source']) => ({ color: sourceColor(source), borderColor: sourceColor(source) })
-    const eventColor = (ev: CalEvent) => ev.color || sourceColor(ev.source)
+    const eventColor = (ev: CalEvent) => ev.color || '#3b82f6'
+    const { width } = useDisplay()
+
+    const panelWidth = computed(() => {
+        if (width.value <= 1200) return 260
+        if (width.value <= 1440) return 280
+        return 300
+    })
+
+    const panelStyle = computed(() => {
+        const value = `${panelWidth.value}px`
+        return {
+            width: value,
+            minWidth: value,
+            maxWidth: value,
+            flex: `0 0 ${value}`,
+        }
+    })
 
     const eventTimeText = (ev: CalEvent) => getEventDisplayTime(ev)
 </script>

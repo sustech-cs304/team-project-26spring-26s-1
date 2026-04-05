@@ -1,7 +1,8 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
+const defaultBaseURL = import.meta.env.PROD ? 'http://127.0.0.1:8000' : '/api'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? defaultBaseURL
 
 /** 通用响应类型 */
 export type ApiResponse<T = unknown> = {
