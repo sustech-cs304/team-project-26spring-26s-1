@@ -113,7 +113,7 @@
     import type { AttachmentFile, UserMessageAttachment } from '@/types/attachment'
     import {
         extractQuizCardsFromToolCall,
-        type MessageAttachmentReference,
+        type MessageAttachmentPayload,
         type MsgRole,
         type QuizToolCard,
         type ToolCallMessage,
@@ -210,16 +210,20 @@
     const getOutgoingAttachmentId = (attachment: UserMessageAttachment): string | null =>
         attachment.fileId || attachment.id || null
 
-    const getAttachmentRefId = (attachment: MessageAttachmentReference): string | null =>
-        attachment.file_id || attachment.attachment_id || null
+    const getAttachmentRefId = (attachment: MessageAttachmentPayload): string | null => {
+        if (typeof attachment === 'string') {
+            return attachment
+        }
+        return attachment.file_id || attachment.attachment_id || null
+    }
 
-    const toHistoryLoadingAttachment = (attachment: MessageAttachmentReference): UserMessageAttachment | null => {
+    const toHistoryLoadingAttachment = (attachment: MessageAttachmentPayload): UserMessageAttachment | null => {
         const id = getAttachmentRefId(attachment)
         if (!id) return null
 
         return {
             id,
-            name: attachment.attachment_name,
+            name: typeof attachment === 'string' ? undefined : attachment.attachment_name,
             category: 'other',
             status: 'loading',
             source: 'history',
@@ -287,7 +291,7 @@
         fileInfoCache.clear()
     }
 
-    const hydrateHistoryAttachments = (message: ChatMessage, attachments?: MessageAttachmentReference[]) => {
+    const hydrateHistoryAttachments = (message: ChatMessage, attachments?: MessageAttachmentPayload[]) => {
         if (!attachments?.length) return
 
         const refs = attachments
