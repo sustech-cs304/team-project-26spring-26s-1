@@ -22,7 +22,7 @@
 
             <!-- 搜索框 -->
             <div v-else class="px-2 py-2">
-                <v-text-field v-model="searchKeyword" placeholder="搜索..." variant="outlined" density="compact"
+                <v-text-field v-model="searchKeyword" placeholder="搜索" variant="solo-filled" flat density="compact"
                     hide-details clearable autofocus prepend-inner-icon="mdi-magnify" @click:clear="exitSearchMode"
                     @keydown.esc="exitSearchMode"></v-text-field>
                 <div class="d-flex justify-end mt-1">
@@ -133,7 +133,7 @@
                     <div class="drop-overlay__content">
                         <v-icon icon="mdi-cloud-upload-outline" size="64" color="primary" />
                         <div class="text-h6 mt-4">拖拽文件到此处上传</div>
-                        <div class="text-body-2 text-medium-emphasis mt-1">
+                        <div class="text-body-large text-medium-emphasis mt-1">
                             支持图片、PDF、PPT、Markdown、TXT，单个文件不超过 5 MB
                         </div>
                         <div class="text-caption text-disabled mt-2">
@@ -231,6 +231,18 @@
     const conversations = ref<Conversation[]>([])
     const searchResults = ref<Conversation[]>([])
 
+    const upsertConversation = (conversation: Conversation) => {
+        const index = conversations.value.findIndex((item) => item.conversation_id === conversation.conversation_id)
+        if (index === -1) {
+            conversations.value.unshift({ ...conversation })
+            return
+        }
+        conversations.value[index] = {
+            ...conversations.value[index],
+            ...conversation,
+        }
+    }
+
     // Search mode
     const searchMode = ref(false)
     const searchKeyword = ref('')
@@ -261,13 +273,17 @@
     }
 
     // 监听 SSE set_title 事件：直接更新本地列表，无需重新请求接口
+    watch(() => appStore.conversationCreated, (conversation) => {
+        if (!conversation) return
+        upsertConversation(conversation)
+    })
+
     watch(() => appStore.conversationTitleUpdate, (update) => {
         if (!update) return
         const conv = conversations.value.find(c => c.conversation_id === update.conversation_id)
         if (conv) {
             conv.title = update.title
         } else {
-            // 新对话首次出现，刷新列表使其显示在侧边栏
             fetchConversations()
         }
     })
@@ -281,8 +297,7 @@
         loading.value = true
         try {
             const res = await searchConversations({ keywords: keyword, page: 1, page_size: 50 })
-            // Handle inconsistent backend response (conversations vs sessions)
-            searchResults.value = res.conversations || res.sessions || []
+            searchResults.value = res.conversations || []
         } catch (error) {
             console.error('Search failed:', error)
         } finally {

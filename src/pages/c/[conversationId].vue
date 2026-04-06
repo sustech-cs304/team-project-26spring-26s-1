@@ -4,108 +4,171 @@
         <!-- 消息列表 -->
         <v-sheet ref="scrollEl" color="transparent" class="flex-grow-1 overflow-y-auto">
             <v-container max-width="800" class="px-6 py-4">
-                <template v-for="(msg, i) in messages" :key="`${i}-${msg.role}`">
+                <template v-for="(msg, i) in messages" :key="msg.message_id || `${i}-${msg.role}`">
 
                     <!-- 用户消息 -->
                     <v-row v-if="msg.role === 'user'" justify="end" class="mb-1" density="compact">
-                        <v-col cols="auto" class="d-flex align-end ga-2" style="max-width: 83%;">
-                            <v-sheet rounded="lg" color="" class="px-3 py-2">
-                                <MarkdownRenderer :content="msg.content" />
+                        <v-col :cols="editingIndex === i ? undefined : 'auto'" class="d-flex align-end ga-2"
+                            style="max-width: 83%;">
+                            <!-- 编辑模式 -->
+                            <v-sheet v-if="editingIndex === i" class="flex-grow-1" color="transparent">
+                                <v-textarea v-model="editingContent" variant="solo" rounded="lg" rows="1" auto-grow
+                                    max-rows="8" hide-details autofocus @keydown.enter.exact.prevent="submitEdit(i)"
+                                    @keydown.esc="cancelEdit" :color="cardColor" />
+                                <div class="d-flex justify-end ga-1 mt-1">
+                                    <v-btn size="small" variant="text" @click="cancelEdit" rounded="lg">取消</v-btn>
+                                    <v-btn size="small" variant="flat" rounded="lg" color="surface-variant"
+                                        :disabled="!editingContent.trim() || loading" @click="submitEdit(i)">发送</v-btn>
+                                </div>
                             </v-sheet>
+                            <!-- 展示模式 -->
+                            <div v-else class="d-flex flex-column align-end">
+                                <v-sheet v-if="msg.content" rounded="lg" class="px-3 py-2" style="cursor: pointer;"
+                                    :color="cardColor" @click="startEdit(i, msg.content)">
+                                    <MarkdownRenderer :content="msg.content" />
+                                </v-sheet>
+                                <UserMessageAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
+                            </div>
                             <v-avatar size="30" class="flex-shrink-0">
                                 <v-icon size="16">mdi-account</v-icon>
                             </v-avatar>
                         </v-col>
                     </v-row>
 
-                    <template v-else-if="msg.role === 'assistant'">
-                        <!-- 思维链独立行：与消息气泡分离，确保组件挂载时 isActive 已就位 -->
-                        <v-row v-if="msg.thinkingSteps && msg.thinkingSteps.length > 0" class="mb-0" density="compact">
-                            <v-col class="pa-0" style="min-width: 0; max-width: 100%;">
-                                <ThinkingChain :key="`thinking-${i}`" :steps="msg.thinkingSteps"
-                                    :is-active="msg.thinkingActive" />
-                            </v-col>
-                        </v-row>
+                    <!-- Tool 消息（独立节点：pending 显示审批卡片，非 pending 显示 ToolCallGroup） -->
+                    <v-row v-else-if="msg.role === 'tools' && msg.toolCall" justify="start" class="mb-1"
+                        density="compact">
+                        <v-col class="pa-0" style="min-width: 0; max-width: 100%;">
+                            <div v-if="msg.quizCards?.length" class="d-flex flex-column ga-2">
+                                <QuizCardMessage v-for="card in msg.quizCards"
+                                    :key="`${msg.message_id || 'quiz'}-${card.card_id}`" :quizzes="card.quizzes" />
+                            </div>
+                            <HumanInLoopCard v-else-if="msg.toolCall.status === 'pending'" :tool="msg.toolCall"
+                                @action="(action) => handleToolAction(msg.toolCall!, msg.message_id!, action)" />
+                            <ToolCallGroup v-else :steps="[msg.toolCall]" :auto-collapse="false" />
+                        </v-col>
+                    </v-row>
 
-                        <!-- AI 消息气泡行：content 为空时（流式初始阶段）也保留节点，避免 delta 写入后才挂载 -->
-                        <v-row v-show="msg.content" class="mb-1 ma-0" density="compact">
+                    <!-- AI 消息 -->
+                    <template v-else-if="msg.role === 'assistant'">
+                        <v-row class="mb-1 ma-0" density="compact">
                             <v-col class="pa-0" style="min-width: 0; max-width: 100%;">
-                                <v-sheet rounded="lg" color="transparent" class="px-0 py-1 pl-3">
-                                    <MarkdownRenderer :content="msg.content" />
-                                </v-sheet>
-                                <v-row align="center" class="ml-2 ga-0" style="opacity: 0.6;">
-                                    <span class="text-body-small">{{ msg.created_at }}</span>
-                                    <v-tooltip text="重试" location="bottom">
-                                        <template v-slot:activator="{ props }">
-                                            <v-btn v-bind="props" icon="mdi-reload" size="x-small" variant="text"
-                                                active-color="primary" @click="retryMessage(i)" :disabled="loading" />
-                                        </template>
-                                    </v-tooltip>
-                                    <v-tooltip text="Copy" location="bottom">
-                                        <template v-slot:activator="{ props }">
-                                            <v-btn v-bind="props" icon="mdi-content-copy" size="x-small" variant="text"
-                                                @click="copyText(msg.content)" />
-                                        </template>
-                                    </v-tooltip>
-                                </v-row>
+
+                                <div class="assistant-turn">
+                                    <!-- Thinking 展示 -->
+                                    <ThinkingMsg v-if="msg.thinking" :content="msg.thinking"
+                                        :is-active="msg.thinkingActive" :auto-collapse="!!msg.content" />
+
+                                    <!-- 文本内容 -->
+                                    <v-sheet v-if="msg.content" rounded="lg" color="transparent" class="px-0 pt-4 pl-2">
+                                        <MarkdownRenderer :content="msg.content" />
+                                    </v-sheet>
+                                </div>
+
                             </v-col>
                         </v-row>
                     </template>
 
-                </template>
+                    <v-row v-if="shouldShowTurnActions(i)" align="center" class="ma-0 ga-0" style="opacity: 0.6;">
+                        <v-tooltip text="重试" location="bottom">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" icon="mdi-reload" size="x-small" variant="text"
+                                    active-color="primary" @click="retryTurn(i)" :disabled="loading" />
+                            </template>
+                        </v-tooltip>
+                        <v-tooltip text="Copy" location="bottom">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" icon="mdi-content-copy" size="x-small" variant="text"
+                                    @click="copyTurnAssistantContent(i)" />
+                            </template>
+                        </v-tooltip>
+                        <TypingIndicator v-if="loading && i === messages.length - 1" />
+                    </v-row>
 
-                <!-- 加载中：仅当无活跃思维链时显示，避免与思维链卡片重叠 -->
-                <TypingIndicator v-if="loading && !hasActiveThinking" />
+                </template>
             </v-container>
         </v-sheet>
 
         <!-- 底部输入区 -->
         <v-sheet elevation="0" color="transparent">
             <v-container max-width="800" class="px-6 pb-5 pt-2">
-                <MessageInput ref="messageInputRef" v-model="input" :loading="loading" @send="send" @stop="stop" />
+                <MessageInput ref="messageInputRef" v-model="input" :loading="loading" :disabled="hasPendingTool"
+                    @send="send" @stop="stop" />
             </v-container>
         </v-sheet>
     </v-container>
 </template>
 
 
-<style scoped></style>
-
-
 <script setup lang="ts">
     import MessageInput from '@/components/chat/MessageInput.vue'
     import TypingIndicator from '@/components/chat/TypingIndicator.vue'
-    import ThinkingChain from '@/components/chat/ThinkingChain.vue'
+    import ThinkingMsg from '@/components/chat/ThinkingMsg.vue'
+    import ToolCallGroup from '@/components/chat/ToolCallGroup.vue'
+    import HumanInLoopCard from '@/components/chat/HumanInLoopCard.vue'
+    import QuizCardMessage from '@/components/chat/QuizCardMessage.vue'
     import MarkdownRenderer from '@/components/chat/MarkdownRenderer.vue'
-    import type { StepStatus, ThoughtStep } from '@/types/conversation.ts'
+    import UserMessageAttachments from '@/components/chat/UserMessageAttachments.vue'
+    import { getFileBlob, getFileInfo } from '@/api/file'
+    import type { AttachmentFile, UserMessageAttachment } from '@/types/attachment'
+    import {
+        extractQuizCardsFromToolCall,
+        type MessageAttachmentReference,
+        type MsgRole,
+        type QuizToolCard,
+        type ToolCallMessage,
+    } from '@/types/conversation'
+    import type {
+        SseHistoryData,
+        SseHistoryMessageData,
+        SseHistoryToolData,
+        SseUserMessageData,
+        SseMessageDeltaData,
+        SseToolCallData,
+        SseMetaData,
+        SseDoneData,
+        SseErrorData,
+        SseHandlers,
+    } from '@/types/conversation'
     import { chatCompletion, cancelChat, generateUUID } from '@/api/conversation'
     import { pendingPrompt } from '@/utils/pendingPrompt'
     import { useAppStore } from '@/stores/app'
     import { copyText } from '@/utils/copyText'
-    import type {
-        SseHistoryData,
-        SseThoughtStepData,
-        SseMessageDeltaData,
-        SseDoneData,
-        SseErrorData,
-        SseSetTitleData,
-        Message,
-        SseHandlers,
-    } from '@/types/conversation.ts'
+    import { normalizeFileCategory } from '@/utils/fileUtils'
+    import { useTheme } from 'vuetify'
+
+    // ── 内部扩展的 ChatMessage 类型 ──
+    interface ChatMessage {
+        role: MsgRole
+        content: string
+        attachments?: UserMessageAttachment[]
+        message_id?: string
+        created_at?: number
+        thinking?: string
+        thinkingActive?: boolean
+        toolCall?: ToolCallMessage
+        quizCards?: QuizToolCard[]
+    }
 
     const route = useRoute()
     const conversationId = computed(() => route.params.conversationId as string)
     const appStore = useAppStore()
 
     interface SendChatRequestOptions {
-        content: string           // 用户消息内容（必需）
-        messageId?: string        // 用户消息ID（重试时使用）
-        addUserMessage?: boolean  // 是否添加用户消息到列表（默认true）
-        clearFromIndex?: number   // 从指定索引开始清理消息（重试时使用）
+        content: string
+        attachments?: UserMessageAttachment[]
+        restartMessageId?: string
+        addUserMessage?: boolean
+        clearFromIndex?: number
+        pendingUserMessage?: ChatMessage
     }
 
     const scrollEl = ref<InstanceType<typeof import('vuetify/components').VSheet> | null>(null)
-    const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
+    type MessageInputExposed = InstanceType<typeof MessageInput> & {
+        getAttachmentsSnapshot?: () => AttachmentFile[]
+        clearAttachments?: () => void
+    }
+    const messageInputRef = ref<MessageInputExposed | null>(null)
     const input = ref('')
     const loading = ref(false)
 
@@ -120,21 +183,247 @@
 
     onBeforeUnmount(() => {
         unregisterMessageInput?.()
+        clearAttachmentObjectUrls()
     })
 
-    // 监听 messageInputRef 变化（组件可能在 onMounted 后才完成渲染）
     watch(messageInputRef, (ref) => {
         if (ref) registerMessageInput?.(ref)
     })
 
-    const now = () => new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    const messages = reactive<ChatMessage[]>([])
+    const messageMap = new Map<string, ChatMessage>()
+    const fileInfoCache = new Map<string, Promise<UserMessageAttachment | null>>()
+    const imagePreviewCache = new Map<string, Promise<string | null>>()
+    const objectUrls = new Set<string>()
 
-    const messages = reactive<Message[]>([])
+    const toLocalUserAttachment = (attachment: AttachmentFile): UserMessageAttachment => ({
+        id: attachment.fileId || attachment.id,
+        fileId: attachment.fileId,
+        name: attachment.name,
+        category: attachment.category,
+        size: attachment.size,
+        dataUrl: attachment.dataUrl,
+        status: 'ready',
+        source: 'local',
+    })
 
-    /** 当前是否有正在活跃的思维链（用于决定是否显示 TypingIndicator） */
-    const hasActiveThinking = computed(() =>
-        messages.some(m => m.thinkingActive)
+    const getOutgoingAttachmentId = (attachment: UserMessageAttachment): string | null =>
+        attachment.fileId || attachment.id || null
+
+    const getAttachmentRefId = (attachment: MessageAttachmentReference): string | null =>
+        attachment.file_id || attachment.attachment_id || null
+
+    const toHistoryLoadingAttachment = (attachment: MessageAttachmentReference): UserMessageAttachment | null => {
+        const id = getAttachmentRefId(attachment)
+        if (!id) return null
+
+        return {
+            id,
+            name: attachment.attachment_name,
+            category: 'other',
+            status: 'loading',
+            source: 'history',
+        }
+    }
+
+    const fetchHistoryAttachmentDetail = (fileId: string): Promise<UserMessageAttachment | null> => {
+        const cached = fileInfoCache.get(fileId)
+        if (cached) return cached
+
+        const request = getFileInfo(fileId)
+            .then(async (detail) => {
+                const category = normalizeFileCategory(detail.file_type)
+                const previewUrl = category === 'image'
+                    ? (await fetchHistoryImagePreviewUrl(detail.file_id)) || undefined
+                    : undefined
+
+                return {
+                    id: detail.file_id,
+                    fileId: detail.file_id,
+                    name: detail.file_name,
+                    category,
+                    size: detail.file_size,
+                    previewUrl,
+                    status: 'ready' as const,
+                    source: 'history' as const,
+                }
+            })
+            .catch((error) => {
+                console.warn('[file-info] failed to load attachment detail:', fileId, error)
+                fileInfoCache.delete(fileId)
+                return null
+            })
+
+        fileInfoCache.set(fileId, request)
+        return request
+    }
+
+    const fetchHistoryImagePreviewUrl = (fileId: string): Promise<string | null> => {
+        const cached = imagePreviewCache.get(fileId)
+        if (cached) return cached
+
+        const request = getFileBlob(fileId)
+            .then((blob) => {
+                const objectUrl = URL.createObjectURL(blob)
+                objectUrls.add(objectUrl)
+                return objectUrl
+            })
+            .catch((error) => {
+                console.warn('[file-preview] failed to load image attachment:', fileId, error)
+                imagePreviewCache.delete(fileId)
+                return null
+            })
+
+        imagePreviewCache.set(fileId, request)
+        return request
+    }
+
+    const clearAttachmentObjectUrls = () => {
+        for (const url of objectUrls) {
+            URL.revokeObjectURL(url)
+        }
+        objectUrls.clear()
+        imagePreviewCache.clear()
+        fileInfoCache.clear()
+    }
+
+    const hydrateHistoryAttachments = (message: ChatMessage, attachments?: MessageAttachmentReference[]) => {
+        if (!attachments?.length) return
+
+        const refs = attachments
+            .map(toHistoryLoadingAttachment)
+            .filter((item): item is UserMessageAttachment => !!item)
+
+        if (!refs.length) return
+
+        message.attachments = refs
+
+        for (const attachment of refs) {
+            void fetchHistoryAttachmentDetail(attachment.id).then((detail) => {
+                const currentAttachments = message.attachments
+                if (!currentAttachments?.length) return
+
+                const index = currentAttachments.findIndex(item => item.id === attachment.id)
+                if (index < 0) return
+
+                if (!detail) {
+                    currentAttachments.splice(index, 1)
+                    return
+                }
+
+                currentAttachments[index] = detail
+            })
+        }
+    }
+
+    /** 根据 message_id 查找或创建消息节点 */
+    const getOrCreateMessage = (messageId: string, role: MsgRole): ChatMessage => {
+        const existing = messageMap.get(messageId)
+        if (existing) return existing
+
+        const msg: ChatMessage = reactive({
+            role,
+            content: '',
+            message_id: messageId,
+            created_at: Date.now(),
+        })
+        messages.push(msg)
+        messageMap.set(messageId, msg)
+        return msg
+    }
+
+    const hasPendingTool = computed(() =>
+        messages.some(m => m.role === 'tools' && m.toolCall?.status === 'pending')
     )
+
+    interface TurnInfo {
+        start: number
+        end: number
+        hasAssistantContent: boolean
+        assistantCombinedContent: string
+        userMsg?: ChatMessage
+    }
+
+    const getTurnInfo = (index: number): TurnInfo | null => {
+        if (!messages.length) return null
+        const i = Math.max(0, Math.min(index, messages.length - 1))
+        let start = 0
+        for (let cursor = i; cursor >= 0; cursor--) {
+            if (messages[cursor]?.role === 'user') {
+                start = cursor
+                break
+            }
+        }
+        let end = messages.length - 1
+        for (let cursor = start + 1; cursor < messages.length; cursor++) {
+            if (messages[cursor]?.role === 'user') {
+                end = cursor - 1
+                break
+            }
+        }
+        const chunks: string[] = []
+        for (let cursor = start; cursor <= end; cursor++) {
+            const msg = messages[cursor]
+            if (msg?.role === 'assistant' && msg.content.trim()) {
+                chunks.push(msg.content.trim())
+            }
+        }
+        const userMsg = messages[start]?.role === 'user' ? messages[start] : undefined
+        return {
+            start,
+            end,
+            hasAssistantContent: chunks.length > 0,
+            assistantCombinedContent: chunks.join('\n\n'),
+            userMsg,
+        }
+    }
+
+    /** 轮级操作栏可见性。 */
+    const shouldShowTurnActions = (index: number): boolean => {
+        const info = getTurnInfo(index)
+        return !!info && info.end === index && info.hasAssistantContent
+    }
+
+    const copyTurnAssistantContent = (index: number) => {
+        const info = getTurnInfo(index)
+        if (!info?.assistantCombinedContent) return
+        void copyText(info.assistantCombinedContent)
+    }
+
+    // ── 用户消息编辑 ──
+    const theme = useTheme()
+    const cardColor = computed(() => theme.current.value.dark ? 'grey-darken-3' : 'grey-lighten-3')
+
+    const editingIndex = ref<number | null>(null)
+    const editingContent = ref('')
+
+    const startEdit = (index: number, content: string) => {
+        if (loading.value || hasPendingTool.value) return
+        editingIndex.value = index
+        editingContent.value = content
+    }
+
+    const cancelEdit = () => {
+        editingIndex.value = null
+        editingContent.value = ''
+    }
+
+    const submitEdit = async (userMsgIndex: number) => {
+        const newContent = editingContent.value.trim()
+        if (!newContent || loading.value) return
+
+        cancelEdit()
+
+        // 清除该用户消息及之后的所有内容，用编辑后的内容重新发送
+        // clearFromIndex 从用户消息开始清除，addUserMessage: true 会重新添加用户消息
+        await sendChatRequest({
+            content: newContent,
+            attachments: messages[userMsgIndex]?.attachments,
+            restartMessageId: messages[userMsgIndex]?.message_id,
+            addUserMessage: true,
+            clearFromIndex: userMsgIndex,
+        })
+    }
 
     const scrollToBottom = async () => {
         await nextTick()
@@ -142,7 +431,6 @@
         if (el) el.scrollTop = el.scrollHeight
     }
 
-    /** 仅当用户已在底部附近（150px 内）时才自动滚动，避免打断用户的阅读 */
     const scrollIfAtBottom = async () => {
         await nextTick()
         const el = scrollEl.value?.$el as HTMLElement | undefined
@@ -151,246 +439,359 @@
         if (distanceFromBottom <= 150) el.scrollTop = el.scrollHeight
     }
 
-    /** 当前正在进行的流控制器，用于 stop 按钮 */
     let currentAbortCtrl: AbortController | null = null
-    /** 当前正在接收的 message_id，由 SSE 事件携带 */
     let currentMessageId: string | null = null
+    let pendingUserMessageForCurrentRequest: ChatMessage | null = null
 
-    /** 创建统一的 SSE 回调处理器 */
-    const createSseHandlers = (assistantMsg: Message): SseHandlers => ({
-        onHistory: (data: SseHistoryData) => {
-            // 若后端推送了历史，重建消息列表（首次进入对话时）
-            // 注意：splice 会替换整个数组，需在末尾重新追加占位消息
-            if (!data.history_messages) return
-            messages.splice(0, messages.length, ...data.history_messages.map(m => ({
-                role: m.role as 'user' | 'assistant',
-                content: m.content,
-                created_at: m.created_at || Date.now(),
-                message_id: m.message_id,
-                thinkingSteps: m.thought_steps.map(s => ({
-                    id: s.id,
-                    type: s.type,
-                    title: s.type,
-                    content: s.content,
-                    status: s.status as ThoughtStep['status'],
-                    created_at: s.created_at || Date.now(),
-                })),
-                thinkingActive: false,
-            })))
-            // splice 后重新将 assistantMsg 占位追加到末尾，保持引用有效
-            messages.push(assistantMsg)
-            void scrollToBottom()
+    const setMessageId = (message: ChatMessage, nextMessageId: string) => {
+        const prevMessageId = message.message_id
+        if (prevMessageId && prevMessageId !== nextMessageId) {
+            messageMap.delete(prevMessageId)
+        }
+        message.message_id = nextMessageId
+        messageMap.set(nextMessageId, message)
+    }
+
+    // ── 历史消息转换 ──
+
+    /** 将后端历史消息转换为 ChatMessage */
+    const toToolCallMessage = (tool: ToolCallMessage): ToolCallMessage => ({
+        tool_name: tool.tool_name,
+        tool_arguments: tool.tool_arguments.map(item => ({
+            argument_name: item.argument_name,
+            argument: item.argument,
+        })),
+        status: tool.status,
+        pending_reason: tool.pending_reason,
+        tool_response: tool.tool_response,
+    })
+
+    const applyToolState = (target: ChatMessage, tool: ToolCallMessage) => {
+        target.toolCall = toToolCallMessage(tool)
+        target.quizCards = extractQuizCardsFromToolCall(target.toolCall)
+    }
+
+    const historyToMessage = (m: SseHistoryData): ChatMessage => {
+        const historyData = m.data
+        const base: ChatMessage = {
+            role: historyData.type === 'tool' ? 'tools' : historyData.role,
+            content: '',
+            message_id: m.message_id,
+            created_at: Number(m.created_at) || Date.now(),
+        }
+
+        if (historyData.type === 'tool') {
+            const toolData = historyData as SseHistoryToolData
+            applyToolState(base, toolData)
+            return base
+        }
+
+        const msgData = historyData as SseHistoryMessageData
+        base.content = msgData.content || ''
+        if (msgData.role === 'user') {
+            base.attachments = msgData.attachments
+                ?.map(toHistoryLoadingAttachment)
+                .filter((item): item is UserMessageAttachment => !!item)
+        }
+
+        if (msgData.role === 'assistant' && msgData.thought) {
+            base.thinking = msgData.thought
+            base.thinkingActive = false
+        }
+
+        return base
+    }
+
+    /** 将消息数组同步到 messageMap */
+    const syncMessageMap = () => {
+        messageMap.clear()
+        for (const msg of messages) {
+            if (msg.message_id) messageMap.set(msg.message_id, msg)
+        }
+    }
+
+    // ── SSE 回调处理器 ──
+
+    /** 获取最后一个 assistant 消息（用于 done/error 等无 message_id 的事件） */
+    const getLastAssistantMsg = (): ChatMessage | undefined => {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i]?.role === 'assistant') return messages[i]
+        }
+        return undefined
+    }
+
+    /** 创建统一的 SSE 回调处理器（不再绑定单一 assistantMsg） */
+    const createSseHandlers = (): SseHandlers => ({
+        onUserMessage: (data: SseUserMessageData) => {
+            if (!data.message_id) return
+
+            if (pendingUserMessageForCurrentRequest) {
+                setMessageId(pendingUserMessageForCurrentRequest, data.message_id)
+                pendingUserMessageForCurrentRequest = null
+            }
         },
 
-        onThoughtStep: (data: SseThoughtStepData) => {
+        onDelta: (data: SseMessageDeltaData) => {
             if (data.message_id) currentMessageId = data.message_id
-            assistantMsg.thinkingActive = true
-            const stepTime = data.step.created_at || Date.now()
-            const existing = assistantMsg.thinkingSteps!.find(s => s.id === data.step.id)
-            if (existing) {
-                existing.content = data.step.content
-                existing.status = data.step.status as ThoughtStep['status']
-                existing.created_at = stepTime
+
+            // 根据 message_id 查找或创建 assistant 消息节点
+            const msg = getOrCreateMessage(data.message_id, 'assistant')
+
+            if (data.is_thinking) {
+                msg.thinking = (msg.thinking || '') + data.delta
+                msg.thinkingActive = true
             } else {
-                assistantMsg.thinkingSteps!.push({
-                    id: data.step.id,
-                    type: data.step.type,
-                    title: data.step.type,
-                    content: data.step.content,
-                    status: data.step.status as ThoughtStep['status'],
-                    created_at: stepTime,
-                })
+                if (msg.thinkingActive) {
+                    msg.thinkingActive = false
+                }
+                msg.content += data.delta
             }
             void scrollIfAtBottom()
         },
 
-        onMessageDelta: (data: SseMessageDeltaData) => {
-            assistantMsg.thinkingActive = false
+        onToolCall: (data: SseToolCallData) => {
             if (data.message_id) currentMessageId = data.message_id
-            assistantMsg.content += data.delta
-            void scrollIfAtBottom()
+
+            const toolMsg: ToolCallMessage = {
+                tool_name: data.tool_name,
+                tool_arguments: data.tool_arguments,
+                status: data.status,
+                pending_reason: data.pending_reason,
+                tool_response: data.tool_response,
+            }
+
+            // tool_call 始终作为独立的 tools 节点
+            const msg = getOrCreateMessage(data.message_id, 'tools')
+            applyToolState(msg, toolMsg)
+            void scrollToBottom()
+        },
+
+        onMetaData: (data: SseMetaData) => {
+            if (data.message_id) currentMessageId = data.message_id
+            const metadata = data.metadata
+            if (
+                metadata &&
+                typeof metadata === 'object' &&
+                'title' in metadata &&
+                'conversation_id' in metadata &&
+                metadata.title &&
+                metadata.conversation_id
+            ) {
+                appStore.setConversationTitle(metadata.conversation_id, metadata.title)
+            }
         },
 
         onDone: (_data: SseDoneData) => {
-            assistantMsg.thinkingActive = false
-            assistantMsg.created_at = Date.now()
+            for (const msg of messages) {
+                if (msg.role === 'assistant' && msg.thinking) {
+                    msg.thinkingActive = false
+                }
+            }
+            const last = getLastAssistantMsg()
+            if (last) {
+                last.created_at = Date.now()
+            }
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
-        },
-
-        onSetTitle: (data: SseSetTitleData) => {
-            // 通知侧边栏(c.vue)更新标题
-            appStore.setConversationTitle(data.conversation_id, data.title)
+            pendingUserMessageForCurrentRequest = null
         },
 
         onError: (data: SseErrorData) => {
-            assistantMsg.thinkingActive = false
-            assistantMsg.content = `[错误] ${data.error_message}`
-            assistantMsg.created_at = Date.now()
+            const last = getLastAssistantMsg()
+            if (last) {
+                last.thinkingActive = false
+                if (last.content) {
+                    last.content += `\n[错误] ${data.error_message}`
+                } else {
+                    last.content = `[错误] ${data.error_message}`
+                }
+                last.created_at = Date.now()
+            }
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
+            pendingUserMessageForCurrentRequest = null
         },
 
         onFetchError: (err: unknown) => {
             console.error('[SSE] fetch error:', err)
-            assistantMsg.thinkingActive = false
-            assistantMsg.content = '[网络错误，请重试]'
-            assistantMsg.created_at = Date.now()
+            const last = getLastAssistantMsg()
+            if (last) {
+                last.thinkingActive = false
+                if (last.content) {
+                    last.content += '\n[网络错误，请重试]'
+                } else {
+                    last.content = '[网络错误，请重试]'
+                }
+                last.created_at = Date.now()
+            }
             loading.value = false
             currentAbortCtrl = null
             currentMessageId = null
+            pendingUserMessageForCurrentRequest = null
         },
     })
 
+    const createHistoryResumeHandlers = (): SseHandlers => {
+        const baseHandlers = createSseHandlers()
+
+        return {
+            ...baseHandlers,
+            onHistory: (data: SseHistoryData) => {
+                if (!data?.message_id || messageMap.has(data.message_id)) {
+                    return
+                }
+                const msg = reactive(historyToMessage(data)) as ChatMessage
+                messages.push(msg)
+                messageMap.set(data.message_id, msg)
+                if (data.data.type === 'message' && data.data.role === 'user') {
+                    hydrateHistoryAttachments(msg, data.data.attachments)
+                }
+                void scrollToBottom()
+            },
+            onDone: (data: SseDoneData) => {
+                baseHandlers.onDone?.(data)
+            },
+            onError: (data: SseErrorData) => {
+                baseHandlers.onError?.(data)
+            },
+            onFetchError: (err: unknown) => {
+                baseHandlers.onFetchError?.(err)
+            },
+        }
+    }
+
     /** 统一的消息发送函数 */
     const sendChatRequest = async (options: SendChatRequestOptions) => {
-        // 停止当前可能正在进行的请求
-        stop()
+        const requestId = generateUUID()
 
-        // 清理消息（如果指定了clearFromIndex）
         if (options.clearFromIndex !== undefined) {
+            // 清除被删消息在 messageMap 中的引用
+            for (let i = options.clearFromIndex; i < messages.length; i++) {
+                const mid = messages[i]?.message_id
+                if (mid) messageMap.delete(mid)
+            }
             messages.splice(options.clearFromIndex, messages.length - options.clearFromIndex)
         }
 
-        // 添加用户消息（如果需要）
         if (options.addUserMessage !== false) {
-            messages.push({ role: 'user', content: options.content, created_at: Date.now() })
+            const userMessage = reactive({
+                role: 'user',
+                content: options.content,
+                attachments: options.attachments ? options.attachments.map(item => ({ ...item })) : [],
+                created_at: Date.now(),
+                message_id: requestId,
+            }) as ChatMessage
+            messages.push(userMessage)
+            pendingUserMessageForCurrentRequest = userMessage
             await scrollToBottom()
+        } else {
+            pendingUserMessageForCurrentRequest = options.pendingUserMessage ?? null
         }
 
         loading.value = true
-
-        // 预先创建 assistant 消息占位
-        const assistantMsg: Message = reactive({
-            role: 'assistant',
-            content: '',
-            created_at: Date.now(),
-            thinkingSteps: [],
-            thinkingActive: false,
-        })
-        messages.push(assistantMsg)
-
         await scrollToBottom()
-
-        const requestId = generateUUID()
 
         currentAbortCtrl = chatCompletion(
             {
                 conversation_id: conversationId.value,
                 request_id: requestId,
                 content: options.content,
-                create_at: Date.now(),
+                created_at: Date.now(),
+                attachments: (options.attachments ?? [])
+                    .map(getOutgoingAttachmentId)
+                    .filter((id): id is string => !!id),
                 need_history: false,
-                message_id: options.messageId, // 重试时传递
+                restart_message_id: options.restartMessageId ?? null,
             },
-            createSseHandlers(assistantMsg)
+            createSseHandlers()
         )
     }
 
-    const processMessage = async (text: string) => {
+    const processMessage = async (text: string, attachments: UserMessageAttachment[] = []) => {
         await sendChatRequest({
             content: text,
+            attachments,
             addUserMessage: true,
         })
     }
 
     /** 加载对话（首次进入或切换 conversationId 时） */
     const loadConversation = async () => {
-        // 停止上一个流
         currentAbortCtrl?.abort()
         currentAbortCtrl = null
         currentMessageId = null
+        pendingUserMessageForCurrentRequest = null
+        clearAttachmentObjectUrls()
         messages.splice(0)
+        messageMap.clear()
         loading.value = false
 
         const prompt = pendingPrompt.value
         if (prompt) {
             pendingPrompt.value = null
-            await processMessage(prompt)
+            await processMessage(prompt.content, prompt.attachments)
         } else {
-            // 无初始 prompt，发送一个 need_history=true 的空请求拉取历史
             loading.value = true
             currentAbortCtrl = chatCompletion(
                 {
                     conversation_id: conversationId.value,
                     request_id: generateUUID(),
-                    create_at: Date.now(),
+                    created_at: Date.now(),
                     need_history: true,
                 },
-                {
-                    onHistory: (data: SseHistoryData) => {
-                        if (!data.history_messages) { loading.value = false; return }
-                        messages.splice(0, messages.length, ...data.history_messages.map(m => ({
-                            role: m.role as 'user' | 'assistant',
-                            content: m.content,
-                            created_at: m.created_at || Date.now(),
-                            message_id: m.message_id,
-                            thinkingSteps: m.thought_steps.map(s => ({
-                                id: s.id,
-                                type: s.type,
-                                title: s.type,
-                                content: s.content,
-                                status: 'done' as StepStatus,
-                                created_at: s.created_at || Date.now(),
-                            })),
-                            thinkingActive: false,
-                        })))
-                        loading.value = false
-                        void scrollToBottom()
-                    },
-                    onDone: () => { loading.value = false },
-                    onError: () => { loading.value = false },
-                    onFetchError: () => { loading.value = false },
-                }
+                createHistoryResumeHandlers()
             )
         }
     }
 
-    // 监听路由参数变化，切换对话时重新加载
     watch(conversationId, () => {
         loadConversation()
     })
 
+    /** 处理 Tool 用户操作（approve/skip/reject） */
+    const handleToolAction = async (tool: ToolCallMessage, _messageId: string | undefined, action: 'approve' | 'skip' | 'reject') => {
+        tool.status = action === 'approve' ? 'approved' : 'rejected'
+        await processMessage(action)
+    }
+
     const send = async () => {
         const text = input.value.trim()
-        if (!text || loading.value) return
+        const attachments = messageInputRef.value?.getAttachmentsSnapshot?.() ?? []
+        if ((!text && attachments.length === 0) || loading.value) return
+
         input.value = ''
-        await processMessage(text)
+        messageInputRef.value?.clearAttachments?.()
+        await processMessage(text, attachments.map(toLocalUserAttachment))
     }
 
     const stop = () => {
-        // 先通知后端取消，再断开 SSE
-        if (currentMessageId) {
-            cancelChat(conversationId.value, currentMessageId).catch(() => {/* 忽略取消接口错误 */ })
-        }
+        cancelChat(conversationId.value).catch(() => { })
         currentAbortCtrl?.abort()
         currentAbortCtrl = null
         currentMessageId = null
+        pendingUserMessageForCurrentRequest = null
         loading.value = false
-        const last = messages[messages.length - 1]
-        if (last?.role === 'assistant') {
+        const last = getLastAssistantMsg()
+        if (last) {
             last.thinkingActive = false
             if (!last.created_at) last.created_at = Date.now()
         }
     }
 
-    /** 重试消息 */
-    const retryMessage = async (messageIndex: number) => {
-        const agentMsg = messages[messageIndex]
-        if (agentMsg?.role !== 'assistant' || loading.value) return
-
-        // 找到对应的用户消息（前一条）
-        const userMsgIndex = messageIndex - 1
-        const userMsg = messages[userMsgIndex]
-        if (!userMsg || userMsg.role !== 'user') return
+    /** 按轮重试：定位该轮 user 消息，重发并清理该轮末尾之后内容。 */
+    const retryTurn = async (messageIndex: number) => {
+        if (loading.value || !messages.length) return
+        const info = getTurnInfo(messageIndex)
+        if (!info?.userMsg) return
 
         await sendChatRequest({
-            content: userMsg.content,
-            messageId: userMsg.message_id,
+            content: info.userMsg.content,
+            restartMessageId: info.userMsg.message_id,
             addUserMessage: false,
-            clearFromIndex: messageIndex,
+            clearFromIndex: info.start + 1,
+            pendingUserMessage: info.userMsg,
         })
     }
 </script>

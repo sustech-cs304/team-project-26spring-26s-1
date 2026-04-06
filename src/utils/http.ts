@@ -1,25 +1,75 @@
 import axios from 'axios'
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
+
+const API_MODE_KEY = 'defaultBaseURLIsCloud'
+const LOCAL_DEFAULT_BASE_URL = 'http://127.0.0.1:8000/api'
+const CLOUD_DEFAULT_BASE_URL = `${window.location.origin}/api`
+const LOCAL_DEFAULT_WS_URL = 'ws://127.0.0.1:8000'
+
+const stripTrailingSlash = (url: string) => url.replace(/\/+$/, '')
+
+function resolveCloudWebSocketURL (): string {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}`
+}
+
+function resolveBaseURL (): string {
+    const envBaseURL = import.meta.env.VITE_API_BASE_URL as string
+    if (envBaseURL) {
+        return stripTrailingSlash(envBaseURL)
+    }
+    return stripTrailingSlash(getDefaultBaseURLIsCloud() ? CLOUD_DEFAULT_BASE_URL : LOCAL_DEFAULT_BASE_URL)
+}
+
+function resolveWebSocketURL (): string {
+    const envWebSocketURL = import.meta.env.VITE_WS_BASE_URL as string
+    if (envWebSocketURL) {
+        return stripTrailingSlash(envWebSocketURL)
+    }
+    return stripTrailingSlash(getDefaultBaseURLIsCloud() ? resolveCloudWebSocketURL() : LOCAL_DEFAULT_WS_URL)
+}
 
 /** 统一的 API 根地址，去除末尾斜杠，供 fetch 等场景复用 */
-export const baseURL = ((import.meta.env.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8000/').replace(/\/+$/, '')
+export let baseURL = resolveBaseURL()
+/** 统一的 WS 根地址，供 ASR 等 WebSocket 场景复用 */
+export let wsBaseURL = resolveWebSocketURL()
 
 const http: AxiosInstance = axios.create({
     baseURL,
     timeout: 10000,
+    withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
     },
 })
 
+export function getDefaultBaseURLIsCloud (): boolean {
+    return localStorage.getItem(API_MODE_KEY) === 'true'
+}
+
+function syncBaseURL (): void {
+    if (!import.meta.env.VITE_API_BASE_URL) {
+        baseURL = resolveBaseURL()
+        http.defaults.baseURL = baseURL
+    }
+
+    if (!import.meta.env.VITE_WS_BASE_URL) {
+        wsBaseURL = resolveWebSocketURL()
+    }
+}
+
+export function setDefaultBaseURLIsCloud (isCloud: boolean): void {
+    localStorage.setItem(API_MODE_KEY, String(isCloud))
+    syncBaseURL()
+}
+
 // Request Interceptor
 http.interceptors.request.use(
-    (config) => {
-        // TODO: Add token if authentication is implemented
-        // const token = localStorage.getItem('token')
-        // if (token) {
-        //   config.headers.Authorization = `Bearer ${token}`
-        // }
+    (config: InternalAxiosRequestConfig) => {
+        const token = localStorage.getItem('accessToken')
+        if (token && config.headers) {
+            config.headers.Authorization = `Bearer ${token}`
+        }
         return config
     },
     (error) => {

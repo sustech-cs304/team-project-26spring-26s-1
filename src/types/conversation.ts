@@ -1,149 +1,185 @@
-// conversation types
+export interface Conversation {
+  conversation_id: string;
+  created_at: number;
+  updated_at: number;
+  title: string;
+  is_active: boolean;
+  is_pinned: boolean;
+}
 
-export type StepStatus = 'running' | 'done' | 'error'
+export interface CreateConversationResponse {
+  conversation_id: string;
+  created_at: number;
+}
+
+export interface ConversationListResponse {
+  conversations: Conversation[];
+}
+
+export interface SearchConversationResponse {
+  conversations: Conversation[];
+}
+
+export interface MessageResponse {
+  message: string;
+}
+
+export interface SseFrame<T = unknown> {
+  event: SseEventTypes;
+  data: T;
+}
+
+export interface SseHandlers {
+  onHistory?: (data: SseHistoryData) => void;
+  onUserMessage?: (data: SseUserMessageData) => void;
+  onDelta?: (data: SseMessageDeltaData) => void;
+  onMetaData?: (data: SseMetaData) => void;
+  onToolCall?: (data: SseToolCallData) => void;
+  onError?: (data: SseErrorData) => void;
+  onKeepAlive?: (data: SseKeepAliveData) => void;
+  onDone?: (data: SseDoneData) => void;
+  onFetchError?: (error: any) => void;
+}
+
+export type SseEventTypes = 'history' | 'user_message' | 'delta' | 'meta_data' | 'tool_call' | 'error' | 'done' | 'keep_alive'
+
+export type MsgRole = 'user' | 'assistant' | 'system' | 'tools'
+export type HistoryMessageRole = Exclude<MsgRole, 'tools'>
+
+export interface ToolArgument {
+  argument_name: string
+  argument: string
+}
+
+export interface ToolCallMessage {
+  tool_name: string
+  tool_arguments: ToolArgument[]
+  status: 'pending' | 'approved' | 'rejected'
+  pending_reason?: string
+  tool_response?: string
+}
+
+export type QuizType = 'single' | 'multiple'
+
+export interface QuizOption {
+  id: string
+  content: string
+}
+
+export interface QuizCardData {
+  quiz_id?: string
+  title: string
+  description?: string
+  type: QuizType
+  options: QuizOption[]
+  answers: string[]
+  explanation: string
+}
+
+export interface QuizCardPayload {
+  quizzes: QuizCardData[]
+}
+
+export interface QuizToolCard extends QuizCardPayload {
+  card_id: string
+}
+
+export interface QuizCardToolArgument extends ToolArgument {
+  argument_name: string
+  argument: string
+}
+
+export interface QuizCardToolMessage extends Omit<ToolCallMessage, 'tool_name' | 'tool_arguments'> {
+  tool_name: 'quiz_card'
+  tool_arguments: QuizCardToolArgument[]
+}
+
+export const isQuizCardToolMessage = (tool?: ToolCallMessage | null): tool is QuizCardToolMessage =>
+  tool?.tool_name === 'quiz_card'
+
+const isQuizCardPayload = (value: unknown): value is QuizCardPayload => {
+  if (!value || typeof value !== 'object') return false
+  return Array.isArray((value as QuizCardPayload).quizzes)
+}
+
+export const parseQuizCardPayload = (raw: string): QuizCardPayload | null => {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return isQuizCardPayload(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export const extractQuizCardsFromToolCall = (tool?: ToolCallMessage | null): QuizToolCard[] => {
+  if (!isQuizCardToolMessage(tool)) return []
+
+  return tool.tool_arguments.flatMap((item) => {
+    const payload = parseQuizCardPayload(item.argument)
+    if (!payload) return []
+
+    return [{
+      card_id: item.argument_name,
+      quizzes: payload.quizzes,
+    }]
+  })
+}
 
 export interface Message {
-    role: 'user' | 'assistant'
-    content: string
-    created_at: number
-    thinkingSteps?: ThoughtStep[]
-    thinkingActive?: boolean
-    message_id?: string
+  role: HistoryMessageRole;
+  content: string
+  attachments?: MessageAttachmentReference[]
+  thought?: string
 }
 
-/**
- * 会话 (Conversation)
- */
-export interface Conversation {
-    /** 会话ID */
-    conversation_id: string;
-    /** 会话创建时间 */
-    created_at: number;
-    /** 会话更新时间 */
-    updated_at: number;
-    /** 会话标题 */
-    title: string;
-    /** 会话是否进行中 */
-    is_active: boolean;
-    /** 会话是否置顶 */
-    is_pinned: boolean;
+export interface MessageAttachmentReference {
+  file_id?: string
+  attachment_id?: string
+  attachment_name?: string
 }
 
-/**
- * 会话列表响应 (Conversation List Response)
- */
-export interface ConversationListResponse {
-    conversations: Conversation[];
+export interface SseHistoryToolData extends ToolCallMessage {
+  type: 'tool'
 }
 
-/**
- * 搜索会话响应 (Search Conversation Response)
- */
-export interface SearchConversationResponse {
-    conversations: Conversation[];
-    sessions?: any[];
+export interface SseHistoryMessageData extends Message {
+  type: 'message'
 }
 
-/**
- * 通用消息响应
- */
-export interface MessageResponse {
-    message: string;
-}
-
-// --- SSE Event Types ---
-
-/** SSE 事件名称 */
-export type SseEventName =
-    | 'history'
-    | 'thought_step'
-    | 'message_delta'
-    | 'done'
-    | 'error'
-    | 'keep_alive'
-    | 'set_title'
-
-export type StepType = 'search' | 'code' | 'tool' | 'read' | 'think' | 'api' | 'thought_step' | 'tool_call' | 'tool_response'
-
-/** 思维步骤 */
-export interface ThoughtStep {
-    id: string;
-    type: StepType;
-    title?: string;
-    content?: string;
-    status: StepStatus;
-    created_at?: number;
-    raw_json?: string;
-}
-
-/** 历史消息条目 */
-export interface HistoryMessage {
-    message_id: string;
-    content: string;
-    parent: string | null;
-    role: 'system' | 'user' | 'assistant' | 'tool';
-    created_at: number;
-    thought_steps: ThoughtStep[];
-}
-
-/** event: history — 历史消息列表 */
 export interface SseHistoryData {
-    history_messages: HistoryMessage[] | null;
+  message_id: string;
+  created_at: string;
+  finished_at: string;
+  data: SseHistoryToolData | SseHistoryMessageData;
 }
 
-/** event: message_delta — 流式内容片段 */
+export interface SseUserMessageData {
+  message_id: string;
+}
+
 export interface SseMessageDeltaData {
-    message_id: string;
-    delta: string;
-    /** message start 时与 message_id 一并返回 */
-    request_id?: string;
+  message_id: string;
+  delta: string;
+  is_thinking?: boolean;
 }
 
-/** event: thought_step — 思维/工具步骤 */
-export interface SseThoughtStepData {
-    message_id: string;
-    step: ThoughtStep;
+export interface SseMetaData {
+  message_id: string;
+  metadata: Record<string, any>;
 }
 
-/** event: done — 一次消息结束 */
-export interface SseDoneData {
-    conversation_id: string;
-    message_id: string;
-    created_at: number;
-    updated_at: number;
-    is_active: boolean;
-    is_pinned: boolean;
+export interface SseToolCallData extends ToolCallMessage {
+  message_id: string;
 }
 
-/** event: error — 流内传输错误 */
 export interface SseErrorData {
-    error_message: string;
+  error_message: string;
 }
 
-/** event: set_title — 设置会话标题 */
-export interface SseSetTitleData {
-    conversation_id: string;
-    title: string;
+export interface SseDoneData {
 }
 
-/** SSE 原始 event 帧（泛型） */
-export interface SseFrame<T = unknown> {
-    event: SseEventName;
-    data: T;
-    id?: string;
+export interface SseKeepAliveData {
 }
+// events
 
-/**
- * SSE 事件回调集合
- * 消费方按需传入需要处理的事件即可
- */
-export interface SseHandlers {
-    onHistory?: (data: SseHistoryData) => void;
-    onThoughtStep?: (data: SseThoughtStepData) => void;
-    onMessageDelta?: (data: SseMessageDeltaData) => void;
-    onDone?: (data: SseDoneData) => void;
-    onError?: (data: SseErrorData) => void;
-    onSetTitle?: (data: SseSetTitleData) => void;
-    /** 连接/网络层错误 */
-    onFetchError?: (err: unknown) => void;
-}

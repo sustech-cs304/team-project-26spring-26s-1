@@ -113,7 +113,7 @@
                             <v-btn-toggle v-model="creds.method" mandatory density="compact" variant="outlined"
                                 color="primary">
                                 <v-btn v-for="m in authMethods" :key="m.value" :value="m.value" size="small">{{ m.label
-                                    }}</v-btn>
+                                }}</v-btn>
                             </v-btn-toggle>
                         </div>
 
@@ -185,7 +185,7 @@
                             <div class="d-flex align-center ga-3">
                                 <v-icon size="16" class="text-medium-emphasis">mdi-power</v-icon>
                                 <div class="flex-grow-1">
-                                    <div class="text-body-2 font-weight-medium">Launch on Startup</div>
+                                    <div class="text-body-large font-weight-medium">Launch on Startup</div>
                                     <div class="text-medium-emphasis" style="font-size:11px;">
                                         Automatically start Agent when system boots
                                     </div>
@@ -247,7 +247,7 @@
                         <div class="mb-5">
                             <div class="text-caption font-weight-medium text-medium-emphasis mb-2">
                                 UI Font Size — <span class="text-primary font-weight-bold">{{ appearance.fontSize
-                                }}px</span>
+                                    }}px</span>
                             </div>
                             <v-slider v-model="appearance.fontSize" :min="11" :max="16" :step="1" density="compact"
                                 hide-details thumb-label color="primary" style="max-width:320px;" />
@@ -258,7 +258,7 @@
                             <div class="d-flex align-center ga-3">
                                 <v-icon size="16" class="text-medium-emphasis">mdi-arrow-collapse-all</v-icon>
                                 <div class="flex-grow-1">
-                                    <div class="text-body-2 font-weight-medium">Compact Mode</div>
+                                    <div class="text-body-large font-weight-medium">Compact Mode</div>
                                     <div class="text-medium-emphasis" style="font-size:11px;">
                                         Reduce padding and spacing for a denser layout
                                     </div>
@@ -283,7 +283,7 @@
                             <div class="d-flex align-center ga-3">
                                 <v-icon size="16" class="text-medium-emphasis">mdi-pin-outline</v-icon>
                                 <div class="flex-grow-1">
-                                    <div class="text-body-2 font-weight-medium">Always on Top</div>
+                                    <div class="text-body-large font-weight-medium">Always on Top</div>
                                     <div class="text-medium-emphasis" style="font-size:11px;">Keep window above all
                                         other application windows</div>
                                 </div>
@@ -297,7 +297,7 @@
                             <div class="d-flex align-center ga-3">
                                 <v-icon size="16" class="text-medium-emphasis">mdi-tray-arrow-down</v-icon>
                                 <div class="flex-grow-1">
-                                    <div class="text-body-2 font-weight-medium">Minimize to System Tray</div>
+                                    <div class="text-body-large font-weight-medium">Minimize to System Tray</div>
                                     <div class="text-medium-emphasis" style="font-size:11px;">Closing the window hides
                                         to tray instead of quitting</div>
                                 </div>
@@ -311,7 +311,7 @@
                             <div class="d-flex align-center ga-3">
                                 <v-icon size="16" class="text-medium-emphasis">mdi-window-minimize</v-icon>
                                 <div class="flex-grow-1">
-                                    <div class="text-body-2 font-weight-medium">Start Minimized</div>
+                                    <div class="text-body-large font-weight-medium">Start Minimized</div>
                                     <div class="text-medium-emphasis" style="font-size:11px;">Launch in background
                                         without showing the window</div>
                                 </div>
@@ -324,7 +324,7 @@
                         <div class="mb-5">
                             <div class="text-caption font-weight-medium text-medium-emphasis mb-2">
                                 Window Opacity — <span class="text-primary font-weight-bold">{{ winSettings.opacity
-                                }}%</span>
+                                    }}%</span>
                             </div>
                             <v-slider v-model="winSettings.opacity" :min="60" :max="100" :step="5" density="compact"
                                 hide-details thumb-label color="primary" style="max-width:320px;" />
@@ -346,7 +346,7 @@
                                 <v-icon size="16" :color="notif.enabled ? 'primary' : undefined"
                                     class="text-medium-emphasis">mdi-bell-outline</v-icon>
                                 <div class="flex-grow-1">
-                                    <div class="text-body-2 font-weight-medium">Enable Notifications</div>
+                                    <div class="text-body-large font-weight-medium">Enable Notifications</div>
                                     <div class="text-medium-emphasis" style="font-size:11px;">Master toggle for all
                                         notification types</div>
                                 </div>
@@ -361,7 +361,7 @@
                                 <div class="d-flex align-center ga-3">
                                     <v-icon size="16" class="text-medium-emphasis">{{ item.icon }}</v-icon>
                                     <div class="flex-grow-1">
-                                        <div class="text-body-2 font-weight-medium">{{ item.label }}</div>
+                                        <div class="text-body-large font-weight-medium">{{ item.label }}</div>
                                         <div class="text-medium-emphasis" style="font-size:11px;">{{ item.desc }}</div>
                                     </div>
                                     <v-switch v-model="(notif as any)[item.key]" density="compact" hide-details
@@ -402,7 +402,7 @@
                                     </v-btn>
                                     <div class="flex-grow-1 min-width-0">
                                         <div class="d-flex align-center ga-2">
-                                            <span class="text-body-2 font-weight-medium">{{ cap.name }}</span>
+                                            <span class="text-body-large font-weight-medium">{{ cap.name }}</span>
                                             <code class="text-medium-emphasis"
                                                 style="font-size:10px;">{{ cap.filename }}</code>
                                         </div>
@@ -427,7 +427,7 @@
                                                 <v-icon size="6" :color="cap.enabled ? 'primary' : undefined"
                                                     style="opacity:0.7;">mdi-circle</v-icon>
                                                 <span style="font-size:11px;" class="text-medium-emphasis">{{ perm
-                                                    }}</span>
+                                                }}</span>
                                             </div>
                                         </div>
                                     </div>

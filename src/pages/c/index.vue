@@ -23,10 +23,17 @@
     import ConversationStarters from '@/components/chat/ConversationStarters.vue'
     import MessageInput from '@/components/chat/MessageInput.vue'
     import { createConversation } from '@/api/conversation'
+    import { useAppStore } from '@/stores/app'
     import { pendingPrompt } from '@/utils/pendingPrompt'
+    import type { AttachmentFile, UserMessageAttachment } from '@/types/attachment'
 
     const router = useRouter()
-    const messageInputRef = ref<InstanceType<typeof MessageInput> | null>(null)
+    const appStore = useAppStore()
+    type MessageInputExposed = InstanceType<typeof MessageInput> & {
+        getAttachmentsSnapshot?: () => AttachmentFile[]
+        clearAttachments?: () => void
+    }
+    const messageInputRef = ref<MessageInputExposed | null>(null)
     const input = ref('')
     const creating = ref(false)
 
@@ -46,11 +53,33 @@
         if (ref) registerMessageInput?.(ref)
     })
 
-    const startConversation = async (prompt: string) => {
+    const toPendingAttachment = (attachment: AttachmentFile): UserMessageAttachment => ({
+        id: attachment.fileId || attachment.id,
+        fileId: attachment.fileId,
+        name: attachment.name,
+        category: attachment.category,
+        size: attachment.size,
+        dataUrl: attachment.dataUrl,
+        status: 'ready',
+        source: 'local',
+    })
+
+    const startConversation = async (prompt: string, attachments: UserMessageAttachment[] = []) => {
         creating.value = true
         try {
             const conv = await createConversation()
-            pendingPrompt.value = prompt
+            appStore.setConversationCreated({
+                conversation_id: conv.conversation_id,
+                created_at: conv.created_at,
+                updated_at: conv.created_at,
+                title: '新的对话',
+                is_active: true,
+                is_pinned: false,
+            })
+            pendingPrompt.value = {
+                content: prompt,
+                attachments,
+            }
             router.push(`/c/${conv.conversation_id}`)
         } catch (err) {
             console.error('创建对话失败:', err)
@@ -61,7 +90,10 @@
 
     const send = () => {
         const text = input.value.trim()
-        if (!text || creating.value) return
-        startConversation(text)
+        const attachments = messageInputRef.value?.getAttachmentsSnapshot?.() ?? []
+        if ((!text && attachments.length === 0) || creating.value) return
+        input.value = ''
+        messageInputRef.value?.clearAttachments?.()
+        startConversation(text, attachments.map(toPendingAttachment))
     }
 </script>

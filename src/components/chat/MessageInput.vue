@@ -4,13 +4,13 @@
             @click="focusTextarea">
             <FilePreview v-if="attachments.length" v-model="attachments" class="pt-4 pb-0" />
             <v-textarea ref="textareaRef" :model-value="modelValue"
-                @update:model-value="emit('update:modelValue', $event)" placeholder="发送消息，或输入 / 使用命令…" variant="plain"
-                rows="1" auto-grow max-rows="6" hide-details @keydown.enter.exact.prevent="send" @paste="onPaste">
+                @update:model-value="emit('update:modelValue', $event)" :placeholder="disabled ? '请先处理待审批的操作…' : '发送消息，或输入 / 使用命令…'" variant="plain"
+                rows="1" auto-grow max-rows="6" hide-details :disabled="disabled" @keydown.enter.exact.prevent="send" @paste="onPaste">
             </v-textarea>
             <!-- Toolbar -->
             <v-row align="center" density="compact" class="mt-1">
                 <!-- 左侧：上传文件 -->
-                <v-btn icon="mdi-plus" size="small" variant="text" :ripple="false" :disabled="loading"
+                <v-btn icon="mdi-plus" size="small" variant="text" :ripple="false" :disabled="loading || disabled"
                     @click="triggerUpload" />
                 <input ref="fileInput" type="file" :accept="ACCEPT_STRING" multiple class="d-none"
                     @change="onFileChange" />
@@ -21,11 +21,11 @@
                     <v-btn v-else-if="asr.isStarting.value" key="starting" icon="mdi-loading" size="small" color="warning"
                         variant="tonal" :ripple="false" :loading="true" disabled />
                     <v-btn v-else-if="!hasContent && !asr.isRecording.value" key="mic" icon="mdi-microphone-outline"
-                        size="small" variant="text" :ripple="false" @click="toggleRecording" />
+                        size="small" variant="text" :ripple="false" :disabled="disabled" @click="toggleRecording" />
                     <v-btn v-else-if="asr.isRecording.value" key="recording" icon="mdi-microphone" size="small"
                         color="error" variant="flat" :ripple="false" @click="toggleRecording" />
                     <v-btn v-else key="send" icon="mdi-send" size="small" variant="flat" :ripple="false"
-                        @click="send" />
+                        :disabled="!canSend" @click="send" />
                 </v-scale-transition>
             </v-row>
         </v-sheet>
@@ -41,6 +41,7 @@
 </template>
 
 <script setup lang="ts">
+    import { uploadFile } from '@/api/file'
     import FilePreview from '@/components/chat/FilePreview.vue'
     import type { AttachmentFile } from '@/types/attachment'
     import {
@@ -55,6 +56,7 @@
     const props = defineProps<{
         modelValue: string
         loading?: boolean
+        disabled?: boolean
     }>()
 
     const emit = defineEmits<{
@@ -109,7 +111,13 @@
         !!(props.modelValue.trim() || attachments.value.length > 0)
     )
 
-    const canSend = computed(() => hasContent.value && !props.loading)
+    const hasUploadingAttachments = computed(() =>
+        attachments.value.some(file => file.uploadStatus === 'uploading')
+    )
+
+    const canSend = computed(() =>
+        hasContent.value && !props.loading && !props.disabled && !hasUploadingAttachments.value
+    )
 
     const toggleRecording = () => {
         if (asr.isStarting.value || asr.isRecording.value) {
@@ -128,6 +136,16 @@
      * 处理一组文件：校验 → MD5 计算 → 去重 → 添加到 attachments
      * 供 onFileChange、onPaste、以及父组件拖拽调用
      */
+    const updateAttachment = (attachmentId: string, updater: (attachment: AttachmentFile) => AttachmentFile) => {
+        attachments.value = attachments.value.map((attachment) =>
+            attachment.id === attachmentId ? updater(attachment) : attachment
+        )
+    }
+
+    const removeAttachment = (attachmentId: string) => {
+        attachments.value = attachments.value.filter(attachment => attachment.id !== attachmentId)
+    }
+
     const addFiles = async (files: FileList | File[]) => {
         for (const file of files) {
             // 1. 校验类型和大小
@@ -161,16 +179,32 @@
 
             // 5. 构建 AttachmentFile 并添加
             const category = getFileCategory(file)!
+            const attachmentId = generateFileId()
             const attachment: AttachmentFile = {
-                id: generateFileId(),
+                id: attachmentId,
                 name: file.name,
                 size: file.size,
                 type: file.type,
                 category,
                 dataUrl,
                 md5,
+                uploadStatus: 'uploading',
             }
             attachments.value = [...attachments.value, attachment]
+
+            // 6. 真正上传到后端，成功后写入 file_id
+            try {
+                const uploaded = await uploadFile(file)
+                updateAttachment(attachmentId, current => ({
+                    ...current,
+                    fileId: uploaded.file_id,
+                    type: uploaded.mime_type || current.type,
+                    uploadStatus: 'ready',
+                }))
+            } catch {
+                removeAttachment(attachmentId)
+                showError(`文件 "${file.name}" 上传失败，请重试`)
+            }
         }
     }
 
@@ -218,5 +252,12 @@
     }
 
     // ── 暴露给父组件（用于拖拽上传） ──────────
-    defineExpose({ addFiles, attachments })
+    const getAttachmentsSnapshot = (): AttachmentFile[] =>
+        attachments.value.map(file => ({ ...file }))
+
+    const clearAttachments = () => {
+        attachments.value = []
+    }
+
+    defineExpose({ addFiles, getAttachmentsSnapshot, clearAttachments })
 </script>

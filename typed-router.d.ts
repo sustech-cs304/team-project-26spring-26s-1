@@ -30,6 +30,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/[...path]': RouteRecordInfo<
+      '/[...path]',
+      '/:path(.*)',
+      { path: ParamValue<true> },
+      { path: ParamValue<false> },
+      | never
+    >,
     '/auth/': RouteRecordInfo<
       '/auth/',
       '/auth',
@@ -69,6 +76,13 @@ declare module 'vue-router/auto-routes' {
     '/calendar/': RouteRecordInfo<
       '/calendar/',
       '/calendar',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/quiz-playground': RouteRecordInfo<
+      '/quiz-playground',
+      '/quiz-playground',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -113,6 +127,12 @@ declare module 'vue-router/auto-routes' {
       views:
         | never
     }
+    'src/pages/[...path].vue': {
+      routes:
+        | '/[...path]'
+      views:
+        | never
+    }
     'src/pages/auth/index.vue': {
       routes:
         | '/auth/'
@@ -148,6 +168,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/calendar/index.vue': {
       routes:
         | '/calendar/'
+      views:
+        | never
+    }
+    'src/pages/quiz-playground.vue': {
+      routes:
+        | '/quiz-playground'
       views:
         | never
     }
