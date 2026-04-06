@@ -73,6 +73,11 @@ let _themeRefCount = 0
         },
     })
 
+    // 仅自动识别带协议的链接，避免将 "文件.md" 这类普通文本误判为域名链接。
+    md.linkify.set({
+        fuzzyLink: false,
+    })
+
     md.use(markdownItKatex, {
         throwOnError: false,
         errorColor: '#cc0000',
@@ -115,10 +120,85 @@ let _themeRefCount = 0
         return defaultLinkRender(tokens, idx, options, env, self)
     }
 
+    // 容错处理：规范强调语法边界空格，如 ** 文本 ** / * 文本 * / ~~ 文本 ~~。
+    // 仅处理非代码片段，避免破坏行内代码或 fenced code block 内容。
+    const normalizeLooseEmphasis = (input: string): string => {
+        const trimByPattern = (
+            text: string,
+            leftPattern: RegExp,
+            rightPattern: RegExp,
+            leftWrap: string,
+            rightWrap: string,
+        ): string => {
+            let out = text
+            out = out.replace(leftPattern, (m, inner: string) => {
+                const trimmed = inner.trimStart()
+                return trimmed.length ? `${leftWrap}${trimmed}${rightWrap}` : m
+            })
+            out = out.replace(rightPattern, (m, inner: string) => {
+                const trimmed = inner.trimEnd()
+                return trimmed.length ? `${leftWrap}${trimmed}${rightWrap}` : m
+            })
+            return out
+        }
+
+        const segments = input.split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+
+        return segments
+            .map((segment, idx) => {
+                if (idx % 2 === 1) return segment
+
+                let normalized = segment
+
+                // 双字符标记优先处理，避免与单字符规则冲突。
+                normalized = trimByPattern(
+                    normalized,
+                    /\*\*\s+([^\n*][^*\n]*?)\*\*/g,
+                    /\*\*([^\n*][^*\n]*?)\s+\*\*/g,
+                    '**',
+                    '**',
+                )
+                normalized = trimByPattern(
+                    normalized,
+                    /__\s+([^\n_][^_\n]*?)__/g,
+                    /__([^\n_][^_\n]*?)\s+__/g,
+                    '__',
+                    '__',
+                )
+                normalized = trimByPattern(
+                    normalized,
+                    /~~\s+([^\n~][^~\n]*?)~~/g,
+                    /~~([^\n~][^~\n]*?)\s+~~/g,
+                    '~~',
+                    '~~',
+                )
+
+                // 单字符标记增加字母约束，避免误改算术表达式（如 2 * 3 * 4）。
+                normalized = trimByPattern(
+                    normalized,
+                    /(?<!\*)\*(?!\*)\s+((?=[^\n*]*\p{L})[^\n*][^*\n]*?)(?<!\*)\*(?!\*)/gu,
+                    /(?<!\*)\*(?!\*)((?=[^\n*]*\p{L})[^\n*][^*\n]*?)\s+(?<!\*)\*(?!\*)/gu,
+                    '*',
+                    '*',
+                )
+                normalized = trimByPattern(
+                    normalized,
+                    /(?<!_)_(?!_)\s+((?=[^\n_]*\p{L})[^\n_][^_\n]*?)(?<!_)_(?!_)/gu,
+                    /(?<!_)_(?!_)((?=[^\n_]*\p{L})[^\n_][^_\n]*?)\s+(?<!_)_(?!_)/gu,
+                    '_',
+                    '_',
+                )
+
+                return normalized
+            })
+            .join('')
+    }
+
     const rendered = computed(() => {
+        const normalizedContent = normalizeLooseEmphasis(props.content)
         const raw = props.inline
-            ? md.renderInline(props.content)
-            : md.render(props.content)
+            ? md.renderInline(normalizedContent)
+            : md.render(normalizedContent)
         return DOMPurify.sanitize(raw, {
             ADD_TAGS: [
                 // KaTeX
