@@ -32,8 +32,17 @@ class ApiConfig(BaseModel):
     embed: EmbedEndpointConfig
     asr: ASREndpointConfig
 
+class MineruConfig(BaseModel):
+    base_url: str
+    api_key: str
+
+class FileConfig(BaseModel):
+    upload_path: str
+    mineru: MineruConfig
+
 class AppConfig(BaseModel):
     api: ApiConfig
+    file: FileConfig
 
 def load_config(file_path: str = "config.yaml") -> AppConfig:
     """Loads config.yaml into a verified Pydantic object with env var lookups."""

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import pydantic
 from agent.config import AppConfig
 from contextlib import suppress
-from agent.db.models import Conversation, Message
+from agent.db.models import Conversation, Message, MessageAttachment
 import agent.api.models as api_models
 import datetime as dt
 from agent.api.conversation_runner import ConversationRunner
@@ -45,7 +45,7 @@ async def conversation_completion(params: ConversationCompletionRequest, request
     id = str(uuid4())
     
     ConversationRunner = request.app.state.ConversationRunner
-    run_task = asyncio.create_task(ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id))
+    run_task = asyncio.create_task(ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id, params.attachments))
     await asyncio.shield(run_task)
     
     async for delta in ConversationRunner.stream(params.conversation_id, params.need_history):
@@ -140,6 +140,11 @@ async def delete_conversation(request: Request, conversation_id: str, restart_me
         if not conversation:
             raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
         
+        await session.execute(
+            delete(MessageAttachment).where(MessageAttachment.message_id.in_(
+                select(Message.id).where(Message.conversation_id == conversation_id)
+            ))
+        )
         await session.execute(
             delete(Message).where(Message.conversation_id == conversation_id)
         )

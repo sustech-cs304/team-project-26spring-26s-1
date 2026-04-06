@@ -41,6 +41,8 @@ class Attachment(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    mineru_id: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     message_links: Mapped[list["MessageAttachment"]] = relationship("MessageAttachment", back_populates="attachment")
 

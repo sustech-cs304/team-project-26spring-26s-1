@@ -4,7 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import fastapi
 from agent.db.database import Base, create_session_factory, create_sqlite_engine
 from agent.api.conversation import router as conversation_router
+from agent.api.file import router as file_router
 from agent.api.conversation_runner import ConversationRunner
+from agent.api.file_runner import FileRunner
 from agent.config import load_config, save_config
 from agent.core.graph import create_graph
 
@@ -35,9 +37,11 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.engine = engine
 	app.state.async_session = async_session
 	app.state.ConversationRunner = ConversationRunner(graph, async_session)
+	app.state.FileRunner = FileRunner(async_session, config)
 	app.state.config = config
 	app.state.graph = graph
 
+	await app.state.FileRunner.start()
 	async with engine.begin() as conn:
 		await conn.run_sync(Base.metadata.create_all)
 
@@ -48,6 +52,7 @@ async def lifespan(app: fastapi.FastAPI):
 		await engine.dispose()
 		await store_conn.close()
 		await checkpointer_conn.close()
+		await app.state.FileRunner.stop()
 
 app = fastapi.FastAPI(lifespan=lifespan)
 app.add_middleware(
@@ -58,3 +63,4 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 app.include_router(conversation_router, prefix="/api")
+app.include_router(file_router, prefix="/api")
