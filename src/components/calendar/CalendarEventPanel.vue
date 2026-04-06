@@ -1,48 +1,40 @@
 <template>
-    <v-sheet class="h-100 d-flex flex-column border-s" color="transparent" rounded="0" width="260">
-
-        <!-- 头部：日期 + 关闭 -->
+    <v-sheet class="h-100 d-flex flex-column border-e" color="transparent" rounded="0" :style="panelStyle">
         <div class="px-4 py-3 border-b flex-shrink-0 d-flex align-center justify-space-between">
             <div>
-                <div class="text-subtitle-2 font-weight-bold">{{ formattedDate }}</div>
-                <div class="text-caption text-medium-emphasis">{{ events.length }} event{{ events.length !== 1 ? 's' :
-                    '' }}</div>
+                <div class="text-subtitle-2 font-weight-bold">{{ title }}</div>
+                <div class="text-caption text-medium-emphasis">{{ subtitle }}</div>
             </div>
-            <div class="d-flex ga-1">
-                <v-btn icon size="x-small" variant="text" @click="$emit('create')">
-                    <v-icon size="14">mdi-plus</v-icon>
-                    <v-tooltip activator="parent">New event</v-tooltip>
-                </v-btn>
-                <v-btn icon size="x-small" variant="text" @click="$emit('close')">
-                    <v-icon size="14">mdi-close</v-icon>
-                </v-btn>
-            </div>
+            <v-btn icon size="x-small" variant="text" @click="$emit('create')">
+                <v-icon size="14">mdi-plus</v-icon>
+                <v-tooltip activator="parent">New event</v-tooltip>
+            </v-btn>
         </div>
-
-        <!-- 事件列表 -->
-        <v-list density="compact" class="flex-grow-1 overflow-y-auto py-1">
+        <v-list density="compact" class="flex-grow-1 overflow-y-auto py-1 px-2">
             <div v-if="events.length === 0" class="d-flex flex-column align-center justify-center py-10">
                 <v-icon size="28" style="opacity:0.3;">mdi-calendar-blank</v-icon>
-                <span class="text-caption text-disabled mt-2">No events</span>
-                <v-btn size="x-small" variant="tonal" class="mt-3" @click="$emit('create')">Add Event</v-btn>
+                <span class="text-caption text-disabled mt-2">No matching events</span>
             </div>
+
             <v-list-item v-for="ev in events" :key="ev.id" :active="selectedEventId === ev.id" active-color="primary"
-                rounded="lg" class="mx-1 mb-1 px-3 py-2" @click="$emit('select', ev)">
+                rounded="lg" class="mb-1 px-2 py-2" @click="$emit('select', ev)"
+                @contextmenu.prevent.stop="$emit('contextmenu', { event: ev, mouseEvent: $event })">
                 <template #prepend>
-                    <v-sheet :color="typeColor(ev.type)" width="3" rounded class="flex-shrink-0 mr-3"
-                        style="min-height:40px;align-self:stretch;" />
+                    <v-sheet width="4" rounded class="mr-3" :style="{ background: sourceColor(ev.source), minHeight: '40px' }" />
                 </template>
                 <div class="flex-grow-1 min-width-0">
-                    <div class="text-body-2 font-weight-medium text-truncate">{{ ev.title }}</div>
-                    <div class="d-flex align-center ga-2 mt-1">
-                        <v-chip :color="typeColor(ev.type)" size="x-small" variant="tonal" density="compact">
-                            {{ ev.type }}
+                    <div class="d-flex align-center justify-space-between ga-2">
+                        <div class="text-body-2 font-weight-medium text-truncate">{{ ev.title }}</div>
+                        <span class="text-caption text-medium-emphasis flex-shrink-0">#{{ ev.id }}</span>
+                    </div>
+                    <div class="d-flex align-center ga-2 mt-1 flex-wrap">
+                        <v-sheet width="10" height="10" rounded="circle" :style="{ background: eventColor(ev) }" />
+                        <v-chip size="x-small" density="compact" variant="outlined" :style="sourceStyle(ev.source)">
+                            {{ ev.source }}
                         </v-chip>
-                        <span v-if="ev.time" class="text-caption text-medium-emphasis">{{ ev.time }}</span>
+                        <span v-if="eventTimeText(ev)" class="text-caption text-medium-emphasis">{{ eventTimeText(ev) }}</span>
                     </div>
-                    <div v-if="ev.description" class="text-caption text-medium-emphasis mt-1 text-truncate">
-                        {{ ev.description }}
-                    </div>
+                    <div class="text-caption text-medium-emphasis mt-1">{{ ev.date }}</div>
                 </div>
                 <template #append>
                     <div class="d-flex flex-column ga-1">
@@ -55,34 +47,52 @@
                     </div>
                 </template>
             </v-list-item>
-        </v-list>
 
+        </v-list>
     </v-sheet>
 </template>
 
 <script setup lang="ts">
-    import type { CalEvent } from '@/utils/calendar'
-    import { eventTypeColor } from '@/utils/calendar'
+    import { useDisplay } from 'vuetify'
+    import type { CalEvent } from '@/types/calendar'
+    import { getEventDisplayTime } from '@/utils/calendar'
 
     const props = defineProps<{
-        dateKey: string   // 'YYYY-MM-DD'
+        title: string
+        subtitle: string
         events: CalEvent[]
         selectedEventId?: number | null
+        sourceColorMap?: Record<string, string>
     }>()
 
     defineEmits<{
-        close: []
         create: []
         select: [ev: CalEvent]
         edit: [ev: CalEvent]
         delete: [ev: CalEvent]
+        contextmenu: [payload: { event: CalEvent; mouseEvent: MouseEvent }]
     }>()
 
-    const formattedDate = computed(() => {
-        if (!props.dateKey) return ''
-        const d = new Date(props.dateKey + 'T00:00:00')
-        return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+    const sourceColor = (source: CalEvent['source']) => props.sourceColorMap?.[source] ?? '#2563eb'
+    const sourceStyle = (source: CalEvent['source']) => ({ color: sourceColor(source), borderColor: sourceColor(source) })
+    const eventColor = (ev: CalEvent) => ev.color || '#3b82f6'
+    const { width } = useDisplay()
+
+    const panelWidth = computed(() => {
+        if (width.value <= 1200) return 260
+        if (width.value <= 1440) return 280
+        return 300
     })
 
-    const typeColor = (type: string) => eventTypeColor(type as any)
+    const panelStyle = computed(() => {
+        const value = `${panelWidth.value}px`
+        return {
+            width: value,
+            minWidth: value,
+            maxWidth: value,
+            flex: `0 0 ${value}`,
+        }
+    })
+
+    const eventTimeText = (ev: CalEvent) => getEventDisplayTime(ev)
 </script>

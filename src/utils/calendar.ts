@@ -1,24 +1,36 @@
-﻿// ─── Calendar Types ────────────────────────────────────────────────────────────
-export type EventType = 'exam' | 'class' | 'personal' | 'deadline' | 'meeting'
-
-export interface CalEvent {
-    id: number
-    title: string
-    type: EventType
-    /** HH:MM or HH:MM - HH:MM */
-    time: string
-    /** YYYY-MM-DD */
-    date: string
-    /** YYYY-MM-DD – only set when event spans multiple days (end date) */
-    endDate?: string
-    location?: string
-    courseId?: string
-    description?: string
-    allDay?: boolean
-}
+﻿import type { CalEvent, CalendarCell, CalendarInformType } from '@/types/calendar'
 
 // ─── Date Helpers ──────────────────────────────────────────────────────────────
-export const toDateKey = (d: Date): string => d.toISOString().slice(0, 10)
+export const toDateKey = (d: Date): string => {
+    const y = d.getFullYear()
+    const m = `${d.getMonth() + 1}`.padStart(2, '0')
+    const day = `${d.getDate()}`.padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
+export const fromDateKey = (dateKey: string): Date => {
+    const [y = '1970', m = '01', d = '01'] = dateKey.split('-')
+    return new Date(
+        Number.parseInt(y, 10) || 1970,
+        (Number.parseInt(m, 10) || 1) - 1,
+        Number.parseInt(d, 10) || 1,
+    )
+}
+
+export const parseHHMM = (value?: string): { hour: number; minute: number } => {
+    if (!value) return { hour: 0, minute: 0 }
+    const [h = '0', m = '0'] = value.split(':')
+    const hour = Math.min(23, Math.max(0, Number.parseInt(h, 10) || 0))
+    const minute = Math.min(59, Math.max(0, Number.parseInt(m, 10) || 0))
+    return { hour, minute }
+}
+
+export const toUnixSecondsByDateKey = (dateKey: string, hhmm = '00:00'): number => {
+    const date = fromDateKey(dateKey)
+    const { hour, minute } = parseHHMM(hhmm)
+    date.setHours(hour, minute, 0, 0)
+    return Math.floor(date.getTime() / 1000)
+}
 
 export const isSameDay = (a: Date, b: Date): boolean => toDateKey(a) === toDateKey(b)
 
@@ -32,6 +44,15 @@ export const getDaysInMonth = (year: number, month: number): number =>
 /** Returns the day-of-week offset so the grid starts on Sunday */
 export const firstDayOfWeekOffset = (year: number, month: number): number =>
     new Date(year, month, 1).getDay()
+
+export const CALENDAR_INFORM_OPTIONS: { value: CalendarInformType; label: string }[] = [
+    { value: 'none', label: 'None' },
+    { value: '10_minutes_before', label: '10 minutes before' },
+    { value: '5_minutes_before', label: '5 minutes before' },
+    { value: '30_minutes_before', label: '30 minutes before' },
+    { value: '1_hour_before', label: '1 hour before' },
+    { value: 'at_start', label: 'At start' },
+]
 
 /**
  * Build the full 6-row (42-cell) calendar grid for a given month.
@@ -52,7 +73,7 @@ export function buildMonthGrid (year: number, month: number): CalendarCell[] {
         const dateKey = toDateKey(d)
         cells.push({
             date: d, dateKey, currentMonth: false, isToday: dateKey === todayKey,
-            day: undefined
+            day: d.getDate()
         })
     }
 
@@ -62,7 +83,7 @@ export function buildMonthGrid (year: number, month: number): CalendarCell[] {
         const dateKey = toDateKey(date)
         cells.push({
             date, dateKey, currentMonth: true, isToday: dateKey === todayKey,
-            day: undefined
+            day: d
         })
     }
 
@@ -75,49 +96,12 @@ export function buildMonthGrid (year: number, month: number): CalendarCell[] {
         const dateKey = toDateKey(date)
         cells.push({
             date, dateKey, currentMonth: false, isToday: dateKey === todayKey,
-            day: undefined
+            day: date.getDate()
         })
     }
 
     return cells
 }
-
-export interface CalendarCell {
-    day: any
-    date: Date
-    /** YYYY-MM-DD */
-    dateKey: string
-    currentMonth: boolean
-    isToday: boolean
-}
-
-// ─── Event Helpers ─────────────────────────────────────────────────────────────
-export const EVENT_TYPE_COLOR: Record<EventType, string> = {
-    exam: 'error',
-    class: 'primary',
-    personal: 'info',
-    deadline: 'warning',
-    meeting: 'secondary',
-}
-
-export const EVENT_TYPE_ICON: Record<EventType, string> = {
-    exam: 'mdi-book-open-outline',
-    class: 'mdi-school-outline',
-    personal: 'mdi-account-outline',
-    deadline: 'mdi-clock-alert-outline',
-    meeting: 'mdi-account-group-outline',
-}
-
-export const EVENT_TYPE_RAW_COLOR: Record<EventType, string> = {
-    exam: 'var(--v-theme-error)',
-    class: 'var(--v-theme-primary)',
-    personal: 'var(--v-theme-info)',
-    deadline: 'var(--v-theme-warning)',
-    meeting: 'var(--v-theme-secondary)',
-}
-
-export const eventTypeColor = (type: EventType) => EVENT_TYPE_COLOR[type] ?? 'primary'
-export const eventTypeIcon = (type: EventType) => EVENT_TYPE_ICON[type] ?? 'mdi-calendar'
 
 /** Get all events for a specific date key */
 export const getEventsForDate = (events: CalEvent[], dateKey: string): CalEvent[] =>
@@ -125,7 +109,18 @@ export const getEventsForDate = (events: CalEvent[], dateKey: string): CalEvent[
 
 /** Sort events by time ascending */
 export const sortEvents = (events: CalEvent[]): CalEvent[] =>
-    [...events].sort((a, b) => a.time.localeCompare(b.time))
+    [...events].sort((a, b) => getEventStartTime(a).localeCompare(getEventStartTime(b)))
+
+export const getEventStartTime = (event: CalEvent): string => event.startTime ?? event.time ?? ''
+
+export const getEventEndTime = (event: CalEvent): string => event.endTime ?? ''
+
+export const getEventDisplayTime = (event: CalEvent): string => {
+    const start = getEventStartTime(event)
+    const end = getEventEndTime(event)
+    if (start && end) return `${start} - ${end}`
+    return start
+}
 
 /** Generate a new unique id */
 export const nextId = (items: { id: number }[]): number =>

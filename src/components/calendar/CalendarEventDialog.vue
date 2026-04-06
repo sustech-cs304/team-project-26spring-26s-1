@@ -1,5 +1,5 @@
 <template>
-    <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="480"
+    <v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="520"
         persistent>
         <v-card rounded="lg">
             <v-card-title class="d-flex align-center justify-space-between px-4 pt-4 pb-2">
@@ -16,39 +16,52 @@
 
             <v-card-text class="px-4 py-4">
                 <div class="d-flex flex-column ga-3">
-                    <v-text-field v-model="form.title" label="Title" density="compact" variant="outlined"
-                        placeholder="Event title" hide-details autofocus />
 
-                    <!-- 类型选择 -->
-                    <div>
-                        <div class="text-caption text-medium-emphasis mb-2">Type</div>
-                        <div class="d-flex flex-wrap ga-1">
-                            <button v-for="t in eventTypes" :key="t.value" class="type-chip"
-                                :class="{ active: form.type === t.value }"
-                                :style="form.type === t.value ? { background: `rgba(var(--v-theme-${t.color}),0.15)`, color: `rgb(var(--v-theme-${t.color}))` } : {}"
-                                @click="form.type = t.value">
-                                <v-icon :size="11" class="mr-1">{{ t.icon }}</v-icon>{{ t.label }}
-                            </button>
-                        </div>
+                    <div class="d-flex ga-2 align-center">
+                        <v-text-field v-model="form.title" label="Title" density="compact" variant="outlined"
+                            placeholder="Event title" hide-details autofocus class="flex-grow-1" />
+                        <v-menu v-model="colorMenuOpen" :close-on-content-click="false" location="bottom end">
+                            <template #activator="{ props: menuProps }">
+                                <v-btn type="button" v-bind="menuProps" variant="outlined" height="40" min-width="92" class="px-2 text-none d-flex align-center justify-space-between">
+                                    <span class="text-caption text-medium-emphasis">Color</span>
+                                <v-sheet width="18" height="18" rounded="sm" border class="ms-2" :style="{ backgroundColor: form.color }"/>
+                                </v-btn>
+                            </template>
+
+                            <v-card rounded="lg" class="pa-3" width="320">
+                                <v-color-picker v-model="pendingColor" mode="hexa" hide-inputs elevation="0" />
+                                <div class="d-flex justify-end mt-2">
+                                    <v-btn size="small" color="primary" variant="flat" @click="confirmColor">
+                                        Confirm
+                                    </v-btn>
+                                </div>
+                            </v-card>
+                        </v-menu>
                     </div>
 
-                    <!-- 日期 -->
+
+
                     <div class="d-flex ga-2">
                         <v-text-field v-model="form.date" label="Date" density="compact" variant="outlined" type="date"
                             hide-details />
-                        <v-text-field v-model="form.time" label="Time (optional)" density="compact" variant="outlined"
+                        <v-text-field v-model="form.startTime" label="Start Time (optional)" density="compact" variant="outlined"
+                            type="time" hide-details />
+                        <v-text-field v-model="form.endTime" label="End Time (optional)" density="compact" variant="outlined"
                             type="time" hide-details />
                     </div>
 
-                    <!-- 多天范围 -->
-                    <v-text-field v-model="form.endDate" label="End Date (optional)" density="compact"
-                        variant="outlined" type="date" hide-details />
+                    <div v-if="!isTimeRangeValid" class="d-flex">
+                        <v-chip color="error" variant="tonal" size="small" class="mt-1">End time must be later than start time</v-chip>
+                    </div>
 
                     <v-textarea v-model="form.description" label="Description (optional)" density="compact"
                         variant="outlined" rows="2" hide-details auto-grow />
 
                     <v-text-field v-model="form.location" label="Location (optional)" density="compact"
                         variant="outlined" hide-details />
+
+                    <v-text-field v-model="form.link" label="Link (optional)" density="compact"
+                        variant="outlined" hide-details placeholder="https://..." />
                 </div>
             </v-card-text>
 
@@ -56,7 +69,7 @@
 
             <v-card-actions class="px-4 py-3 ga-2 justify-end">
                 <v-btn variant="outlined" size="small" @click="$emit('update:modelValue', false)">Cancel</v-btn>
-                <v-btn color="primary" size="small" :disabled="!form.title.trim() || !form.date" @click="submit">
+                <v-btn color="primary" size="small" :disabled="!canSubmit" @click="submit">
                     {{ event ? 'Save Changes' : 'Create Event' }}
                 </v-btn>
             </v-card-actions>
@@ -65,17 +78,17 @@
 </template>
 
 <script setup lang="ts">
-    import type { CalEvent, EventType } from '@/utils/calendar'
-    import { EVENT_TYPE_ICON, EVENT_TYPE_COLOR } from '@/utils/calendar'
+    import type { CalEvent } from '@/types/calendar'
 
     interface EventForm {
         title: string
-        type: EventType
+        color: string
         date: string
-        time: string
-        endDate: string
+        startTime: string
+        endTime: string
         description: string
         location: string
+        link: string
     }
 
     const props = defineProps<{
@@ -86,69 +99,91 @@
 
     const emit = defineEmits<{
         'update:modelValue': [v: boolean]
-        submit: [form: EventForm]
+        submit: [form: Omit<CalEvent, 'id'>]
     }>()
 
-    const eventTypes: { value: EventType; label: string; icon: string; color: string }[] = [
-        { value: 'class', label: 'Class', icon: EVENT_TYPE_ICON.class, color: 'primary' },
-        { value: 'exam', label: 'Exam', icon: EVENT_TYPE_ICON.exam, color: 'error' },
-        { value: 'deadline', label: 'Deadline', icon: EVENT_TYPE_ICON.deadline, color: 'warning' },
-        { value: 'personal', label: 'Personal', icon: EVENT_TYPE_ICON.personal, color: 'info' },
-        { value: 'meeting', label: 'Meeting', icon: EVENT_TYPE_ICON.meeting, color: 'secondary' },
-    ]
-
     const makeEmpty = (): EventForm => ({
-        title: '', type: 'personal', date: props.defaultDate ?? '', time: '',
-        endDate: '', description: '', location: '',
+        title: '',
+        color: '#2563eb',
+        date: props.defaultDate ?? '',
+        startTime: '12:00',
+        endTime: '12:00',
+        description: '',
+        location: '',
+        link: '',
     })
 
     const form = ref<EventForm>(makeEmpty())
+    const colorMenuOpen = ref(false)
+    const pendingColor = ref(form.value.color)
 
-    watch(() => props.modelValue, open => {
-        if (open) {
-            if (props.event) {
-                form.value = {
-                    title: props.event.title,
-                    type: props.event.type,
-                    date: props.event.date,
-                    time: props.event.time ?? '',
-                    endDate: props.event.endDate ?? '',
-                    description: props.event.description ?? '',
-                    location: props.event.location ?? '',
-                }
-            } else {
-                form.value = makeEmpty()
-            }
-        }
+    const parseTimeToMinutes = (time: string): number | null => {
+        if (!time) return null
+        const parts = time.split(':')
+        if (parts.length !== 2) return null
+        const h = Number(parts[0])
+        const m = Number(parts[1])
+        if (!Number.isFinite(h) || !Number.isFinite(m)) return null
+        return h * 60 + m
+    }
+
+    const isTimeRangeValid = computed(() => {
+        const start = parseTimeToMinutes(form.value.startTime)
+        const end = parseTimeToMinutes(form.value.endTime)
+        if (start === null || end === null) return true
+        return end >= start
     })
 
+    const canSubmit = computed(() => (
+        !!form.value.title.trim()
+        && !!form.value.date
+        && isTimeRangeValid.value
+    ))
+
+
+
+    watch(() => props.modelValue, open => {
+        if (!open) return
+        if (props.event) {
+            form.value = {
+                title: props.event.title,
+                color: props.event.color || '#2563eb',
+                date: props.event.date,
+                startTime: props.event.startTime || '12:00',
+                endTime: props.event.endTime || props.event.startTime || '12:00',
+                description: props.event.description ?? '',
+                location: props.event.location ?? '',
+                link: props.event.link ?? '',
+            }
+        } else {
+            // 新建时强制重置所有字段，endTime与startTime同步，避免校验残留
+            const empty = makeEmpty()
+            empty.endTime = empty.startTime
+            form.value = { ...empty }
+        }
+        pendingColor.value = form.value.color
+        colorMenuOpen.value = false
+    })
+
+    const confirmColor = () => {
+        form.value.color = pendingColor.value
+        colorMenuOpen.value = false
+    }
+
     const submit = () => {
-        if (!form.value.title.trim() || !form.value.date) return
-        emit('submit', { ...form.value })
+        if (!canSubmit.value) return
+        emit('submit', {
+            title: form.value.title,
+            source: 'user',
+            color: form.value.color,
+            date: form.value.date,
+            time: form.value.startTime || '',
+            startTime: form.value.startTime || undefined,
+            endTime: form.value.endTime || undefined,
+            description: form.value.description || undefined,
+            location: form.value.location || undefined,
+            link: form.value.link || undefined,
+        })
         emit('update:modelValue', false)
     }
 </script>
-
-<style scoped>
-    .type-chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 9px;
-        font-size: 11px;
-        font-weight: 500;
-        border-radius: 6px;
-        border: none;
-        cursor: pointer;
-        transition: background 0.15s, color 0.15s;
-        color: rgba(var(--v-theme-on-surface), 0.6);
-        background: rgba(var(--v-theme-surface-variant), 0.3);
-    }
-
-    .type-chip:hover {
-        opacity: 0.85;
-    }
-
-    .type-chip.active {
-        font-weight: 600;
-    }
-</style>
