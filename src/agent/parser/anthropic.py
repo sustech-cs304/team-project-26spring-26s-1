@@ -11,7 +11,7 @@ from langgraph.types import StreamPart
 import agent.db.models as db_models
 import json
 from pydantic import BaseModel, Field, TypeAdapter
-from agent.api.models import (
+from agent.api.conversation_models import (
     CompletionResponseDelta,
     CompletionResponseToolCall,
     ConversationMessage,
@@ -39,12 +39,12 @@ class AnthropicEventParser:
         for message in messages:
             self.decode_message_tools(message)
     
-    def parse_message(self, message: AnyMessage) -> HistoryMessage:
+    def parse_message(self, message: AnyMessage, attachments: list[str] | None = None) -> HistoryMessage:
         if isinstance(message, HumanMessage):
             return ConversationMessage(
                 role="user",
                 content=message.content,
-                attachments=[], # TODO
+                attachments=attachments,
                 thought="",
             )
         elif isinstance(message, AIMessage):
@@ -62,7 +62,7 @@ class AnthropicEventParser:
             return ConversationMessage(
                 role="assistant",
                 content=content,
-                attachments=[], # TODO
+                attachments=attachments,
                 thought=thought,
             )
         raise ValueError(f"Unsupported message type: {type(message)}")

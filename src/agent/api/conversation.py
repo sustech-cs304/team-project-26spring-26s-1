@@ -45,7 +45,7 @@ async def conversation_completion(params: ConversationCompletionRequest, request
     id = str(uuid4())
     
     ConversationRunner = request.app.state.ConversationRunner
-    run_task = asyncio.create_task(ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id))
+    run_task = asyncio.create_task(ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id, params.attachments))
     await asyncio.shield(run_task)
     
     async for delta in ConversationRunner.stream(params.conversation_id, params.need_history):
