@@ -8,7 +8,7 @@ import agent.db.models as db_models
 from sqlalchemy import select, text, delete
 import aiosqlite
 import langgraph.graph.state
-from agent.api.models import (
+from agent.api.conversation_models import (
     ConversationMessage,
     ToolArgument,
     ToolMessage,
@@ -28,6 +28,7 @@ from langchain.messages import AnyMessage, HumanMessage, AIMessage, SystemMessag
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from bisect import bisect_right
 from pydantic import BaseModel, Field, TypeAdapter
+from pathlib import Path
 
 message_type_adapter = TypeAdapter(AnyMessage)
 
@@ -49,8 +50,8 @@ class ConversationRunner:
     def is_running(self, conversation_id: str) -> bool:
         return conversation_id in self._conversation_jobs
     
-    async def run(self, conversation_id : str, user_message : str, restart_message_id: str | None = None): # remove need_history and related logic
-        if not user_message:# TODO: complete here when adding attachments
+    async def run(self, conversation_id : str, user_message : str, restart_message_id: str | None = None, attachments: list[str] = []): # remove need_history and related logic
+        if not user_message and not attachments:
             # print("No user message provided, skipping graph execution and only loading history if needed")
             return
         
@@ -149,12 +150,82 @@ class ConversationRunner:
                     
                 # print(f"Message {message_id} saved to database with checkpoint {checkpoint_id} and seq {seq}")
         
+        #dealing with attachments
+        async def _get_attachment(attachment_id: str):
+            async with self.session_factory() as session:
+                session : AsyncSession
+                attachment_row = await session.execute(
+                    select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
+                )
+                attachment = attachment_row.scalars().first()
+                if not attachment:
+                    raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
+                return attachment
+        async def _wait_extracted(attachment_id: str, timeout: int = 300):
+            start = asyncio.get_event_loop().time()
+            while True:
+                attachment = await _get_attachment(attachment_id)
+                if attachment.status == "completed":
+                    return attachment
+                elif attachment.status == "failed":
+                    raise ValueError(f"Attachment failed to extract: attachment_id={attachment_id}")
+                else:
+                    if asyncio.get_event_loop().time() - start > timeout:
+                        raise TimeoutError(f"Attachment wait timeout: attachment_id={attachment_id}, timeout={timeout}s")
+                    await asyncio.sleep(1)
+        async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
+            attachment = await _wait_extracted(attachment_id)
+            type = Path(attachment.path).suffix.lower()
+            name = Path(attachment.path).name
+            read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
+            content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
+            return content, name
+        
+        async def _link_message_attachment(message_id: str, attachment_id: str, name: str | None = None):
+            async with self.session_factory() as session:
+                session : AsyncSession
+                async with session.begin():
+                    attachment = (await session.execute(
+                        select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
+                    )).scalar_one_or_none()
+                    if not attachment:
+                        raise ValueError(f"Attachment not found in database during linking: attachment_id={attachment_id}")
+                    existed = (
+                        await session.execute(
+                            select(db_models.MessageAttachment)
+                                .where(db_models.MessageAttachment.message_id == message_id)
+                                .where(db_models.MessageAttachment.attachment_id == attachment_id)
+                                .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if existed:
+                        return
+                    display_name = name or Path(attachment.path).name
+                    message_attachment_row = db_models.MessageAttachment(
+                        message_id=message_id,
+                        attachment_id=attachment_id,
+                        name=display_name
+                    )
+                    session.add(message_attachment_row)
+        async def _link_message_attachments(message_id: str, attachment_ids: list[str]):
+            for attachment_id in attachment_ids:
+                print(f"Linking attachment {attachment_id} to message {message_id}")
+                await _link_message_attachment(message_id, attachment_id)
+
+        
         #give back and insert user message
         user_message_id = restart_message_id or str(uuid4())
         self._conversation_jobs[conversation_id].user_message_id = user_message_id
         
         human_message =  HumanMessage(role="user",content=user_message)
-        gen =  self.graph.astream(AgentState(messages=[human_message]), config, version="v2",stream_mode=["messages","checkpoints","updates"])
+        human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
+        attachment_idx = 0
+        for attachment_id in attachments:
+            attachment_content, attachment_name = await _load_attachment(attachment_id)
+            human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{attachment_name}]:\n{attachment_content}\n\n"
+            attachment_idx += 1
+        human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
+        gen =  self.graph.astream(AgentState(messages=[human_message_with_attachments]), config, version="v2",stream_mode=["messages","checkpoints","updates"])
         
         print(f"Starting conversation runner for conversation {conversation_id} with user message id {user_message_id} and initial seq {seq}")
         
@@ -185,6 +256,9 @@ class ConversationRunner:
                     if event["type"] == "checkpoints":
                         if not last_checkpoint: # store initial checkpoint with user message, as it is the checkpoint right after adding user message
                             await _db_update(conversation_id, user_message_id, human_message.model_dump_json(), event["data"]["config"]["configurable"]["checkpoint_id"], seq)
+                            #store user_message and attachments after user_message is added to database
+                            if attachments:
+                                await _link_message_attachments(user_message_id, attachments)
                             seq += 1
                         last_checkpoint = event["data"]["config"]["configurable"]["checkpoint_id"]
                     elif event["type"] == "messages":
@@ -199,7 +273,7 @@ class ConversationRunner:
                         if event["data"].get("chat"):
                             print(f"Received chat update: {event['data']['chat']}")
                             for msg in event["data"]["chat"]["messages"]:
-                                current_message_uuid = id_map.get("msg_id")
+                                current_message_uuid = id_map.get(msg.id)
                                 await _db_update(conversation_id, current_message_uuid, msg.model_dump_json(), last_checkpoint, seq)
                                 seq += 1
                                 job.parser.decode_history([msg])
@@ -228,11 +302,24 @@ class ConversationRunner:
                     messages_row = await session.execute(
                         select(db_models.Message).where(db_models.Message.conversation_id == conversation_id).order_by(db_models.Message.seq)
                     )
-                    return messages_row.scalars().all()
-            history_messages = await asyncio.shield(_get_history())
+                    attachments_row = await session.execute(
+                        select(db_models.MessageAttachment, db_models.Attachment)
+                            .join(db_models.Attachment, db_models.Attachment.id == db_models.MessageAttachment.attachment_id)
+                            .where(db_models.MessageAttachment.message_id.in_(
+                                select(db_models.Message.id).
+                                where(db_models.Message.conversation_id == conversation_id)))
+                    )
+                    attachment_map = {}
+                    for msg_att, att in attachments_row:
+                        if msg_att.message_id not in attachment_map:
+                            attachment_map[msg_att.message_id] = []
+                        attachment_map[msg_att.message_id].append(att.id)
+                    return messages_row.scalars().all(), attachment_map
+            history_messages, attachment_map = await asyncio.shield(_get_history())
         else:
             history_messages = []
-        
+            attachment_map = {}
+
         if conversation_id in self._conversation_jobs:
             yield CompletionUserMessage(
                 message_id = self._conversation_jobs[conversation_id].user_message_id,
@@ -245,7 +332,7 @@ class ConversationRunner:
                             message_id = message.id,
                             created_at = int(message.created_at.timestamp()),
                             finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
-                            data = job.parser.parse_message(message_type_adapter.validate_json(message.content))
+                            data = job.parser.parse_message(message_type_adapter.validate_json(message.content), attachment_map.get(message.id, []))
                         )
                 
                 print(f"Last message seq in history: {history_messages[-1].seq if history_messages else 'No history messages'}")
@@ -275,7 +362,7 @@ class ConversationRunner:
                         message_id = message.id,
                         created_at = int(message.created_at.timestamp()),
                         finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
-                        data = parser.parse_message(message_object)
+                        data = parser.parse_message(message_object, attachment_map.get(message.id, []))
                     )
                 parser.decode_history([message_object])
 
