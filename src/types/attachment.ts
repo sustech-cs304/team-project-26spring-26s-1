@@ -31,6 +31,7 @@ export interface AttachmentFile {
 export interface UserMessageAttachment {
   id: string
   fileId?: string
+  attachmentId?: string
   name?: string
   category: FileCategory
   size?: number

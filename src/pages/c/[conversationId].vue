@@ -150,6 +150,14 @@
         quizCards?: QuizToolCard[]
     }
 
+    interface HistoryAttachmentDetail {
+        fileId: string
+        name: string
+        category: UserMessageAttachment['category']
+        size?: number
+        previewUrl?: string
+    }
+
     const route = useRoute()
     const conversationId = computed(() => route.params.conversationId as string)
     const appStore = useAppStore()
@@ -192,7 +200,7 @@
 
     const messages = reactive<ChatMessage[]>([])
     const messageMap = new Map<string, ChatMessage>()
-    const fileInfoCache = new Map<string, Promise<UserMessageAttachment | null>>()
+    const fileInfoCache = new Map<string, Promise<HistoryAttachmentDetail | null>>()
     const imagePreviewCache = new Map<string, Promise<string | null>>()
     const objectUrls = new Set<string>()
 
@@ -208,13 +216,27 @@
     })
 
     const getOutgoingAttachmentId = (attachment: UserMessageAttachment): string | null =>
-        attachment.fileId || attachment.id || null
+        attachment.attachmentId || attachment.fileId || (attachment.source === 'history' ? attachment.id : null)
 
     const getAttachmentRefId = (attachment: MessageAttachmentPayload): string | null => {
         if (typeof attachment === 'string') {
             return attachment
         }
-        return attachment.file_id || attachment.attachment_id || null
+        return attachment.attachment_id || attachment.file_id || null
+    }
+
+    const getAttachmentFileId = (attachment: MessageAttachmentPayload): string | undefined => {
+        if (typeof attachment === 'string') {
+            return attachment
+        }
+        return attachment.file_id
+    }
+
+    const getAttachmentHistoryId = (attachment: MessageAttachmentPayload): string | undefined => {
+        if (typeof attachment === 'string') {
+            return undefined
+        }
+        return attachment.attachment_id
     }
 
     const toHistoryLoadingAttachment = (attachment: MessageAttachmentPayload): UserMessageAttachment | null => {
@@ -223,6 +245,8 @@
 
         return {
             id,
+            fileId: getAttachmentFileId(attachment),
+            attachmentId: getAttachmentHistoryId(attachment),
             name: typeof attachment === 'string' ? undefined : attachment.attachment_name,
             category: 'other',
             status: 'loading',
@@ -230,9 +254,25 @@
         }
     }
 
-    const fetchHistoryAttachmentDetail = (fileId: string): Promise<UserMessageAttachment | null> => {
+    const fetchHistoryAttachmentDetail = (attachment: UserMessageAttachment): Promise<UserMessageAttachment | null> => {
+        const fileId = attachment.fileId || attachment.id
         const cached = fileInfoCache.get(fileId)
-        if (cached) return cached
+        const toResolvedAttachment = (detail: HistoryAttachmentDetail | null): UserMessageAttachment | null => {
+            if (!detail) return null
+
+            return {
+                ...attachment,
+                id: attachment.attachmentId || detail.fileId,
+                fileId: detail.fileId,
+                name: detail.name,
+                category: detail.category,
+                size: detail.size,
+                previewUrl: detail.previewUrl,
+                status: 'ready',
+            }
+        }
+
+        if (cached) return cached.then(toResolvedAttachment)
 
         const request = getFileInfo(fileId)
             .then(async (detail) => {
@@ -242,14 +282,11 @@
                     : undefined
 
                 return {
-                    id: detail.file_id,
                     fileId: detail.file_id,
                     name: detail.file_name,
                     category,
                     size: detail.file_size,
                     previewUrl,
-                    status: 'ready' as const,
-                    source: 'history' as const,
                 }
             })
             .catch((error) => {
@@ -259,7 +296,7 @@
             })
 
         fileInfoCache.set(fileId, request)
-        return request
+        return request.then(toResolvedAttachment)
     }
 
     const fetchHistoryImagePreviewUrl = (fileId: string): Promise<string | null> => {
@@ -303,7 +340,7 @@
         message.attachments = refs
 
         for (const attachment of refs) {
-            void fetchHistoryAttachmentDetail(attachment.id).then((detail) => {
+            void fetchHistoryAttachmentDetail(attachment).then((detail) => {
                 const currentAttachments = message.attachments
                 if (!currentAttachments?.length) return
 
@@ -792,6 +829,7 @@
 
         await sendChatRequest({
             content: info.userMsg.content,
+            attachments: info.userMsg.attachments,
             restartMessageId: info.userMsg.message_id,
             addUserMessage: false,
             clearFromIndex: info.start + 1,
