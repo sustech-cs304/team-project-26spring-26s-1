@@ -33,7 +33,7 @@ class Message(Base):
     checkpoint_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
-    attachments: Mapped[list["MessageAttachment"]] = relationship("MessageAttachment", back_populates="message")
+    attachments: Mapped[list["MessageAttachment"]] = relationship("MessageAttachment", back_populates="message", passive_deletes=True, cascade="all, delete-orphan")
 
 class Attachment(Base):
     __tablename__ = "attachments"
@@ -49,7 +49,7 @@ class Attachment(Base):
 class MessageAttachment(Base):
     __tablename__ = "message_attachments"
 
-    message_id: Mapped[str] = mapped_column(String(36), ForeignKey("messages.id"), primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
     attachment_id: Mapped[str] = mapped_column(String(36), ForeignKey("attachments.id"), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 

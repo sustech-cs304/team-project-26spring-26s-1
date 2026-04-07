@@ -13,6 +13,7 @@ from agent.core.graph import create_graph
 import aiosqlite
 from langgraph.store.sqlite import AsyncSqliteStore
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from sqlalchemy import event
 
 engine = None
 async_session = None
@@ -24,6 +25,11 @@ async def lifespan(app: fastapi.FastAPI):
 	global engine, async_session, config, graph
 
 	engine = create_sqlite_engine()
+	@event.listens_for(engine.sync_engine, "connect")
+	def set_sqlite_pragma(dbapi_connection, _):
+		cursor = dbapi_connection.cursor()
+		cursor.execute("PRAGMA foreign_keys=ON")
+		cursor.close()
 	async_session = create_session_factory(engine)
 	config = load_config()
  
@@ -44,13 +50,6 @@ async def lifespan(app: fastapi.FastAPI):
 	await app.state.FileRunner.start()
 	async with engine.begin() as conn:
 		await conn.run_sync(Base.metadata.create_all)
-		await conn.exec_driver_sql("""CREATE TRIGGER IF NOT EXISTS trg_delete_message_attachments
-									AFTER DELETE ON messages
-									FOR EACH ROW
-									BEGIN
-									DELETE FROM message_attachments
-									WHERE message_id = OLD.id;
-									END;""")
 
 	try:
 		yield
