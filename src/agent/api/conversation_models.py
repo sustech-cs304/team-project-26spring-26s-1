@@ -1,5 +1,5 @@
 import pydantic
-from typing import Literal, Union, ClassVar, Annotated
+from typing import Any, Literal, Union, ClassVar, Annotated
 from pydantic import Field
 
 class ConversationMessage(pydantic.BaseModel):
@@ -12,7 +12,7 @@ class ConversationMessage(pydantic.BaseModel):
     
 class ToolArgument(pydantic.BaseModel):
     argument_name: str
-    argument: str
+    argument: Any
     
 class ToolMessage(pydantic.BaseModel):
     type : Literal["tool"] = "tool"
