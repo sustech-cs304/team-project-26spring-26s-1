@@ -83,15 +83,6 @@ class ConversationRunner:
                     if restart_message is None:
                         raise ValueError(f"Restart message {restart_message_id} not found in conversation {conversation_id}")
                     
-                    await session.execute(
-                        delete(db_models.MessageAttachment)
-                            .where(db_models.MessageAttachment.message_id.in_(
-                                select(db_models.Message.id)
-                                    .where(db_models.Message.conversation_id == conversation_id)
-                                    .where(db_models.Message.seq >= restart_message.seq)
-                                )
-                            )
-                    )
                     # erase messages after restart_message_seq(inclusive)
                     await session.execute(
                         delete(db_models.Message)
@@ -186,13 +177,9 @@ class ConversationRunner:
             attachment = await _wait_extracted(attachment_id)
             type = Path(attachment.path).suffix.lower()
             name = Path(attachment.path).name
-            if type == ".txt":
-                content = await asyncio.to_thread(lambda: Path(attachment.path).read_text(encoding="utf-8"))
-                return content, name
-            else:
-                markdown_path = Path(attachment.path).with_suffix(".md")
-                content = await asyncio.to_thread(lambda: markdown_path.read_text(encoding="utf-8"))
-                return content, name
+            read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
+            content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
+            return content, name
         
         async def _link_message_attachment(message_id: str, attachment_id: str, name: str | None = None):
             async with self.session_factory() as session:

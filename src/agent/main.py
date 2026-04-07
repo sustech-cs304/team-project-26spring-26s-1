@@ -44,15 +44,22 @@ async def lifespan(app: fastapi.FastAPI):
 	await app.state.FileRunner.start()
 	async with engine.begin() as conn:
 		await conn.run_sync(Base.metadata.create_all)
+		await conn.exec_driver_sql("""CREATE TRIGGER IF NOT EXISTS trg_delete_message_attachments
+									AFTER DELETE ON messages
+									FOR EACH ROW
+									BEGIN
+									DELETE FROM message_attachments
+									WHERE message_id = OLD.id;
+									END;""")
 
 	try:
 		yield
   
 	finally:
+		await app.state.FileRunner.stop()
 		await engine.dispose()
 		await store_conn.close()
 		await checkpointer_conn.close()
-		await app.state.FileRunner.stop()
 
 app = fastapi.FastAPI(lifespan=lifespan)
 app.add_middleware(
