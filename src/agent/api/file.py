@@ -22,7 +22,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)) -> FileUpl
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file type: {suffix}")
     attachment_id, mime_type, need_extract = await store_attachment(file, session_factory=request.app.state.async_session, config=request.app.state.config)
     if need_extract:
-        await asyncio.shield(request.app.state.FileRunner.enqueue(attachment_id))
+        await asyncio.shield(request.app.state.FileRunner.run_task(attachment_id))
     return FileUploadResponse(file_id=attachment_id, mime_type=mime_type)
 
 

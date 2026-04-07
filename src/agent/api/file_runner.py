@@ -3,40 +3,62 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from agent.file_utils.extract import extract_attachment
 
 class FileRunner:
-    def __init__(self, session_factory: async_sessionmaker, config, workers: int = 2):
+    def __init__(self, session_factory: async_sessionmaker, config, max_concurrency: int = 5):
         self.session_factory = session_factory
         self.config = config
-        self.workers = workers
-        self.queue: asyncio.Queue[str | None] = asyncio.Queue()
-        self._tasks: list[asyncio.Task] = []
-        self._file_ids: set[str] = set()
+        self.semaphore = asyncio.Semaphore(max_concurrency)
+        self._tasks: dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
+        self._status : dict[str, str] = {}
+        self._closing = False
 
     async def start(self):
-        for _ in range(self.workers):
-            self._tasks.append(asyncio.create_task(self._worker()))
+        self._closing = False
 
-    async def enqueue(self, file_id: str):
+    async def run_task(self, file_id: str):
         async with self._lock:
-            if file_id in self._file_ids:
-                return
-            self._file_ids.add(file_id)
-        await self.queue.put(file_id)
+            if self._closing:
+                raise RuntimeError("FileRunner is closing, cannot enqueue new files.")
+            task = self._tasks.get(file_id)
+            if task and not task.done():
+                return False
+            self._status[file_id] = "pending"
+            self._tasks[file_id] = asyncio.create_task(self._run(file_id))
+            return True
 
-    async def _worker(self):
-        while True:
-            file_id = await self.queue.get()
-            if file_id is None:
-                self.queue.task_done()
-                break
-            try:
-                await extract_attachment(file_id=file_id, session_factory=self.session_factory, config=self.config)
-            finally:
-                async with self._lock:
-                    self._file_ids.discard(file_id)
-                self.queue.task_done()
+    async def _run(self, file_id: str):
+        try:
+            self._status[file_id] = "running"
+            async with self.semaphore:
+                await extract_attachment(file_id, self.session_factory, self.config)
+            self._status[file_id] = "completed"
+        except asyncio.CancelledError:
+            self._status[file_id] = "cancelled"
+        except Exception:
+            self._status[file_id] = "failed"
+        finally:
+            async with self._lock:
+                task = self._tasks.get(file_id)
+                if task and task.done():
+                    self._tasks.pop(file_id, None)
 
-    async def stop(self):
-        for _ in range(self.workers):
-            await self.queue.put(None)
-        await asyncio.gather(*self._tasks, return_exceptions=True)
+    async def get_status(self, file_id: str) -> str | None:
+        async with self._lock:
+            return self._status.get(file_id)
+    
+    async def stop(self, timeout: float | None = None):
+        async with self._lock:
+            self._closing = True
+            pending = [t for t in self._tasks.values() if not t.done()]
+        if not pending:
+            return
+        gathered = asyncio.gather(*pending, return_exceptions=True)
+        if timeout is None:
+            await gathered
+            return
+        try:
+            await asyncio.wait_for(gathered, timeout)
+        except asyncio.TimeoutError:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
