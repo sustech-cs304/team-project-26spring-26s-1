@@ -50,15 +50,5 @@ class FileRunner:
         async with self._lock:
             self._closing = True
             pending = [t for t in self._tasks.values() if not t.done()]
-        if not pending:
-            return
-        gathered = asyncio.gather(*pending, return_exceptions=True)
-        if timeout is None:
-            await gathered
-            return
-        try:
-            await asyncio.wait_for(gathered, timeout)
-        except asyncio.TimeoutError:
             for task in pending:
                 task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
