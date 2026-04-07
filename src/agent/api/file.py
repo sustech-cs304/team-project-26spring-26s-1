@@ -1,29 +1,42 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
 
 from agent.api.file_models import FileInfoResponse, FileUploadResponse
-from agent.file_utils.extract import store_attachment
+from agent.file_utils.extract import AttachmentProcessingError, store_attachment
 from agent.db.models import Attachment
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pathlib import Path
-import asyncio
 import mimetypes
 from agent.file_utils.extract import legal_extensions, readable_extensions
+from pydantic import BaseModel
 
 router = APIRouter()
 
-@router.post("/files/upload", response_model=FileUploadResponse)
+
+class FileUploadErrorResponse(BaseModel):
+    message: str
+
+@router.post(
+    "/files/upload",
+    response_model=FileUploadResponse,
+    responses={417: {"model": FileUploadErrorResponse}},
+)
 async def upload_file(request: Request, file: UploadFile = File(...)) -> FileUploadResponse:
     suffix = Path(file.filename).suffix.lower()
     if suffix not in legal_extensions and suffix not in readable_extensions:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file type: {suffix}")
-    attachment_id, mime_type, need_extract = await store_attachment(file, session_factory=request.app.state.async_session, config=request.app.state.config)
-    if need_extract:
-        await asyncio.shield(request.app.state.FileRunner.run_task(attachment_id))
-    return FileUploadResponse(file_id=attachment_id, mime_type=mime_type)
+    try:
+        attachment_id, mime_type, _ = await store_attachment(file, session_factory=request.app.state.async_session, config=request.app.state.config)
+        return FileUploadResponse(file_id=attachment_id, mime_type=mime_type)
+    except AttachmentProcessingError as exc:
+        return Response(
+            status_code=status.HTTP_417_EXPECTATION_FAILED,
+            media_type="application/json",
+            content=FileUploadErrorResponse(message=str(exc)).model_dump_json(),
+        )
 
 
 @router.get("/file/{file_id}")

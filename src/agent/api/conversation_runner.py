@@ -161,23 +161,17 @@ class ConversationRunner:
                 if not attachment:
                     raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
                 return attachment
-        async def _wait_extracted(attachment_id: str, timeout: int = 300):
-            start = asyncio.get_event_loop().time()
-            while True:
-                attachment = await _get_attachment(attachment_id)
-                if attachment.status == "completed":
-                    return attachment
-                elif attachment.status == "failed":
-                    raise ValueError(f"Attachment failed to extract: attachment_id={attachment_id}")
-                else:
-                    if asyncio.get_event_loop().time() - start > timeout:
-                        raise TimeoutError(f"Attachment wait timeout: attachment_id={attachment_id}, timeout={timeout}s")
-                    await asyncio.sleep(1)
         async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
-            attachment = await _wait_extracted(attachment_id)
+            attachment = await _get_attachment(attachment_id)
+            if attachment.status != "completed":
+                # TODO: handle unparsed attachment in SSE flow.
+                raise NotImplementedError("TODO: handle unparsed attachment in SSE flow")
             type = Path(attachment.path).suffix.lower()
             name = Path(attachment.path).name
             read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
+            if not read_path.exists():
+                # TODO: handle unparsed attachment in SSE flow.
+                raise NotImplementedError("TODO: handle unparsed attachment in SSE flow")
             content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
             return content, name
         
