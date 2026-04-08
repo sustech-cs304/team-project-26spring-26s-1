@@ -100,7 +100,5 @@ class AnthropicModel(Model, name="Anthropic"):
         system_prompt = self.system_prompt_template.render(core_memory=core_memory_entries)
         system_prompt_message = SystemMessage(content=system_prompt)
 
-        print(f"Invoking Anthropic model with system prompt: {system_prompt} and messages: {state['messages']}")
-
         response = await self.model.ainvoke([system_prompt_message] + state["messages"])
         return {"messages": [response]} if response else state

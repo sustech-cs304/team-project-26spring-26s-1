@@ -1,109 +1,149 @@
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
-    SystemMessage,
     ToolMessage,
-    BaseMessage,
     AnyMessage,
 )
 
 from langgraph.types import StreamPart
-import agent.db.models as db_models
 import json
-from pydantic import BaseModel, Field, TypeAdapter
 from agent.api.conversation_models import (
     CompletionResponseDelta,
     CompletionResponseToolCall,
     ConversationMessage,
     HistoryMessage,
+    ToolMessage as HistoryToolMessage,
     ToolArgument,
 )
+from typing import Literal
 
 class AnthropicEventParser:
-    def __init__(self):
-        self.tool_calls:dict[str,list[tuple[str,str]]] = {}
-    
-    def decode_message_tools(self, message: AnyMessage):
-        if isinstance(message, AIMessage):
-            for tool_call in message.tool_calls:
-                if tool_call['id'] and tool_call['id'] not in self.tool_calls:
-                    self.tool_calls[tool_call['id']] = []
-                    for arg in tool_call['args'].items():
-                        print(f"Decoded tool argument: {arg}")
-                        self.tool_calls[tool_call['id']].append(arg)
-                        
-    def decode_history(self, messages: list[AnyMessage]):
-        """
-        Extract necessary information from the message history
-        """
-        for message in messages:
-            self.decode_message_tools(message)
+    def _stringify_content(self, content: object) -> str:
+        if isinstance(content, str):
+            return content
+        return json.dumps(content, default=str)
+
+    def _extract_ai_text_and_thought(self, message: AIMessage) -> tuple[str, str]:
+        thought = ""
+        content = ""
+
+        if isinstance(message.content, str):
+            return message.content, thought
+
+        if not isinstance(message.content, list):
+            return str(message.content), thought
+
+        is_anthropic = str(message.response_metadata.get("model_provider", "")) == "anthropic"
+        for chunk in message.content:
+            if isinstance(chunk, str):
+                content += chunk
+                continue
+            if not isinstance(chunk, dict):
+                continue
+            if is_anthropic:
+                thought += str(chunk.get("thinking", ""))
+            content += str(chunk.get("text", ""))
+
+        return content, thought
+
+    def _resolve_tool_arguments(self, message: ToolMessage) -> list[ToolArgument]:
+        resolved_args: list[tuple[str, str]] = []
+        raw_args = message.additional_kwargs.get("args", [])
+        if isinstance(raw_args, list):
+            for item in raw_args:
+                if not isinstance(item, dict):
+                    continue
+                for arg_name, arg_value in item.items():
+                    resolved_args.append((str(arg_name), str(arg_value)))
+
+        return [
+            ToolArgument(argument_name=arg_name, argument=arg_value)
+            for arg_name, arg_value in resolved_args
+        ]
+
+    def _resolve_hitl_status(self, message: ToolMessage) -> tuple[Literal["approved", "rejected", "pending"], str]:
+        hitl_status = message.additional_kwargs.get("hitl_status", {})
+        if not isinstance(hitl_status, dict):
+            return "approved", ""
+
+        status = str(hitl_status.get("status", "approved")).lower()
+        pending_reason = str(hitl_status.get("pending_reason", ""))
+        if status == "pending":
+            return "pending", pending_reason
+        if status == "rejected":
+            return "rejected", pending_reason
+        return "approved", pending_reason
     
     def parse_message(self, message: AnyMessage, attachments: list[str] | None = None) -> HistoryMessage:
+        """
+        Parse a complete message into a HistoryMessage
+        """
+        normalized_attachments = attachments or []
+
         if isinstance(message, HumanMessage):
             return ConversationMessage(
                 role="user",
-                content=message.content,
-                attachments=attachments,
+                content=self._stringify_content(message.content),
+                attachments=normalized_attachments,
                 thought="",
             )
         elif isinstance(message, AIMessage):
-            thought = ""
-            content = message.content
-            
-            if message.response_metadata['model_provider'] == 'anthropic':
-                # anthropic uses a chunked response format
-                print(message.content)
-                thought = ""
-                content = ""
-                for chunk in message.content:
-                    thought += chunk.get("thinking", "")
-                    content += chunk.get("text", "")
+            content, thought = self._extract_ai_text_and_thought(message)
             return ConversationMessage(
                 role="assistant",
                 content=content,
-                attachments=attachments,
+                attachments=normalized_attachments,
                 thought=thought,
+            )
+        elif isinstance(message, ToolMessage):
+            status, pending_reason = self._resolve_hitl_status(message)
+            tool_response = self._stringify_content(message.content)
+            return HistoryToolMessage(
+                tool_name=message.name or "",
+                status=status,
+                pending_reason=pending_reason,
+                tool_response=tool_response,
+                tool_arguments=self._resolve_tool_arguments(message),
             )
         raise ValueError(f"Unsupported message type: {type(message)}")
     
+    def parse_message_delta(self, chunk: AnyMessage, message_id: str) -> list[CompletionResponseDelta]:
+        """
+        Parse a message chunk into a list of CompletionResponseDelta objects
+        """
+        deltas = []
+        if isinstance(chunk, AIMessage):
+            content, thought = self._extract_ai_text_and_thought(chunk)
+
+            if thinking := thought.strip():
+                deltas.append(CompletionResponseDelta(
+                    message_id=message_id,
+                    delta=thinking,
+                    is_thinking=True,
+                ))
+            if content.strip():
+                deltas.append(CompletionResponseDelta(
+                    message_id=message_id,
+                    delta=content,
+                    is_thinking=False,
+                ))
+        elif isinstance(chunk, ToolMessage):
+            status, pending_reason = self._resolve_hitl_status(chunk)
+            tool_response = self._stringify_content(chunk.content)
+            deltas.append(CompletionResponseToolCall(
+                tool_name=chunk.name or "",
+                status=status,
+                pending_reason=pending_reason,
+                tool_response=tool_response,
+                message_id=message_id,
+                tool_arguments=self._resolve_tool_arguments(chunk),
+            ))
+        return deltas
+                
     def parse_event(self, event: StreamPart, message_id: str) -> list[CompletionResponseDelta]:
         deltas = []
         if event['type'] == 'messages':
-            chunk, meta = event['data']
-            if isinstance(chunk, AIMessage):
-                thought = ""
-                content = ""
-                
-                for content_chunks in chunk.content:
-                    thought += content_chunks.get("thinking", "")
-                    content += content_chunks.get("text", "")
-
-                if thinking := thought.strip():
-                    deltas.append(CompletionResponseDelta(
-                        message_id=message_id,
-                        delta=thinking,
-                        is_thinking=True,
-                    ))
-                if content.strip():
-                    deltas.append(CompletionResponseDelta(
-                        message_id=message_id,
-                        delta=content,
-                        is_thinking=False,
-                    ))
-            elif isinstance(chunk, ToolMessage):
-                deltas.append(CompletionResponseToolCall(
-                    tool_name=chunk.name,
-                    status="approved",
-                    tool_response=chunk.content,
-                    message_id=message_id,
-                    tool_arguments=[
-                        ToolArgument(
-                            argument_name=arg_name,
-                            argument=arg_value
-                        )
-                        for arg_name, arg_value in self.tool_calls.get(chunk.tool_call_id, [])
-                    ]
-                ))
+            chunk, _meta = event['data']
+            deltas.extend(self.parse_message_delta(chunk, message_id))
                 
         return deltas
