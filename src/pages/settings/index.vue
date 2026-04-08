@@ -72,6 +72,12 @@
                             </div>
                         </div>
 
+                        <div class="mb-5">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Model Name</div>
+                            <v-text-field v-model="llm.modelName" density="compact" variant="outlined" hide-details
+                                style="font-family:monospace;font-size:14px;" />
+                        </div>
+
                         <!-- 连接测试 -->
                         <div class="d-flex align-center ga-3 mb-5">
                             <v-btn size="small" variant="outlined" :loading="llm.testing" @click="testConnection">
@@ -80,17 +86,16 @@
                             </v-btn>
                             <div v-if="llm.testResult === 'success'" class="d-flex align-center ga-1">
                                 <v-icon size="16" color="success">mdi-check-circle</v-icon>
-                                <span class="text-caption font-weight-bold text-success">Connection successful</span>
+                                <span class="text-caption font-weight-bold text-success">{{ llm.testMessage || 'Connection successful' }}</span>
                             </div>
                             <div v-else-if="llm.testResult === 'failed'" class="d-flex align-center ga-1">
                                 <v-icon size="16" color="error">mdi-close-circle</v-icon>
-                                <span class="text-caption font-weight-bold text-error">Connection failed - check your
-                                    credentials</span>
+                                <span class="text-caption font-weight-bold text-error">{{ llm.testMessage || 'Connection failed' }}</span>
                             </div>
                         </div>
 
                         <v-divider class="mb-4" />
-                        <v-btn size="small" color="primary" @click="">Save Configuration</v-btn>
+                        <v-btn size="small" color="primary" @click="saveLlmConfiguration">Save Configuration</v-btn>
                     </div>
 
                     <!-- Credential Vault -->
@@ -101,24 +106,22 @@
                         </div>
 
                         <!-- 安全提示 -->
-                        <v-alert type="success" variant="tonal" density="compact" class="mb-5" style="font-size:12px;">
+                        <v-sheet rounded="lg" color="surface-variant" class="px-4 py-3 mb-5 text-body-2 text-medium-emphasis">
                             All credentials are encrypted locally using AES-256 and never transmitted to external
                             servers.
-                        </v-alert>
+                        </v-sheet>
 
                         <!-- 认证方式 -->
                         <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Authentication Method
-                            </div>
-                            <v-btn-toggle v-model="creds.method" mandatory density="compact" variant="outlined"
-                                color="primary">
-                                <v-btn v-for="m in authMethods" :key="m.value" :value="m.value" size="small">{{ m.label
-                                }}</v-btn>
-                            </v-btn-toggle>
+                            <v-switch v-model="creds.enabled" density="compact" hide-details color="primary">
+                                <template #label>
+                                    <span class="text-body-2">Enable SUSTech account configuration</span>
+                                </template>
+                            </v-switch>
                         </div>
 
                         <!-- CAS Login 表单 -->
-                        <template v-if="creds.method === 'cas'">
+                        <template v-if="creds.enabled">
                             <div class="mb-4">
                                 <div class="text-caption text-medium-emphasis mb-1">Student ID</div>
                                 <v-text-field v-model="creds.studentId" density="compact" variant="outlined"
@@ -141,19 +144,13 @@
 
                         <!-- Session Cookie 表单 -->
                         <template v-else>
-                            <div class="mb-5">
-                                <div class="text-caption text-medium-emphasis mb-1">Session Cookie</div>
-                                <v-text-field v-model="creds.cookie" density="compact" variant="outlined" hide-details
-                                    style="font-family:monospace;" />
-                                <div class="text-medium-emphasis mt-1" style="font-size:11px;">
-                                    For advanced users: paste the session cookie directly to bypass CAPTCHA
-                                    verification.
-                                </div>
+                            <div class="text-caption text-medium-emphasis mb-5">
+                                This configuration is optional. You can enable it later from onboarding or settings.
                             </div>
                         </template>
 
                         <v-divider class="mb-4" />
-                        <v-btn size="small" color="primary" @click="">Save Credentials</v-btn>
+                        <v-btn size="small" color="primary" @click="saveCredentialVault">Save Credentials</v-btn>
                     </div>
 
                     <!-- System Preferences -->
@@ -440,11 +437,18 @@
             </v-sheet>
         </div>
 
+        <v-snackbar v-model="notice.show" :color="notice.color" timeout="2600" location="top">
+            {{ notice.text }}
+        </v-snackbar>
     </v-container>
 </template>
 
 <script setup lang="ts">
+    import { testModelConnection } from '@/api/model'
+    import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
+
     const activeTab = ref('llm')
+    const { modelEndpoint, campusAuth, saveModelEndpoint, saveCampusAuth } = useOnboardingConfig()
 
     const tabs = [
         { id: 'llm', icon: 'mdi-brain', label: 'LLM Configuration' },
@@ -460,28 +464,94 @@
     const apiProviders = ['OpenAI', 'DeepSeek', 'Local Ollama']
     const showApiKey = ref(false)
     const llm = ref({
-        provider: 'OpenAI',
-        apiKey: '',
-        baseUrl: 'https://api.openai.com/v1',
+        provider: modelEndpoint.provider,
+        apiKey: modelEndpoint.apiKey,
+        baseUrl: modelEndpoint.baseUrl,
+        modelName: modelEndpoint.modelName,
         testing: false,
         testResult: '' as '' | 'success' | 'failed',
+        testMessage: '',
     })
 
     const testConnection = async () => {
+        if (!llm.value.baseUrl.trim() || !llm.value.apiKey.trim() || !llm.value.modelName.trim()) {
+            llm.value.testResult = 'failed'
+            llm.value.testMessage = '请先填写完整的模型配置'
+            showNotice('请先填写完整的模型配置', 'error')
+            return
+        }
+
         llm.value.testing = true
         llm.value.testResult = ''
-        await new Promise(r => setTimeout(r, 1500))
-        llm.value.testing = false
-        llm.value.testResult = llm.value.apiKey.length > 5 ? 'success' : 'failed'
+        llm.value.testMessage = ''
+
+        try {
+            const result = await testModelConnection({
+                provider: llm.value.provider,
+                apiKey: llm.value.apiKey.trim(),
+                baseUrl: llm.value.baseUrl.trim(),
+                modelName: llm.value.modelName.trim(),
+            })
+
+            llm.value.testResult = result.success ? 'success' : 'failed'
+            llm.value.testMessage = result.message || (result.success ? '连接成功' : '连接失败')
+
+            if (result.success) {
+                showNotice(llm.value.testMessage)
+            } else {
+                showNotice(llm.value.testMessage, 'error')
+            }
+        } catch (error: any) {
+            const status = error?.response?.status
+            const serverMessage = error?.response?.data?.message || error?.response?.data?.detail
+            llm.value.testResult = 'failed'
+            llm.value.testMessage = status === 404
+                ? '测试接口暂未接入后端'
+                : (serverMessage || error?.message || '连接测试失败')
+            showNotice(llm.value.testMessage, 'error')
+        } finally {
+            llm.value.testing = false
+        }
     }
 
     // Credentials
     const showPassword = ref(false)
-    const authMethods = [
-        { value: 'cas', label: 'SUSTech CAS Login' },
-        { value: 'cookie', label: 'Session Cookie' },
-    ]
-    const creds = ref({ method: 'cas', studentId: '', password: '', cookie: '' })
+    const creds = ref({
+        enabled: campusAuth.enabled,
+        studentId: campusAuth.studentId,
+        password: campusAuth.password,
+    })
+
+    const notice = reactive({
+        show: false,
+        text: '',
+        color: 'success',
+    })
+
+    const showNotice = (text: string, color: 'success' | 'error' = 'success') => {
+        notice.show = true
+        notice.text = text
+        notice.color = color
+    }
+
+    const saveLlmConfiguration = () => {
+        saveModelEndpoint({
+            provider: llm.value.provider,
+            apiKey: llm.value.apiKey.trim(),
+            baseUrl: llm.value.baseUrl.trim(),
+            modelName: llm.value.modelName.trim(),
+        })
+        showNotice('LLM configuration saved')
+    }
+
+    const saveCredentialVault = () => {
+        saveCampusAuth({
+            enabled: creds.value.enabled,
+            studentId: creds.value.studentId.trim(),
+            password: creds.value.password,
+        })
+        showNotice('Credential vault saved')
+    }
 
     // Preferences
     const prefs = ref({ shortcut: 'Alt + Space', recording: false, startup: true, workspacePath: '~/Documents/OpenCrab' })
