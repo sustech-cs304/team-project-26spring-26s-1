@@ -16,7 +16,8 @@
                                     <div class="text-h5 font-weight-bold mb-2" style="line-height:1.2;">
                                         OpenCrab 已准备好，先用 2 分钟完成你的专属配置
                                     </div>
-                                    <div class="text-body-2 text-medium-emphasis" style="max-width:560px;line-height:1.7;">
+                                    <div class="text-body-2 text-medium-emphasis"
+                                        style="max-width:560px;line-height:1.7;">
                                         我们会引导你补全用户画像、校园能力、模型配置和知识库准备。配置完成后，你在聊天页和设置页看到的是同一份数据。
                                     </div>
                                 </div>
@@ -102,7 +103,9 @@
     const router = useRouter()
     const { onboardingCompleted } = useOnboardingConfig()
 
-    const isDev = import.meta.env.DEV
+    // TODO: 上线前移除开发模式相关代码
+    // const isDev = import.meta.env.DEV
+    const isDev = true
     const defaultBaseURLIsCloud = ref(getDefaultBaseURLIsCloud())
     const currentBaseURL = ref(baseURL)
 
