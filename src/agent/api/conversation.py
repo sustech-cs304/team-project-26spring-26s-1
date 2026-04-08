@@ -17,6 +17,15 @@ import langgraph.graph.state
 from agent.core.state import AgentState
 from langchain.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from agent.api.conversation_models import (
+    CompletionResponseDelta,
+    CompletionResponseHistory,
+    CompletionResponseMetadata,
+    CompletionResponseToolCall,
+    CompletionResponseError,
+    CompletionEventKeepAlive,
+    CompletionUserMessage,
+)
 
 
 router = APIRouter()
