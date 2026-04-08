@@ -5,13 +5,14 @@ from langgraph.prebuilt.tool_node import ToolCallWithContext
 from agent.config import AppConfig
 from agent.nodes.model import Model
 from agent.core.state import AgentState
+from agent.core.context import AgentContext
 from agent.tools import tools as agent_tools, tool_node
 from langgraph.types import Send
 from langgraph.store.base import BaseStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 async def create_graph(config: AppConfig, store : BaseStore, checkpointer: BaseCheckpointSaver):
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(AgentState, context_schema=AgentContext)
     
     model = Model.get(
         name = config.api.agent.type,
