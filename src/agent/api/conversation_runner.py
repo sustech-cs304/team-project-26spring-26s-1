@@ -1,26 +1,38 @@
 import asyncio
+from bisect import bisect_right
+from pathlib import Path
 from typing import Dict
-import langgraph.graph.state
-from agent.core.state import AgentState
-from langchain_core.runnables import RunnableConfig
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
-import agent.db.models as db_models
-from sqlalchemy import select, text, delete
-import aiosqlite
-import langgraph.graph.state
-from agent.api.conversation_models import (
-    ConversationMessage,
-    ToolArgument,
+from uuid import uuid4
+
+from langchain.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    SystemMessage,
     ToolMessage,
-    HistoryMessage,
+)
+from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel, Field, TypeAdapter
+from sqlalchemy import delete, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+import agent.db.models as db_models
+import agent.db.utils as db_utils
+from agent.api.conversation_models import (
+    CompletionEventKeepAlive,
     CompletionResponseDelta,
+    CompletionResponseError,
     CompletionResponseHistory,
     CompletionResponseMetadata,
     CompletionResponseToolCall,
-    CompletionResponseError,
-    CompletionEventKeepAlive,
-    CompletionUserMessage
+    CompletionUserMessage,
+    HistoryMessage,
+    ToolArgument,
+    ToolMessage,
 )
+from agent.config import AppConfig
+from agent.core.context import AgentContext
+from agent.core.state import AgentState
 from agent.parser import AnthropicEventParser
 from uuid import uuid4
 import datetime as dt
@@ -28,7 +40,6 @@ from langchain.messages import AnyMessage, HumanMessage, AIMessage, SystemMessag
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from bisect import bisect_right
 from pydantic import BaseModel, Field, TypeAdapter
-from pathlib import Path
 
 message_type_adapter = TypeAdapter(AnyMessage)
 
@@ -42,10 +53,11 @@ class _ConversationJobState:
         self.parser = AnthropicEventParser() # TODO: select parser based on model type
         
 class ConversationRunner:
-    def __init__(self, graph : langgraph.graph.state.CompiledStateGraph, session_factory : async_sessionmaker):
+    def __init__(self, graph, session_factory : async_sessionmaker, config: AppConfig):
         self._conversation_jobs: Dict[str, _ConversationJobState] = {}
         self.graph = graph
         self.session_factory = session_factory
+        self.config = config
     
     def is_running(self, conversation_id: str) -> bool:
         return conversation_id in self._conversation_jobs
@@ -101,7 +113,6 @@ class ConversationRunner:
                         (conversation_id, restart_message.checkpoint_id)
                     )
                     
-                    seq = restart_message.seq
         else:
             async with self.session_factory() as session:
                 session : AsyncSession
@@ -112,43 +123,79 @@ class ConversationRunner:
                         .limit(1)
                 )
                 last_message = last_message.scalars().first()
-            seq = last_message.seq + 1 if last_message else 1
         
         config : RunnableConfig = {
             "configurable": {
-                "thread_id": conversation_id,
-                "__utility_model": None,
-                # "checkpoint_id": checkpoint_id
+                "thread_id": conversation_id
             }
         }
         
+        static_context : AgentContext = {
+            "config": self.config
+        }
         
-        async def _db_update(conversation_id: str, message_id: str, content: str, checkpoint_id: str, seq: int):
-            now = dt.datetime.now(tz=dt.timezone.utc)
-            
+        #dealing with attachments
+        async def _get_attachment(attachment_id: str):
+            async with self.session_factory() as session:
+                session : AsyncSession
+                attachment_row = await session.execute(
+                    select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
+                )
+                attachment = attachment_row.scalars().first()
+                if not attachment:
+                    raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
+                return attachment
+        async def _wait_extracted(attachment_id: str, timeout: int = 300):
+            start = asyncio.get_event_loop().time()
+            while True:
+                attachment = await _get_attachment(attachment_id)
+                if attachment.status == "completed":
+                    return attachment
+                elif attachment.status == "failed":
+                    raise ValueError(f"Attachment failed to extract: attachment_id={attachment_id}")
+                else:
+                    if asyncio.get_event_loop().time() - start > timeout:
+                        raise TimeoutError(f"Attachment wait timeout: attachment_id={attachment_id}, timeout={timeout}s")
+                    await asyncio.sleep(1)
+        async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
+            attachment = await _wait_extracted(attachment_id)
+            type = Path(attachment.path).suffix.lower()
+            name = Path(attachment.path).name
+            read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
+            content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
+            return content, name
+        
+        async def _link_message_attachment(message_id: str, attachment_id: str, name: str | None = None):
             async with self.session_factory() as session:
                 session : AsyncSession
                 async with session.begin():
-                    conversation_row = await session.execute(
-                        select(db_models.Conversation).where(db_models.Conversation.id == conversation_id)
+                    attachment = (await session.execute(
+                        select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
+                    )).scalar_one_or_none()
+                    if not attachment:
+                        raise ValueError(f"Attachment not found in database during linking: attachment_id={attachment_id}")
+                    existed = (
+                        await session.execute(
+                            select(db_models.MessageAttachment)
+                                .where(db_models.MessageAttachment.message_id == message_id)
+                                .where(db_models.MessageAttachment.attachment_id == attachment_id)
+                                .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if existed:
+                        return
+                    display_name = name or Path(attachment.path).name
+                    message_attachment_row = db_models.MessageAttachment(
+                        message_id=message_id,
+                        attachment_id=attachment_id,
+                        name=display_name
                     )
-                    conversation = conversation_row.scalar()
-                    if not conversation:
-                        raise ValueError(f"Conversation {conversation_id} not found in database during update")
+                    session.add(message_attachment_row)
+        async def _link_message_attachments(message_id: str, attachment_ids: list[str]):
+            for attachment_id in attachment_ids:
+                print(f"Linking attachment {attachment_id} to message {message_id}")
+                await _link_message_attachment(message_id, attachment_id)
 
-                    message_row = db_models.Message(
-                        id=message_id,
-                        conversation_id=conversation_id,
-                        content=content,
-                        checkpoint_id=checkpoint_id,
-                        seq=seq,
-                        finished_at=now
-                    )
-                    session.add(message_row)
-                    
-                    conversation.time_last_used = now
-                    
-                # print(f"Message {message_id} saved to database with checkpoint {checkpoint_id} and seq {seq}")
         
         #dealing with attachments
         async def _get_attachment(attachment_id: str):
@@ -219,13 +266,16 @@ class ConversationRunner:
             human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{attachment_name}]:\n{attachment_content}\n\n"
             attachment_idx += 1
         human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
-        gen =  self.graph.astream(AgentState(messages=[human_message_with_attachments]), config, version="v2",stream_mode=["messages","checkpoints","updates"])
-        
-        print(f"Starting conversation runner for conversation {conversation_id} with user message id {user_message_id} and initial seq {seq}")
-        
+        gen = self.graph.astream(
+            AgentState(messages=[human_message_with_attachments]),
+            config,
+            context=static_context,
+            version="v2",
+            stream_mode=["messages","checkpoints","updates"]
+        )
+                
         async def _run(job: _ConversationJobState):
-            current_uuid = None
-            nonlocal seq
+            current_message = None
             last_checkpoint = ""
             
             async with self.session_factory() as session:
@@ -240,39 +290,71 @@ class ConversationRunner:
                     message_type_adapter.validate_json(message.content) 
                     for message in conversation_history_messages
                 ])
-            
-            id_map: Dict[str, str] = {}
-            
+                        
             try:
                 async for event in gen:
                     deltas = []
                     # print(f"Received event: {event}")
                     if event["type"] == "checkpoints":
-                        if not last_checkpoint: # store initial checkpoint with user message, as it is the checkpoint right after adding user message
-                            await _db_update(conversation_id, user_message_id, human_message.model_dump_json(), event["data"]["config"]["configurable"]["checkpoint_id"], seq)
+                        if not last_checkpoint: # store initial checkpoint with user message, as it is the checkpoint right after adding user message                            
+                            await db_utils.db_update_message(
+                                self.session_factory,
+                                conversation_id=conversation_id,
+                                message_id = user_message_id,
+                                langchain_id = None,
+                                content = human_message.model_dump_json(), # do not store message with injected attachment content
+                                attachments = attachments
+                            )
+                            
                             #store user_message and attachments after user_message is added to database
                             if attachments:
                                 await _link_message_attachments(user_message_id, attachments)
-                            seq += 1
                         last_checkpoint = event["data"]["config"]["configurable"]["checkpoint_id"]
                     elif event["type"] == "messages":
                         message_chunk = event["data"][0]
-                        if id_map.get(message_chunk.id):
-                            current_uuid = id_map[message_chunk.id]
-                        else:
-                            current_uuid = str(uuid4())
-                            id_map[message_chunk.id] = current_uuid
-                        deltas = job.parser.parse_event(event, current_uuid)
+                        current_message = current_message + message_chunk if current_message else message_chunk
+                        
+                        message_uuid = await db_utils.db_update_message(
+                            self.session_factory,
+                            conversation_id=conversation_id,
+                            message_id = None,
+                            langchain_id = current_message.id,
+                            content = current_message.model_dump_json(),
+                            attachments = []
+                        )
+                        
+                        print(f"Received message chunk: {message_chunk}")
+                        deltas = job.parser.parse_event(event, message_uuid)
                     elif event["type"] == "updates":
+                        current_message = None
                         if event["data"].get("chat"):
                             print(f"Received chat update: {event['data']['chat']}")
                             for msg in event["data"]["chat"]["messages"]:
-                                current_message_uuid = id_map.get(msg.id)
-                                await _db_update(conversation_id, current_message_uuid, msg.model_dump_json(), last_checkpoint, seq)
-                                seq += 1
+                                await db_utils.db_update_message(
+                                    self.session_factory,
+                                    conversation_id=conversation_id,
+                                    message_id = None,
+                                    langchain_id = msg.id,
+                                    content = msg.model_dump_json(),
+                                    attachments = []
+                                )
                                 job.parser.decode_history([msg])
                                 
+                                # for tool_message in msg.tool_calls:                                    
+                                #     await _db_update(conversation_id, db_models.Message(
+                                #         id=await _db_get_id(conversation_id, tool_message['id']),
+                                #         conversation_id=conversation_id,
+                                #         content=ToolMessage(
+                                #             content="",
+                                #             tool_call_id=tool_message['id']
+                                #         ).model_dump_json(),
+                                #         checkpoint_id=None,
+                                #         seq=seq
+                                #     ))
+
                     if deltas:
+                        seq = (await db_utils.db_get_message_by_langchain_id(self.session_factory, current_message.id)).seq
+                        
                         async with job.cond:
                             for delta in deltas:
                                 job.history.append(delta)

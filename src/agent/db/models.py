@@ -31,7 +31,9 @@ class Message(Base):
     seq: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     checkpoint_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-
+    
+    langchain_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
     attachments: Mapped[list["MessageAttachment"]] = relationship("MessageAttachment", back_populates="message", passive_deletes=True, cascade="all, delete-orphan")
 
