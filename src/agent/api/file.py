@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 
 from agent.api.file_models import FileInfoResponse, FileUploadResponse
-from agent.file_utils.extract import store_attachment
+from agent.file_utils.extract import FileProcessError, store_attachment
 from agent.db.models import Attachment
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -20,9 +21,10 @@ async def upload_file(request: Request, file: UploadFile = File(...)) -> FileUpl
     suffix = Path(file.filename).suffix.lower()
     if suffix not in legal_extensions and suffix not in readable_extensions:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file type: {suffix}")
-    attachment_id, mime_type, need_extract = await store_attachment(file, session_factory=request.app.state.async_session, config=request.app.state.config)
-    if need_extract:
-        await asyncio.shield(request.app.state.FileRunner.run_task(attachment_id))
+    try:
+        attachment_id, mime_type = await store_attachment(file, session_factory=request.app.state.async_session, config=request.app.state.config)
+    except FileProcessError as exc:
+        return JSONResponse(status_code=status.HTTP_417_EXPECTATION_FAILED, content={"message": str(exc)})
     return FileUploadResponse(file_id=attachment_id, mime_type=mime_type)
 
 
