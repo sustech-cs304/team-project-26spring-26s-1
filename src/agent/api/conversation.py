@@ -11,14 +11,13 @@ import pydantic
 from agent.config import AppConfig
 from contextlib import suppress
 from agent.db.models import Conversation, Message
-import agent.api.models as api_models
 import datetime as dt
 from agent.api.conversation_runner import ConversationRunner
 import langgraph.graph.state
 from agent.core.state import AgentState
 from langchain.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
-from agent.api.models import (
+from agent.api.conversation_models import (
     CompletionResponseDelta,
     CompletionResponseHistory,
     CompletionResponseMetadata,
