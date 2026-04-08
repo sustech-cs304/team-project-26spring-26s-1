@@ -7,7 +7,7 @@ from agent.api.conversation import router as conversation_router
 from agent.api.file import router as file_router
 from agent.api.conversation_runner import ConversationRunner
 from agent.api.file_runner import FileRunner
-from agent.config import load_config, save_config
+from agent.config import config
 from agent.core.graph import create_graph
 
 import aiosqlite
@@ -17,7 +17,6 @@ from sqlalchemy import event
 
 engine = None
 async_session = None
-config = None
 graph = None
 
 @asynccontextmanager
@@ -31,7 +30,6 @@ async def lifespan(app: fastapi.FastAPI):
 		cursor.execute("PRAGMA foreign_keys=ON")
 		cursor.close()
 	async_session = create_session_factory(engine)
-	config = load_config()
  
 	store_conn = await aiosqlite.connect("agent_store.db", isolation_level=None)
 	store = AsyncSqliteStore(store_conn)

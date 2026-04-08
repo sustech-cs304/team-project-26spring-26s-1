@@ -55,3 +55,5 @@ def save_config(config: AppConfig, file_path: str = "config.yaml"):
     """Saves the Pydantic config object back to a YAML file."""
     with open(file_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config.model_dump(), f)
+        
+config = load_config()

@@ -10,7 +10,7 @@ async def db_get_message_by_langchain_id(session_factory: async_sessionmaker, la
         result = await session.execute(select(db_models.Message).where(db_models.Message.langchain_id == langchain_id))
         return result.scalars().first()
     
-async def db_update_message(session_factory: async_sessionmaker, conversation_id: str, message_id: str | None, langchain_id: str | None, content: str, attachments: list[str] = []) -> str:
+async def db_update_message(session_factory: async_sessionmaker, conversation_id: str, content: str, message_id: str | None = None, langchain_id: str | None = None, attachments: list[str] = [], checkpoint_id: str | None = None) -> str:
     async with session_factory() as session:
         session: AsyncSession
         
@@ -19,6 +19,9 @@ async def db_update_message(session_factory: async_sessionmaker, conversation_id
         updates["content"] = content
         updates["finished_at"] = dt.datetime.now(dt.timezone.utc)
         
+        if checkpoint_id:
+            updates["checkpoint_id"] = checkpoint_id
+            
         # updates["attachments"] = attachments
         if langchain_id:
             updates["langchain_id"] = langchain_id
