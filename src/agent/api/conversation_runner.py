@@ -145,69 +145,6 @@ class ConversationRunner:
                 if not attachment:
                     raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
                 return attachment
-        async def _wait_extracted(attachment_id: str, timeout: int = 300):
-            start = asyncio.get_event_loop().time()
-            while True:
-                attachment = await _get_attachment(attachment_id)
-                if attachment.status == "completed":
-                    return attachment
-                elif attachment.status == "failed":
-                    raise ValueError(f"Attachment failed to extract: attachment_id={attachment_id}")
-                else:
-                    if asyncio.get_event_loop().time() - start > timeout:
-                        raise TimeoutError(f"Attachment wait timeout: attachment_id={attachment_id}, timeout={timeout}s")
-                    await asyncio.sleep(1)
-        async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
-            attachment = await _wait_extracted(attachment_id)
-            type = Path(attachment.path).suffix.lower()
-            name = Path(attachment.path).name
-            read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
-            content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
-            return content, name
-        
-        async def _link_message_attachment(message_id: str, attachment_id: str, name: str | None = None):
-            async with self.session_factory() as session:
-                session : AsyncSession
-                async with session.begin():
-                    attachment = (await session.execute(
-                        select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
-                    )).scalar_one_or_none()
-                    if not attachment:
-                        raise ValueError(f"Attachment not found in database during linking: attachment_id={attachment_id}")
-                    existed = (
-                        await session.execute(
-                            select(db_models.MessageAttachment)
-                                .where(db_models.MessageAttachment.message_id == message_id)
-                                .where(db_models.MessageAttachment.attachment_id == attachment_id)
-                                .limit(1)
-                        )
-                    ).scalar_one_or_none()
-                    if existed:
-                        return
-                    display_name = name or Path(attachment.path).name
-                    message_attachment_row = db_models.MessageAttachment(
-                        message_id=message_id,
-                        attachment_id=attachment_id,
-                        name=display_name
-                    )
-                    session.add(message_attachment_row)
-        async def _link_message_attachments(message_id: str, attachment_ids: list[str]):
-            for attachment_id in attachment_ids:
-                print(f"Linking attachment {attachment_id} to message {message_id}")
-                await _link_message_attachment(message_id, attachment_id)
-
-        
-        #dealing with attachments
-        async def _get_attachment(attachment_id: str):
-            async with self.session_factory() as session:
-                session : AsyncSession
-                attachment_row = await session.execute(
-                    select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
-                )
-                attachment = attachment_row.scalars().first()
-                if not attachment:
-                    raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
-                return attachment
         async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
             attachment = await _get_attachment(attachment_id)
             if attachment.status != "completed":
