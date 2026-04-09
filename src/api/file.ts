@@ -1,6 +1,8 @@
 import http, { baseURL } from '@/utils/http'
 import type { FileCategory } from '@/types/attachment'
 
+const UPLOAD_TIMEOUT_MS = 60000
+
 export interface UploadFileResponse {
   file_id: string
   mime_type?: string
@@ -34,6 +36,7 @@ export function uploadFile(file: File): Promise<UploadFileResponse> {
   formData.append('file', file)
 
   return http.post<UploadFileResponse>('/files/upload', formData, {
+    timeout: UPLOAD_TIMEOUT_MS,
     headers: {
       'Content-Type': 'multipart/form-data',
     },
