@@ -54,7 +54,7 @@ export interface ToolArgument {
 export interface ToolCallMessage {
   tool_name: string
   tool_arguments: ToolArgument[]
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'approved' | 'rejected' | 'running' | string
   pending_reason?: string
   tool_response?: string
 }
