@@ -414,9 +414,16 @@ class ConversationRunner:
                         data = parser.parse_message(message_object, attachment_map.get(message.id, []))
                     )
 
-    def cancel(self, conversation_id : str):
+    async def cancel(self, conversation_id : str):
         if conversation_id in self._conversation_jobs:
             job = self._conversation_jobs[conversation_id]
             if job.task:
                 job.task.cancel()
+            
+            for i in range(10*10):
+                if conversation_id not in self._conversation_jobs:
+                    return
+                await asyncio.sleep(0.1)
+            raise ValueError(f"Failed to cancel conversation {conversation_id}")
+        
                 
