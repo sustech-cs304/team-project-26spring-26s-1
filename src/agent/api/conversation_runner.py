@@ -510,4 +510,8 @@ class ConversationRunner:
                 await asyncio.sleep(0.1)
             raise ValueError(f"Failed to cancel conversation {conversation_id}")
         
+<<<<<<< HEAD
                 
+=======
+                
+>>>>>>> 9f25f03... backend - fix cancel returning before the task is torn down.
