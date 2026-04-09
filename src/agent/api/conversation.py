@@ -125,7 +125,7 @@ async def cancel_conversation(request: Request, conversation_id: str):
     if not runner.is_running(conversation_id):
         raise HTTPException(status_code=400, detail=f"Conversation {conversation_id} is not running")
     
-    runner.cancel(conversation_id)
+    await runner.cancel(conversation_id)
     return {"status": "cancelled"}
 
 @router.delete("/conversation/{conversation_id}")
