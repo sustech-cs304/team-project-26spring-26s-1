@@ -18,6 +18,7 @@ router = APIRouter()
 
 @router.post("/files/upload", response_model=FileUploadResponse)
 async def upload_file(request: Request, file: UploadFile = File(...)) -> FileUploadResponse:
+    """Upload a file and return only after the attachment is ready for downstream consumption."""
     suffix = Path(file.filename).suffix.lower()
     if suffix not in legal_extensions and suffix not in readable_extensions:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file type: {suffix}")

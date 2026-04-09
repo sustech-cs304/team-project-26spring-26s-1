@@ -19,6 +19,7 @@ import agent.db.models as db_models
 import agent.db.utils as db_utils
 from agent.api.conversation_models import CompletionResponseHistory, CompletionUserMessage
 from agent.config import AppConfig
+from agent.file_utils.utils import link_message_attachments, load_attachment_content
 from agent.parser import AnthropicEventParser
 from uuid import uuid4
 import datetime as dt
@@ -104,62 +105,6 @@ class ConversationRunner:
             }
         }
         
-        #dealing with attachments
-        async def _get_attachment(attachment_id: str):
-            async with self.session_factory() as session:
-                session : AsyncSession
-                attachment_row = await session.execute(
-                    select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
-                )
-                attachment = attachment_row.scalars().first()
-                if not attachment:
-                    raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
-                return attachment
-        async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
-            attachment = await _get_attachment(attachment_id)
-            if attachment.status != "completed":
-                # TODO: handle unparsed attachment in SSE flow.
-                raise NotImplementedError("TODO: handle unparsed attachment in SSE flow")
-            type = Path(attachment.path).suffix.lower()
-            name = Path(attachment.path).name
-            read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
-            if not read_path.exists():
-                # TODO: handle unparsed attachment in SSE flow.
-                raise NotImplementedError("TODO: handle unparsed attachment in SSE flow")
-            content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
-            return content, name
-        
-        async def _link_message_attachment(message_id: str, attachment_id: str, name: str | None = None):
-            async with self.session_factory() as session:
-                session : AsyncSession
-                async with session.begin():
-                    attachment = (await session.execute(
-                        select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
-                    )).scalar_one_or_none()
-                    if not attachment:
-                        raise ValueError(f"Attachment not found in database during linking: attachment_id={attachment_id}")
-                    existed = (
-                        await session.execute(
-                            select(db_models.MessageAttachment)
-                                .where(db_models.MessageAttachment.message_id == message_id)
-                                .where(db_models.MessageAttachment.attachment_id == attachment_id)
-                                .limit(1)
-                        )
-                    ).scalar_one_or_none()
-                    if existed:
-                        return
-                    display_name = name or Path(attachment.path).name
-                    message_attachment_row = db_models.MessageAttachment(
-                        message_id=message_id,
-                        attachment_id=attachment_id,
-                        name=display_name
-                    )
-                    session.add(message_attachment_row)
-        async def _link_message_attachments(message_id: str, attachment_ids: list[str]):
-            for attachment_id in attachment_ids:
-                print(f"Linking attachment {attachment_id} to message {message_id}")
-                await _link_message_attachment(message_id, attachment_id)
-
         async def _ensure_thread_waiting_for_resume():
             needs_prime = True
             try:
@@ -180,7 +125,7 @@ class ConversationRunner:
             human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
             attachment_idx = 0
             for attachment_id in attachments:
-                attachment_content, attachment_name = await _load_attachment(attachment_id)
+                attachment_content, attachment_name = await load_attachment_content(self.session_factory, attachment_id)
                 human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{attachment_name}]:\n{attachment_content}\n\n"
                 attachment_idx += 1
             human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
@@ -198,7 +143,7 @@ class ConversationRunner:
             attachments=attachments,
         )
         if attachments:
-            await _link_message_attachments(user_message_id, attachments)
+            await link_message_attachments(self.session_factory, user_message_id, attachments)
 
         gen = self.graph.astream(
             Command(resume=human_message_with_attachments.content),
