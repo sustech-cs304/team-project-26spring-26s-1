@@ -6,22 +6,18 @@ from fastapi.responses import JSONResponse
 
 from agent.api.file_models import FileInfoResponse, FileUploadResponse
 from agent.file_utils.extract import FileProcessError, store_attachment
+from agent.file_utils.utils import validate_file_id, validate_upload_file
 from agent.db.models import Attachment
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pathlib import Path
-import asyncio
-import mimetypes
-from agent.file_utils.extract import legal_extensions, readable_extensions
 
 router = APIRouter()
 
 @router.post("/files/upload", response_model=FileUploadResponse)
 async def upload_file(request: Request, file: UploadFile = File(...)) -> FileUploadResponse:
     """Upload a file and return only after the attachment is ready for downstream consumption."""
-    suffix = Path(file.filename).suffix.lower()
-    if suffix not in legal_extensions and suffix not in readable_extensions:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file type: {suffix}")
+    await validate_upload_file(file)
     try:
         attachment_id, mime_type = await store_attachment(file, session_factory=request.app.state.async_session, config=request.app.state.config)
     except FileProcessError as exc:
@@ -31,6 +27,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)) -> FileUpl
 
 @router.get("/file/{file_id}")
 async def get_file(request: Request, file_id: str):
+    file_id = validate_file_id(file_id)
     async with request.app.state.async_session() as session:
         session : AsyncSession
         attachment = await session.execute(select(Attachment).where(Attachment.id == file_id).limit(1))
@@ -44,6 +41,7 @@ async def get_file(request: Request, file_id: str):
 
 @router.post("/files/{file_id}/info", response_model=FileInfoResponse)
 async def get_file_info(request: Request, file_id: str) -> FileInfoResponse:
+    file_id = validate_file_id(file_id)
     async with request.app.state.async_session() as session:
         session : AsyncSession
         attachment = await session.execute(select(Attachment).where(Attachment.id == file_id).limit(1))
