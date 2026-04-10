@@ -30,6 +30,7 @@ from agent.api.conversation_models import (
 
 router = APIRouter()
 
+
 class ConversationCompletionRequest(pydantic.BaseModel):
     conversation_id: str
     request_id: str
