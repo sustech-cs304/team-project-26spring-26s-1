@@ -10,6 +10,7 @@
 
 <script setup lang="ts">
     import type { CalEvent } from '@/types/calendar'
+import { over } from 'lodash';
 
     const props = withDefaults(defineProps<{ event: CalEvent; dimmed?: boolean; sourceColorMap?: Record<string, string> }>(), {
         dimmed: false,
@@ -46,11 +47,14 @@
     }))
     const titleStyle = {
         minWidth: '0',
+        maxWidth: '60px',
+        overflow: 'hidden',
         fontSize: '11px',
         fontWeight: 500,
     }
     const timeStyle = {
         whiteSpace: 'nowrap',
+        overflow: 'hidden',
         fontSize: '9px',
         opacity: '0.72',
     }

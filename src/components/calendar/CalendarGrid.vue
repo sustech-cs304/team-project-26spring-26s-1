@@ -48,7 +48,7 @@
     }>()
 
     const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    const MAX_CHIPS = 4
+    const MAX_CHIPS = 3
 
     const cellEvents = (cell: CalendarCell) => getEventsForDate(props.events, cell.dateKey)
     const visibleEvents = (cell: CalendarCell) => cellEvents(cell).slice(0, MAX_CHIPS)
