@@ -17,11 +17,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import agent.db.models as db_models
 import agent.db.utils as db_utils
-from agent.api.conversation_models import CompletionResponseHistory, CompletionUserMessage
+from agent.api.conversation_models import (
+    CompletionResponseHistory,
+    CompletionUserMessage,
+)
+from agent.api.title_generator import ConversationTitleGenerator
 from agent.config import AppConfig
 from agent.parser import AnthropicEventParser
 
 message_type_adapter = TypeAdapter(AnyMessage)
+TITLE_GENERATION_TIMEOUT_SECONDS = 60
 
 class _ConversationJobState:
     def __init__(self):
@@ -30,6 +35,75 @@ class _ConversationJobState:
         self.task : asyncio.Task = None # type: ignore
         self.user_message_id = ""
         self.parser = AnthropicEventParser() # TODO: select parser based on model type
+
+
+class TitleTaskManager:
+    def __init__(self, session_factory: async_sessionmaker, config: AppConfig):
+        self.session_factory = session_factory
+        self.title_generator = ConversationTitleGenerator(config)
+        self._tasks: Dict[str, asyncio.Task[None]] = {}
+
+    def request_title_generation(
+        self,
+        conversation_id: str,
+        current_title: str | None,
+        user_message: str,
+    ):
+        if not self.title_generator.should_generate_title(current_title):
+            return
+
+        title_input = self.title_generator.build_title_input(user_message)
+        if not title_input:
+            return
+
+        current_task = self._tasks.get(conversation_id)
+        if current_task and not current_task.done():
+            return
+
+        self._tasks[conversation_id] = asyncio.create_task(
+            self._run_title_task(conversation_id, title_input)
+        )
+
+    def _cleanup_task(self, conversation_id: str):
+        current_task = asyncio.current_task()
+        if self._tasks.get(conversation_id) is current_task:
+            self._tasks.pop(conversation_id, None)
+
+    async def _conversation_needs_title(self, conversation_id: str) -> bool:
+        conversation = await db_utils.db_get_conversation(self.session_factory, conversation_id)
+        return bool(
+            conversation and self.title_generator.should_generate_title(conversation.title)
+        )
+
+    async def _run_title_task(self, conversation_id: str, title_input: str):
+        try:
+            title = await asyncio.wait_for(
+                self.title_generator.generate(title_input),
+                timeout=TITLE_GENERATION_TIMEOUT_SECONDS,
+            )
+            if not title:
+                return
+
+            if not await self._conversation_needs_title(conversation_id):
+                return
+
+            await db_utils.db_update_conversation_title(
+                self.session_factory,
+                conversation_id,
+                title,
+            )
+        except asyncio.TimeoutError:
+            print(
+                f"Conversation title generation timed out after "
+                f"{TITLE_GENERATION_TIMEOUT_SECONDS}s: conversation_id={conversation_id}"
+            )
+        except Exception as exc:
+            print(
+                f"Failed to update conversation title: "
+                f"conversation_id={conversation_id}, error={exc}"
+            )
+        finally:
+            self._cleanup_task(conversation_id)
         
 class ConversationRunner:
     def __init__(self, graph, session_factory : async_sessionmaker, config: AppConfig):
@@ -37,6 +111,16 @@ class ConversationRunner:
         self.graph = graph
         self.session_factory = session_factory
         self.config = config
+
+    _title_task_manager = None
+
+    def _get_title_task_manager(self) -> TitleTaskManager:
+        if self._title_task_manager is None:
+            self._title_task_manager = TitleTaskManager(
+                self.session_factory,
+                self.config,
+            )
+        return self._title_task_manager
     
     def is_running(self, conversation_id: str) -> bool:
         return conversation_id in self._conversation_jobs
@@ -199,6 +283,11 @@ class ConversationRunner:
         )
         if attachments:
             await _link_message_attachments(user_message_id, attachments)
+        self._get_title_task_manager().request_title_generation(
+            conversation_id,
+            conversation.title,
+            user_message,
+        )
 
         gen = self.graph.astream(
             Command(resume=human_message_with_attachments.content),
