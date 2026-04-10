@@ -254,9 +254,10 @@
         }
     }
 
-    const fetchHistoryAttachmentDetail = (attachment: UserMessageAttachment): Promise<UserMessageAttachment | null> => {
+    const fetchHistoryAttachmentDetail = (messageId: string, attachment: UserMessageAttachment): Promise<UserMessageAttachment | null> => {
         const fileId = attachment.fileId || attachment.id
-        const cached = fileInfoCache.get(fileId)
+        const cacheKey = `${messageId}:${fileId}`
+        const cached = fileInfoCache.get(cacheKey)
         const toResolvedAttachment = (detail: HistoryAttachmentDetail | null): UserMessageAttachment | null => {
             if (!detail) return null
 
@@ -274,7 +275,7 @@
 
         if (cached) return cached.then(toResolvedAttachment)
 
-        const request = getFileInfo(fileId)
+        const request = getFileInfo(messageId, fileId)
             .then(async (detail) => {
                 const category = normalizeFileCategory(detail.file_type)
                 const previewUrl = category === 'image'
@@ -290,12 +291,12 @@
                 }
             })
             .catch((error) => {
-                console.warn('[file-info] failed to load attachment detail:', fileId, error)
-                fileInfoCache.delete(fileId)
+                console.warn('[file-info] failed to load attachment detail:', messageId, fileId, error)
+                fileInfoCache.delete(cacheKey)
                 return null
             })
 
-        fileInfoCache.set(fileId, request)
+        fileInfoCache.set(cacheKey, request)
         return request.then(toResolvedAttachment)
     }
 
@@ -340,7 +341,8 @@
         message.attachments = refs
 
         for (const attachment of refs) {
-            void fetchHistoryAttachmentDetail(attachment).then((detail) => {
+            if (!message.message_id) continue
+            void fetchHistoryAttachmentDetail(message.message_id, attachment).then((detail) => {
                 const currentAttachments = message.attachments
                 if (!currentAttachments?.length) return
 

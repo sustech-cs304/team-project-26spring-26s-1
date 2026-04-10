@@ -27,8 +27,8 @@ export interface FileInfoResponse {
   preview_url?: string
 }
 
-export function getFileInfo(fileId: string): Promise<FileInfoResponse> {
-  return http.post<FileInfoResponse>(`/files/${fileId}/info`)
+export function getFileInfo(messageId: string, fileId: string): Promise<FileInfoResponse> {
+  return http.get<FileInfoResponse>(`/files/${messageId}/${fileId}/info`)
 }
 
 export function uploadFile(file: File): Promise<UploadFileResponse> {
