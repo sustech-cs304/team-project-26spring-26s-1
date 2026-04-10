@@ -1,3 +1,12 @@
+"""Embedding 与向量存储工具。
+
+该模块负责：
+1. 从切分结果 JSONL 读取 chunk；
+2. 生成 embedding；
+3. 将结果写入 LangGraph SQLite store；
+4. 为检索工具提供 indexed store 构建能力。
+"""
+
 import asyncio
 import json
 from pathlib import Path
@@ -7,6 +16,50 @@ from langchain_openai import OpenAIEmbeddings
 from langgraph.store.sqlite import AsyncSqliteStore
 
 NAMESPACE = "embeddings"
+
+
+def _infer_document_type(chunk: dict) -> str:
+    metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
+    document_type = str(metadata.get("document_type") or "").strip()
+    if document_type:
+        return document_type
+
+    source_file = str(chunk.get("source_file") or metadata.get("file_name") or "")
+    title_path = str(chunk.get("title_path") or metadata.get("title_path") or "")
+    text = str(chunk.get("text") or "")
+    combined = f"{source_file}\n{title_path}\n{text}"
+    if "学生手册" in combined:
+        return "学生手册"
+    return "培养方案"
+
+
+def _infer_handbook_section(chunk: dict) -> str:
+    metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else {}
+    if str(metadata.get("document_type") or _infer_document_type(chunk)) != "学生手册":
+        return ""
+
+    title_path = str(chunk.get("title_path") or metadata.get("title_path") or "")
+    if title_path:
+        return title_path
+    text = str(chunk.get("text") or "").strip().splitlines()
+    return text[0].lstrip("# ").strip() if text else ""
+
+
+def _normalize_chunk(chunk: dict) -> dict:
+    normalized = dict(chunk)
+    metadata = normalized.get("metadata")
+    metadata = dict(metadata) if isinstance(metadata, dict) else {}
+
+    document_type = _infer_document_type(normalized)
+    metadata.setdefault("document_type", document_type)
+    metadata.setdefault("title_path", normalized.get("title_path", ""))
+
+    if document_type == "学生手册":
+        metadata.setdefault("handbook_section", _infer_handbook_section(normalized))
+        metadata.setdefault("policy_topic", metadata.get("handbook_section", ""))
+
+    normalized["metadata"] = metadata
+    return normalized
 
 
 async def embed_texts(
@@ -81,7 +134,7 @@ async def load_chunks_from_jsonl(directory_path: str) -> list[dict]:
             for line in f:
                 if line.strip():
                     chunk = json.loads(line)
-                    chunks.append(chunk)
+                    chunks.append(_normalize_chunk(chunk))
     
     return chunks
 
@@ -118,6 +171,7 @@ async def store_embeddings(
     for chunk, embedding in zip(chunks, embeddings):
         source_file = chunk.get("source_file", "unknown")
         chunk_index = chunk.get("chunk_index", 0)
+        metadata = chunk.get("metadata", {}) if isinstance(chunk.get("metadata"), dict) else {}
         
         key = f"{source_file}#{chunk_index}"
         
@@ -134,21 +188,34 @@ async def store_embeddings(
             ),
             "source_file": source_file,
             "chunk_index": chunk_index,
-            "metadata": chunk.get("metadata", {}),
+            "metadata": metadata,
             "embedding": embedding,
         }
         
         await indexed_store.aput((NAMESPACE,), key=key, value=value, index=["retrieval_text"])
 
 
-@tool
 async def embed_and_store_chunks(runtime: ToolRuntime) -> str:
-    """
-    从 output_partitioned 目录读取切分好的 chunks，
-    使用 embedding_model 进行嵌入，并将其存储到 store 数据库中。
-    
+    """Embed and store partitioned chunks into the unified RAG database.
+
+    This tool is intended for ingestion after document cleaning and chunking.
+    It supports a shared single-database setup for both program documents and
+    student handbook documents.
+
+    Current behavior:
+    - reads `.jsonl` chunk files from `output_partitioned`
+    - normalizes metadata such as `document_type` for unified storage
+    - generates embeddings from the runtime embedding configuration
+    - stores `text`, `title_path`, `retrieval_text`, `metadata`, and `embedding`
+      into the vector-enabled store
+
+    Recommended usage:
+    - use this during data ingestion or rebuild workflows
+    - run it after new partition outputs are produced
+    - use it before retrieval validation if the database was updated
+
     Returns:
-        str: 处理结果信息。成功时返回简单消息，失败时返回错误信息。
+        A success message with the processed chunk count, or an `Error:` message.
     """
     try:
         # 从 output_partitioned 目录读取 chunks
