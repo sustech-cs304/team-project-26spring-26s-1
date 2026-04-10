@@ -146,7 +146,7 @@ export function chatCompletion (
                             case 'delta':
                                 handlers.onDelta?.(parsed as SseMessageDeltaData)
                                 break
-                            case 'meta_data':
+                            case 'metadata':
                                 handlers.onMetaData?.(parsed as SseMetaData)
                                 break
                             case 'tool_call':

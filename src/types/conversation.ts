@@ -41,7 +41,7 @@ export interface SseHandlers {
   onFetchError?: (error: any) => void;
 }
 
-export type SseEventTypes = 'history' | 'user_message' | 'delta' | 'meta_data' | 'tool_call' | 'error' | 'done' | 'keep_alive'
+export type SseEventTypes = 'history' | 'user_message' | 'delta' | 'metadata' | 'tool_call' | 'error' | 'done' | 'keep_alive'
 
 export type MsgRole = 'user' | 'assistant' | 'system' | 'tools'
 export type HistoryMessageRole = Exclude<MsgRole, 'tools'>
@@ -166,8 +166,9 @@ export interface SseMessageDeltaData {
 }
 
 export interface SseMetaData {
-  message_id: string;
-  metadata: Record<string, any>;
+  message_id?: string;
+  title?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface SseToolCallData extends ToolCallMessage {

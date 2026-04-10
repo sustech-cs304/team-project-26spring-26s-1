@@ -609,17 +609,8 @@
 
         onMetaData: (data: SseMetaData) => {
             if (data.message_id) currentMessageId = data.message_id
-            const metadata = data.metadata
-            if (
-                metadata &&
-                typeof metadata === 'object' &&
-                'title' in metadata &&
-                'conversation_id' in metadata &&
-                metadata.title &&
-                metadata.conversation_id
-            ) {
-                appStore.setConversationTitle(metadata.conversation_id, metadata.title)
-            }
+            if (!data?.title || data.title === 'New Conversation') return
+            appStore.setConversationTitle(route.params.conversationId as string, data.title)
         },
 
         onDone: (_data: SseDoneData) => {
