@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import hashlib
+import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -15,13 +16,12 @@ from agent.file_utils.mineru import _make_headers, _submit_task, _upload_file_to
 import aiohttp
 import mimetypes
 from sqlalchemy.ext.asyncio import async_sessionmaker
-
-legal_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".jp2", ".webp", ".gif", ".bmp", ".docx", ".pptx", ".xls", ".xlsx"}
-readable_extensions = {".txt", ".md"}
+from agent.file_utils.utils import PARSE_REQUIRED_EXTENSIONS
 
 
 class FileProcessError(RuntimeError):
     """Raised when an uploaded file cannot be processed into a usable attachment."""
+
 
 def _safe_file_name(file_name: str | None) -> str:
     if not file_name:
@@ -43,11 +43,21 @@ async def _read_file_and_hash(file: UploadFile) -> tuple[bytes, str]:
     return content, digest
 
 
-async def _persist_uploaded_file(content: bytes, file_name: str | None, config: AppConfig) -> Path:
+def _build_stored_file_name(attachment_id: str, file_name: str | None) -> str:
+    suffix = Path(_safe_file_name(file_name)).suffix.lower()
+    return f"{attachment_id}{suffix}"
+
+
+async def _persist_uploaded_file(
+    content: bytes,
+    attachment_id: str,
+    file_name: str | None,
+    config: AppConfig,
+) -> Path:
     timestamp = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     target_dir = _resolve_upload_root(config) / timestamp
     target_dir.mkdir(parents=True, exist_ok=True)
-    source_file = (target_dir / _safe_file_name(file_name)).resolve()
+    source_file = (target_dir / _build_stored_file_name(attachment_id, file_name)).resolve()
     await asyncio.to_thread(source_file.write_bytes, content)
     if not source_file.exists():
         raise FileNotFoundError(f"Source file not found: {source_file}")
@@ -82,8 +92,9 @@ async def _request_mineru_parse(attachment_id: str, source_file: Path, session_f
 async def store_attachment(file: UploadFile, session_factory: async_sessionmaker, config: AppConfig) -> tuple[str, str | None]:
     """Store uploaded file and synchronously produce a usable attachment."""
     content, digest = await _read_file_and_hash(file)
-    suffix = Path(file.filename).suffix.lower()
-    need_extract = suffix in legal_extensions
+    safe_filename = file.filename or ""
+    suffix = Path(safe_filename).suffix.lower()
+    need_extract = suffix in PARSE_REQUIRED_EXTENSIONS
     async with session_factory() as session:
         existing = await session.execute(select(Attachment).where(Attachment.hash == digest).limit(1))
         existing_attachment = existing.scalar_one_or_none()
@@ -93,10 +104,12 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
                 mime_type, _ = mimetypes.guess_type(existing_attachment.path)
                 return existing_attachment.id, mime_type
         else:
+            attachment_id = str(uuid.uuid4())
             print(f"Creating new attachment for file: {file.filename}")
-            source_file = await _persist_uploaded_file(content, file.filename, config)
+            source_file = await _persist_uploaded_file(content, attachment_id, file.filename, config)
 
             attachment = Attachment(
+                id=attachment_id,
                 hash=digest,
                 path=str(source_file),
                 status="created" if need_extract else "completed",
@@ -111,7 +124,7 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
     if need_extract and existing_attachment.status != "completed":
         source_file = Path(existing_attachment.path).resolve()
         if not source_file.exists():
-            source_file = await _persist_uploaded_file(content, file.filename, config)
+            source_file = await _persist_uploaded_file(content, existing_attachment.id, file.filename, config)
             async with session_factory() as session:
                 db_attachment = await session.get(Attachment, existing_attachment.id)
                 if not db_attachment:

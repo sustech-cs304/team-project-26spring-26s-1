@@ -51,8 +51,9 @@ class Attachment(Base):
 class MessageAttachment(Base):
     __tablename__ = "message_attachments"
 
-    message_id: Mapped[str] = mapped_column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
-    attachment_id: Mapped[str] = mapped_column(String(36), ForeignKey("attachments.id"), primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), nullable=True)
+    attachment_id: Mapped[str] = mapped_column(String(36), ForeignKey("attachments.id"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     message: Mapped["Message"] = relationship("Message", back_populates="attachments")

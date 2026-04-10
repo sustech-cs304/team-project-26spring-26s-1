@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Any, Dict, cast
 from uuid import uuid4
 
+from fastapi import HTTPException
+
 from langchain.messages import (
     AIMessage,
     AnyMessage,
@@ -17,9 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import agent.db.models as db_models
 import agent.db.utils as db_utils
-from agent.api.conversation_models import CompletionResponseHistory, CompletionUserMessage
+from agent.api.conversation_models import CompletionResponseError, CompletionResponseHistory, CompletionUserMessage
 from agent.config import AppConfig
-from agent.file_utils.utils import link_message_attachments, load_attachment_content
+from agent.file_utils.utils import (
+    PendingMessageAttachmentRef,
+    bind_pending_message_attachments,
+    load_attachment_content,
+)
 from agent.parser import AnthropicEventParser
 from uuid import uuid4
 import datetime as dt
@@ -85,7 +91,8 @@ class ConversationRunner:
                     await session.execute(
                         delete(db_models.Message)
                             .where(db_models.Message.conversation_id == conversation_id)
-                            .where(db_models.Message.seq >= restart_message.seq)
+                            .where(db_models.Message.seq > restart_message.seq)
+                        # db can update now, so we don't delete restart_message itself to keep foreign key
                     )
                     
                     # erase checkpoints after restart_message_seq(inclusive)
@@ -119,16 +126,42 @@ class ConversationRunner:
         #give back and insert user message
         user_message_id = restart_message_id or str(uuid4())
         self._conversation_jobs[conversation_id].user_message_id = user_message_id
+        bound_attachments: list[PendingMessageAttachmentRef] = []
+        attachment_ids: list[str] = []
+
+        await db_utils.db_update_message(
+            self.session_factory,
+            conversation_id=conversation_id,
+            message_id=user_message_id,
+            langchain_id=None,
+            content=HumanMessage(role="user", content=user_message).model_dump_json(),
+            attachments=[],
+        )
+
+        if attachments:
+            try:
+                bound_attachments = await bind_pending_message_attachments(
+                    self.session_factory,
+                    user_message_id,
+                    attachments,
+                )
+                attachment_ids = [attachment.attachment_id for attachment in bound_attachments]
+            except HTTPException as exc:
+                raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         
         human_message =  HumanMessage(role="user",content=user_message)
-        if attachments:
-            human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
-            attachment_idx = 0
-            for attachment_id in attachments:
-                attachment_content, attachment_name = await load_attachment_content(self.session_factory, attachment_id)
-                human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{attachment_name}]:\n{attachment_content}\n\n"
-                attachment_idx += 1
-            human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
+        if bound_attachments:
+            try:
+                human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
+                attachment_idx = 0
+                for attachment in bound_attachments:
+                    attachment_content, attachment_name = await load_attachment_content(self.session_factory, attachment.attachment_id)
+                    display_name = attachment.name or attachment_name
+                    human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{display_name}]:\n{attachment_content}\n\n"
+                    attachment_idx += 1
+                human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
+            except HTTPException as exc:
+                raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         else:
             human_message_with_attachments = human_message
         
@@ -140,10 +173,8 @@ class ConversationRunner:
             message_id=user_message_id,
             langchain_id=None,
             content=human_message.model_dump_json(),
-            attachments=attachments,
+            attachments=attachment_ids,
         )
-        if attachments:
-            await link_message_attachments(self.session_factory, user_message_id, attachments)
 
         gen = self.graph.astream(
             Command(resume=human_message_with_attachments.content),
@@ -176,7 +207,7 @@ class ConversationRunner:
                                 message_id = user_message_id,
                                 langchain_id = None,
                                 content = human_message.model_dump_json(), # do not store message with injected attachment content
-                                attachments = attachments,
+                                attachments = attachment_ids,
                                 checkpoint_id = checkpoint
                             )
                             user_message_checkpoint_written = True
