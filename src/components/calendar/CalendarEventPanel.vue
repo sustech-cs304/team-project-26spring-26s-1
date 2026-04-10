@@ -5,10 +5,10 @@
                 <div class="text-subtitle-2 font-weight-bold">{{ title }}</div>
                 <div class="text-caption text-medium-emphasis">{{ subtitle }}</div>
             </div>
-            <v-btn icon size="x-small" variant="text" @click="$emit('create')">
+            <!-- <v-btn icon size="x-small" variant="text" @click="$emit('create')">
                 <v-icon size="14">mdi-plus</v-icon>
                 <v-tooltip activator="parent">New event</v-tooltip>
-            </v-btn>
+            </v-btn> -->
         </div>
         <v-list density="compact" class="flex-grow-1 overflow-y-auto py-1 px-2">
             <div v-if="events.length === 0" class="d-flex flex-column align-center justify-center py-10">
@@ -66,7 +66,6 @@
     }>()
 
     defineEmits<{
-        create: []
         select: [ev: CalEvent]
         edit: [ev: CalEvent]
         delete: [ev: CalEvent]
