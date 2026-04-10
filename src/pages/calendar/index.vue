@@ -72,7 +72,6 @@
 
             <CalendarEventPanel :title="panelTitle" :subtitle="panelSubtitle" :events="panelEvents"
                 :selected-event-id="selectedEventId" :source-color-map="resolvedSourceColorMap"
-                @create="openCreate(selectedCell?.dateKey ?? todayKey)"
                 @select="onEventClick" @edit="openEdit" @delete="deleteEvent"
                 @contextmenu="openEventContextMenu" />
 
@@ -315,10 +314,22 @@
 
     const miniHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
     const sourceOptions = computed<{ value: string; label: string }[]>(() => {
-        const map = new Map<string, { value: string; label: string }>()
-        sourceCatalog.value.forEach(item => map.set(item.title, { value: item.title, label: item.title }))
-        events.value.forEach(item => map.set(item.source, { value: item.source, label: item.source }))
-        return Array.from(map.values())
+        const eventSourceSet = new Set(events.value.map(item => item.source).filter(Boolean))
+        const options: { value: string; label: string }[] = []
+
+        // Keep backend-defined source order for sources that currently have events.
+        sourceCatalog.value.forEach(item => {
+            if (!eventSourceSet.has(item.title)) return
+            options.push({ value: item.title, label: item.title })
+            eventSourceSet.delete(item.title)
+        })
+
+        // Include any source returned by events but not yet in source catalog.
+        eventSourceSet.forEach(source => {
+            options.push({ value: source, label: source })
+        })
+
+        return options
     })
     const dialogSourceItems = computed(() => sourceOptions.value.map(item => ({ title: item.label, value: item.value })))
 
@@ -333,6 +344,7 @@
     watch(sourceOptions, (items) => {
         const prev = new Set(highlightedSources.value)
         const next = new Set<CalEvent['source']>()
+        const availableSources = new Set(items.map(item => item.value))
 
         items.forEach(item => {
             const sourceMeta = sourceCatalog.value.find(source => source.title === item.value)
@@ -345,6 +357,14 @@
         })
 
         highlightedSources.value = next
+
+        if (activeSource.value && !availableSources.has(activeSource.value)) {
+            activeSource.value = null
+        }
+
+        if (searchForm.source && !availableSources.has(searchForm.source)) {
+            searchForm.source = ''
+        }
     }, { immediate: true })
 
     const sourceHighlighted = (source: CalEvent['source']) => highlightedSources.value.has(source)
