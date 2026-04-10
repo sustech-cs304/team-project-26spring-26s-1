@@ -48,8 +48,7 @@ async def get_file(request: Request, file_id: str):
         file_path = attachment.path if attachment else None
     if file_path is None:
         raise HTTPException(status_code=404, detail="File not found")
-    file_path = Path(file_path)
-    return FileResponse(path=file_path)
+    return FileResponse(path=Path(file_path))
 
 
 @router.get("/files/{message_id}/{file_id}/info", response_model=FileInfoResponse)

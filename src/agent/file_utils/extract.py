@@ -30,13 +30,6 @@ def _safe_file_name(file_name: str | None) -> str:
     return clean_name or "uploaded_file"
 
 
-def _resolve_upload_root(config: AppConfig) -> Path:
-    root = Path(config.file.upload_path)
-    if not root.is_absolute():
-        root = (Path.cwd() / root).resolve()
-    return root
-
-
 async def _read_file_and_hash(file: UploadFile) -> tuple[bytes, str]:
     content = await file.read()
     digest = hashlib.sha256(content).hexdigest()
@@ -48,6 +41,15 @@ def _build_stored_file_name(attachment_id: str, file_name: str | None) -> str:
     return f"{attachment_id}{suffix}"
 
 
+def _relative_storage_path(path: Path) -> Path:
+    if path.is_absolute():
+        try:
+            return path.relative_to(Path.cwd())
+        except ValueError:
+            return path
+    return path
+
+
 async def _persist_uploaded_file(
     content: bytes,
     attachment_id: str,
@@ -57,7 +59,7 @@ async def _persist_uploaded_file(
     timestamp = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     target_dir = _resolve_upload_root(config) / timestamp
     target_dir.mkdir(parents=True, exist_ok=True)
-    source_file = (target_dir / _build_stored_file_name(attachment_id, file_name)).resolve()
+    source_file = target_dir / _build_stored_file_name(attachment_id, file_name)
     await asyncio.to_thread(source_file.write_bytes, content)
     if not source_file.exists():
         raise FileNotFoundError(f"Source file not found: {source_file}")
@@ -100,6 +102,11 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
         existing_attachment = existing.scalar_one_or_none()
         if existing_attachment:
             print(f"Found existing attachment with id {existing_attachment.id}, reusing processing result.")
+            existing_path = Path(existing_attachment.path)
+            normalized_path = _relative_storage_path(existing_path)
+            if normalized_path != existing_path:
+                existing_attachment.path = str(normalized_path)
+                await session.commit()
             if existing_attachment.status == "completed":
                 mime_type, _ = mimetypes.guess_type(existing_attachment.path)
                 return existing_attachment.id, mime_type
@@ -122,7 +129,7 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
 
     assert existing_attachment is not None
     if need_extract and existing_attachment.status != "completed":
-        source_file = Path(existing_attachment.path).resolve()
+        source_file = Path(existing_attachment.path)
         if not source_file.exists():
             source_file = await _persist_uploaded_file(content, existing_attachment.id, file.filename, config)
             async with session_factory() as session:
@@ -138,6 +145,9 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
                 db_attachment = await session.get(Attachment, existing_attachment.id)
                 if not db_attachment:
                     raise FileProcessError(f"Attachment not found before retry: {existing_attachment.id}")
+                normalized_path = _relative_storage_path(source_file)
+                if normalized_path != source_file:
+                    db_attachment.path = str(normalized_path)
                 db_attachment.status = "created"
                 db_attachment.mineru_id = None
                 await session.commit()
@@ -176,7 +186,7 @@ async def extract_attachment(file_id: str, session_factory: async_sessionmaker, 
             raise FileProcessError(f"Attachment has no parser task id: {file_id}")
         
         print(f"Extracting attachment {file_id} with MinerU task {attachment.mineru_id}...")
-        source_file = Path(attachment.path).resolve()
+        source_file = Path(attachment.path)
         markdown_file = source_file.with_suffix(".md")
         task_id = attachment.mineru_id
         base_url=config.file.mineru.base_url
@@ -193,6 +203,9 @@ async def extract_attachment(file_id: str, session_factory: async_sessionmaker, 
             markdown_file.parent.mkdir(parents=True, exist_ok=True)
             await asyncio.to_thread(markdown_file.write_text, markdown_content, "utf-8")
             attachment.status = "completed"
+            normalized_path = _relative_storage_path(source_file)
+            if normalized_path != source_file:
+                attachment.path = str(normalized_path)
             await session.commit()
         except Exception as exc:
             attachment.status = "failed"

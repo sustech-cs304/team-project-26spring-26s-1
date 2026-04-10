@@ -251,12 +251,13 @@ async def load_attachment_content(
             ),
         )
 
-    suffix = Path(attachment.path).suffix.lower()
-    name = Path(attachment.path).name
+    attachment_path = Path(attachment.path)
+    suffix = attachment_path.suffix.lower()
+    name = attachment_path.name
     read_path = (
-        Path(attachment.path)
+        attachment_path
         if suffix in DIRECT_READ_EXTENSIONS
-        else Path(attachment.path).with_suffix(".md")
+        else attachment_path.with_suffix(".md")
     )
     if not read_path.exists():
         raise HTTPException(
