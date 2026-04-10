@@ -226,6 +226,8 @@
     } from '@/utils/calendar'
     const SEARCH_MIN_DATE = '0000-01-01'
     const SEARCH_MAX_DATE = '9999-12-31'
+    const ALL_EVENTS_START_TIME = 0
+    const ALL_EVENTS_END_TIME = 4102444799
     const CALENDAR_PAGE_STORAGE_KEY = 'calendar:index:state:v1'
     const CALENDAR_POLL_INTERVAL_MS = 30000
     const CALENDAR_POLL_INTERVAL_GUARD_MS = 28000
@@ -270,6 +272,7 @@
     const todayKey = toDateKey(today)
 
     const events = ref<CalEvent[]>([])
+    const sourceScopedEvents = ref<CalEvent[]>([])
     const searchResults = ref<CalEvent[]>([])
     const selectedCell = ref<CalendarCell | null>(null)
     const selectedEventId = ref<number | null>(null)
@@ -305,6 +308,7 @@
     const colorNoticeOpen = ref(false)
     const persistenceReady = ref(false)
     const calendarPollTimer = ref<ReturnType<typeof window.setInterval> | null>(null)
+    let sourceEventsRequestToken = 0
 
     type CalendarPollingWindow = Window & {
         __calendarIndexPollTimer__?: ReturnType<typeof window.setInterval> | null
@@ -314,18 +318,22 @@
 
     const miniHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
     const sourceOptions = computed<{ value: string; label: string }[]>(() => {
-        const eventSourceSet = new Set(events.value.map(item => item.source).filter(Boolean))
+        const seen = new Set<string>()
         const options: { value: string; label: string }[] = []
 
-        // Keep backend-defined source order for sources that currently have events.
+        // Use backend source catalog as the primary source list (full list, not current month only).
         sourceCatalog.value.forEach(item => {
-            if (!eventSourceSet.has(item.title)) return
-            options.push({ value: item.title, label: item.title })
-            eventSourceSet.delete(item.title)
+            const title = `${item.title ?? ''}`.trim()
+            if (!title || seen.has(title)) return
+            seen.add(title)
+            options.push({ value: title, label: title })
         })
 
-        // Include any source returned by events but not yet in source catalog.
-        eventSourceSet.forEach(source => {
+        // Fallback: include sources found in loaded events if backend catalog missed any.
+        events.value.forEach(item => {
+            const source = `${item.source ?? ''}`.trim()
+            if (!source || seen.has(source)) return
+            seen.add(source)
             options.push({ value: source, label: source })
         })
 
@@ -360,6 +368,8 @@
 
         if (activeSource.value && !availableSources.has(activeSource.value)) {
             activeSource.value = null
+            sourceEventsRequestToken += 1
+            sourceScopedEvents.value = []
         }
 
         if (searchForm.source && !availableSources.has(searchForm.source)) {
@@ -443,7 +453,14 @@
     }
 
     const toggleSourceSelection = (source: CalEvent['source']) => {
-        activeSource.value = activeSource.value === source ? null : source
+        const nextSource = activeSource.value === source ? null : source
+        activeSource.value = nextSource
+        if (!nextSource) {
+            sourceEventsRequestToken += 1
+            sourceScopedEvents.value = []
+            return
+        }
+        void loadSourceScopedEvents(nextSource)
     }
 
     const highlightedSourceList = computed(() => Array.from(highlightedSources.value))
@@ -493,7 +510,7 @@
         const endDate = searchForm.endDate
 
         query.start_time = startDate ? toUnixSecondsByDateKey(startDate, '00:00') : 0
-        query.end_time = endDate ? toUnixSecondsByDateKey(endDate, '23:59') + 59 : 4102444799
+        query.end_time = endDate ? toUnixSecondsByDateKey(endDate, '23:59') + 59 : ALL_EVENTS_END_TIME
 
         if (
             !query.key_word
@@ -538,6 +555,35 @@
         searchError.value = ''
         hasSearched.value = false
         searchResults.value = []
+    }
+
+    const loadSourceScopedEvents = async (source: CalEvent['source'], silent = false) => {
+        const normalizedSource = `${source ?? ''}`.trim()
+        if (!normalizedSource) {
+            sourceEventsRequestToken += 1
+            sourceScopedEvents.value = []
+            return
+        }
+
+        const requestToken = ++sourceEventsRequestToken
+        if (!silent) searchError.value = ''
+
+        try {
+            const rows = await searchCalendarEvents({
+                source: normalizedSource,
+                start_time: ALL_EVENTS_START_TIME,
+                end_time: ALL_EVENTS_END_TIME,
+            })
+            if (requestToken !== sourceEventsRequestToken) return
+
+            sourceScopedEvents.value = applyPendingEventPatches(rows).filter(item => item.source === normalizedSource)
+        } catch (error) {
+            if (requestToken !== sourceEventsRequestToken) return
+
+            console.error(error)
+            sourceScopedEvents.value = []
+            if (!silent) searchError.value = 'Load source events failed. Please check backend/API config.'
+        }
     }
 
     const loadSources = async () => {
@@ -636,6 +682,15 @@
     )
 
     const panelEvents = computed(() => {
+        if (activeSource.value) {
+            return [...sourceScopedEvents.value]
+                .filter(e => e.source === activeSource.value)
+                .sort((a, b) => {
+                    const dateCmp = a.date.localeCompare(b.date)
+                    return dateCmp !== 0 ? dateCmp : getEventStartTime(a).localeCompare(getEventStartTime(b))
+                })
+        }
+
         const sorted = [...filteredEvents.value].sort((a, b) => {
             const dateCmp = a.date.localeCompare(b.date)
             return dateCmp !== 0 ? dateCmp : getEventStartTime(a).localeCompare(getEventStartTime(b))
@@ -656,7 +711,11 @@
 
     const selectedEventDetail = computed(() => {
         if (!selectedEventId.value) return null
-        return events.value.find(ev => ev.id === selectedEventId.value) ?? null
+        return (
+            events.value.find(ev => ev.id === selectedEventId.value)
+            ?? sourceScopedEvents.value.find(ev => ev.id === selectedEventId.value)
+            ?? null
+        )
     })
 
     const prevMonth = () => {
@@ -679,12 +738,13 @@
         selectedEventId.value = null
     }
 
-    const onEventClick = (ev: CalEvent) => {
+    const onEventClick = async (ev: CalEvent) => {
         selectedEventId.value = ev.id
         const eventDate = fromDateKey(ev.date)
         const inCurrentView = cells.value.some(c => c.dateKey === ev.date)
         if (!inCurrentView) {
             viewStartDate.value = startOfWeek(new Date(eventDate.getFullYear(), eventDate.getMonth(), 1))
+            await nextTick()
         }
         const cell = cells.value.find(c => c.dateKey === ev.date)
         if (cell) selectedCell.value = cell
@@ -829,6 +889,7 @@
                 : item
 
         events.value = events.value.map(mergeEvent)
+            sourceScopedEvents.value = sourceScopedEvents.value.map(mergeEvent)
     }
 
     const mergeEventPatch = (item: CalEvent): CalEvent => {
@@ -851,6 +912,7 @@
         const normalizedEvent = mergeEventPatch(nextEvent)
         const replaceEvent = (item: CalEvent): CalEvent => item.id === normalizedEvent.id ? normalizedEvent : item
         events.value = events.value.map(replaceEvent)
+        sourceScopedEvents.value = sourceScopedEvents.value.map(replaceEvent)
     }
 
     const matchesEventPatch = (event: CalEvent, form: Omit<CalEvent, 'id'>) =>
@@ -882,6 +944,9 @@
 
     const refreshCalendarData = async () => {
         await loadVisibleEvents(true)
+        if (activeSource.value) {
+            await loadSourceScopedEvents(activeSource.value, true)
+        }
     }
 
     const saveEvent = async (form: Omit<CalEvent, 'id'>) => {
@@ -966,6 +1031,9 @@
         await loadSources()
         restoreCalendarPageState()
         await loadVisibleEvents()
+        if (activeSource.value) {
+            await loadSourceScopedEvents(activeSource.value, true)
+        }
         persistenceReady.value = true
         persistCalendarPageState()
         startCalendarPolling()
