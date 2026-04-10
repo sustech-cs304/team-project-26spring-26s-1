@@ -34,7 +34,7 @@
                                 <template v-if="step.key === 'welcome'">
                                     <div class="d-flex flex-column ga-4">
                                         <div class="text-subtitle-1 font-weight-bold">欢迎使用 OpenCrab</div>
-                                        <v-row dense>
+                                        <v-row density="comfortable">
                                             <v-col cols="12" md="4">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
                                                     <div class="text-subtitle-2 font-weight-bold mb-2">了解你</div>
@@ -76,7 +76,7 @@
                                         <div>
                                             <div class="text-subtitle-1 font-weight-bold mb-2">学校、年龄层与专业</div>
                                         </div>
-                                        <v-row dense>
+                                        <v-row density="comfortable">
                                             <v-col cols="12" md="4">
                                                 <div class="text-caption text-medium-emphasis mb-2">身份</div>
                                                 <v-select v-model="userProfile.identity" density="compact" variant="outlined" rounded="lg"
@@ -114,7 +114,7 @@
                                         </div>
 
                                         <div v-if="campusAuth.enabled">
-                                            <v-row dense>
+                                            <v-row density="comfortable">
                                                 <v-col cols="12" md="6">
                                                     <div class="text-caption text-medium-emphasis mb-2">学号</div>
                                                     <v-text-field v-model="campusAuth.studentId" density="compact" variant="outlined" rounded="lg"
@@ -141,7 +141,7 @@
                                         <div>
                                             <div class="text-subtitle-1 font-weight-bold mb-2">模型配置</div>
                                         </div>
-                                        <v-row dense>
+                                        <v-row density="comfortable">
                                             <v-col cols="12" md="4">
                                                 <div class="text-caption text-medium-emphasis mb-2">Provider</div>
                                                 <v-select v-model="modelEndpoint.provider" density="compact" variant="outlined" rounded="lg"
@@ -211,7 +211,7 @@
                                             <v-chip size="small" variant="tonal" color="success">Ready to go</v-chip>
                                         </div>
 
-                                        <v-row dense>
+                                        <v-row density="comfortable">
                                             <v-col cols="12" md="6">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
                                                     <div class="d-flex align-center ga-2 mb-3">

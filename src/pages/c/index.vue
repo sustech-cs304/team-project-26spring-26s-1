@@ -72,7 +72,7 @@
                 conversation_id: conv.conversation_id,
                 created_at: conv.created_at,
                 updated_at: conv.created_at,
-                title: '新的对话',
+                title: 'New Conversation',
                 is_active: true,
                 is_pinned: false,
             })

@@ -45,7 +45,7 @@
                         </div>
                     </v-sheet>
 
-                    <v-row dense>
+                    <v-row density="comfortable">
                         <v-col cols="12" md="4">
                             <v-card rounded="xl" variant="tonal" class="pa-4 h-100">
                                 <div class="d-flex align-center ga-2 mb-3">

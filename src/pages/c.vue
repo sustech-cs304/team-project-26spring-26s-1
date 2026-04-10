@@ -162,6 +162,9 @@
     const appStore = useAppStore()
     const drawer = ref(true)
     const loading = ref(false)
+    const CONVERSATION_POLL_INTERVAL_MS = 5000
+    let conversationPollTimer: ReturnType<typeof window.setInterval> | null = null
+    let conversationsRequest: Promise<void> | null = null
 
     // ── 拖拽上传（布局层统一管理） ─────────────
     /** 当前活跃子路由注册的 MessageInput 引用 */
@@ -217,7 +220,8 @@
         document.addEventListener('dragover', onDragOver)
         document.addEventListener('dragleave', onDragLeave)
         document.addEventListener('drop', onDrop)
-        fetchConversations()
+        void fetchConversations()
+        startConversationPolling()
     })
 
     onBeforeUnmount(() => {
@@ -225,6 +229,7 @@
         document.removeEventListener('dragover', onDragOver)
         document.removeEventListener('dragleave', onDragLeave)
         document.removeEventListener('drop', onDrop)
+        stopConversationPolling()
     })
 
     // Conversations state
@@ -260,15 +265,47 @@
     })
 
     // Load conversations list
-    const fetchConversations = async () => {
-        loading.value = true
-        try {
-            const res = await getConversations({ page: 1, pageSize: 50 })
-            conversations.value = res.conversations || []
-        } catch (error) {
-            console.error('Failed to fetch conversations:', error)
-        } finally {
-            loading.value = false
+    const fetchConversations = async (options: { silent?: boolean } = {}) => {
+        if (conversationsRequest) return conversationsRequest
+
+        const { silent = false } = options
+
+        if (!silent) {
+            loading.value = true
+        }
+
+        conversationsRequest = (async () => {
+            try {
+                const res = await getConversations({ page: 1, pageSize: 50 })
+                conversations.value = res.conversations || []
+            } catch (error) {
+                console.error('Failed to fetch conversations:', error)
+            } finally {
+                if (!silent) {
+                    loading.value = false
+                }
+                conversationsRequest = null
+            }
+        })()
+
+        return conversationsRequest
+    }
+
+    const pollConversations = async () => {
+        await fetchConversations({ silent: true })
+    }
+
+    const startConversationPolling = () => {
+        stopConversationPolling()
+        conversationPollTimer = window.setInterval(() => {
+            void pollConversations()
+        }, CONVERSATION_POLL_INTERVAL_MS)
+    }
+
+    const stopConversationPolling = () => {
+        if (conversationPollTimer) {
+            window.clearInterval(conversationPollTimer)
+            conversationPollTimer = null
         }
     }
 
@@ -284,7 +321,7 @@
         if (conv) {
             conv.title = update.title
         } else {
-            fetchConversations()
+            void fetchConversations({ silent: true })
         }
     })
 
@@ -322,7 +359,7 @@
         searchKeyword.value = ''
         searchResults.value = []
         // Refresh original list in case something changed
-        fetchConversations()
+        void fetchConversations({ silent: true })
     }
 
     // Rename (Client-side only for now as no API provided)
@@ -399,8 +436,8 @@
 
     // Fallback title logic looks at conversations list
     const currentTitle = computed(() => {
-        if (route.path === '/c/' || route.path === '/c') return '新的对话'
-        return currentConversation.value ? currentConversation.value.title : '未知对话'
+        if (route.path === '/c/' || route.path === '/c') return 'New Conversation'
+        return currentConversation.value ? currentConversation.value.title : 'Unknown Conversation'
     })
 
     const isStartPage = computed(() => route.path === '/c/' || route.path === '/c')
