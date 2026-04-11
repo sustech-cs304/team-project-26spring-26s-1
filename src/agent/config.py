@@ -39,6 +39,7 @@ class MineruConfig(BaseModel):
 
 class FileConfig(BaseModel):
     upload_path: str
+    rag_path: str
     mineru: MineruConfig
 
 class WebFetchConfig(BaseModel):

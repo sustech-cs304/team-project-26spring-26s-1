@@ -34,3 +34,5 @@ tests/*
 cron/
 runs/
 .DS_Store
+rag_data
+test_data
