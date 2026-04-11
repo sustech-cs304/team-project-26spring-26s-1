@@ -129,3 +129,58 @@ async def get_or_create_im_session_conversation(
             if conversation_id is None:
                 raise
             return conversation_id
+
+
+async def get_im_permission(
+    session_factory: async_sessionmaker,
+    account_id: str,
+    chat_type: str,
+    chat_id: str,
+) -> bool | None:
+    async with session_factory() as session:
+        session: AsyncSession
+        result = await session.execute(
+            select(db_models.IMPermission.is_allowed)
+            .where(db_models.IMPermission.account_id == account_id)
+            .where(db_models.IMPermission.chat_type == chat_type)
+            .where(db_models.IMPermission.chat_id == chat_id)
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+
+async def set_im_permission(
+    session_factory: async_sessionmaker,
+    account_id: str,
+    chat_type: str,
+    chat_id: str,
+    is_allowed: bool,
+):
+    now = dt.datetime.now(tz=dt.timezone.utc)
+
+    async with session_factory() as session:
+        session: AsyncSession
+        result = await session.execute(
+            select(db_models.IMPermission)
+            .where(db_models.IMPermission.account_id == account_id)
+            .where(db_models.IMPermission.chat_type == chat_type)
+            .where(db_models.IMPermission.chat_id == chat_id)
+            .limit(1)
+        )
+        permission = result.scalar_one_or_none()
+
+        if permission is None:
+            permission = db_models.IMPermission(
+                account_id=account_id,
+                chat_type=chat_type,
+                chat_id=chat_id,
+                is_allowed=is_allowed,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(permission)
+        else:
+            permission.is_allowed = is_allowed
+            permission.updated_at = now
+
+        await session.commit()
