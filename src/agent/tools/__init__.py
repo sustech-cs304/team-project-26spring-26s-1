@@ -9,12 +9,14 @@ class ToolArtifact(TypedDict):
 from .core_memory import core_memory_insert
 from .web_tools import webfetch, websearch
 from .code_interpreter import python_interpreter
+from .retrieve import retrieve_from_rag_db
 
 tools = [
     core_memory_insert,
     python_interpreter,
     webfetch,
     websearch,
+    retrieve_from_rag_db
 ]
 
 tool_node = ToolNode(tools=tools)

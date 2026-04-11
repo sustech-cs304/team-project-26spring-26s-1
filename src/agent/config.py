@@ -30,6 +30,7 @@ class ApiConfig(BaseModel):
     agent: ApiEndpointConfig
     utility: ApiEndpointConfig
     embed: EmbedEndpointConfig
+    rerank: ApiEndpointConfig
     asr: ASREndpointConfig
 
 class MineruConfig(BaseModel):
