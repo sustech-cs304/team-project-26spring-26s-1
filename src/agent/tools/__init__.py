@@ -29,6 +29,7 @@ from .task_tools import (
 from .core_memory import core_memory_insert
 from .web_tools import webfetch, websearch
 from .code_interpreter import python_interpreter
+from .retrieve import retrieve_from_rag_db
 
 tools = [
     get_calendar_events,
@@ -48,6 +49,7 @@ tools = [
     python_interpreter,
     webfetch,
     websearch,
+    retrieve_from_rag_db
 ]
 
 tool_node = ToolNode(tools=tools)
