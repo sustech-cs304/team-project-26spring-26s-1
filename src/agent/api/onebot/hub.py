@@ -1,11 +1,9 @@
 import asyncio
-import re
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
-from uuid import uuid4
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from agent.api.conversation_models import CompletionResponseDelta, CompletionResponseToolCall
@@ -19,17 +17,14 @@ from agent.api.conversation_service import (
 )
 from agent.config import OneBotConfig
 
-
-router = APIRouter()
-
-_PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n+")
-_TOOL_FORWARD_THRESHOLD = 200
-_TOOL_TRUNCATE_THRESHOLD = 8000
-_TOOL_FIELD_HEAD_LIMIT = 2000
-
-
-class OneBotApiError(Exception):
-    pass
+from .connection import OneBotApiError, OneBotConnection
+from .message_utils import (
+    TOOL_FORWARD_THRESHOLD,
+    TOOL_TRUNCATE_THRESHOLD,
+    extract_paragraphs,
+    format_tool_paragraph,
+    trim_head,
+)
 
 
 @dataclass(slots=True)
@@ -37,58 +32,6 @@ class OneBotChatTarget:
     account_id: str
     chat_type: str
     chat_id: str
-
-
-class OneBotConnection:
-    def __init__(self, websocket: WebSocket, self_id: str, role: str):
-        self.websocket = websocket
-        self.self_id = self_id
-        self.role = role
-        self._send_lock = asyncio.Lock()
-        self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
-
-    async def call_action(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
-        echo = str(uuid4())
-        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
-        self._pending[echo] = future
-
-        try:
-            async with self._send_lock:
-                await self.websocket.send_json(
-                    {
-                        "action": action,
-                        "params": params,
-                        "echo": echo,
-                    }
-                )
-
-            response = await asyncio.wait_for(future, timeout=30)
-            status = str(response.get("status", "")).lower()
-            if status not in {"ok", "async"}:
-                raise OneBotApiError(
-                    f"OneBot action {action} failed: status={response.get('status')} retcode={response.get('retcode')}"
-                )
-            return response
-        finally:
-            self._pending.pop(echo, None)
-
-    def handle_response(self, payload: dict[str, Any]) -> bool:
-        echo = payload.get("echo")
-        if not isinstance(echo, str):
-            return False
-
-        future = self._pending.get(echo)
-        if future is None or future.done():
-            return False
-
-        future.set_result(payload)
-        return True
-
-    def fail_pending(self, exc: Exception):
-        for future in self._pending.values():
-            if not future.done():
-                future.set_exception(exc)
-        self._pending.clear()
 
 
 class OneBotHub:
@@ -216,9 +159,7 @@ class OneBotHub:
             return
 
         message_text = self._extract_message_text(payload).strip()
-        if not message_text:
-            return
-        if not message_text.startswith("#"):
+        if not message_text or not message_text.startswith("#"):
             return
 
         message_text = message_text[1:].lstrip()
@@ -455,19 +396,19 @@ class OneBotHub:
                     if event.is_thinking:
                         continue
                     text_buffer += event.delta
-                    paragraphs, text_buffer = _extract_paragraphs(text_buffer)
+                    paragraphs, text_buffer = extract_paragraphs(text_buffer)
                     for paragraph in paragraphs:
                         await self._send_text(target, paragraph)
                     continue
 
                 if isinstance(event, CompletionResponseToolCall):
-                    paragraphs, text_buffer = _extract_paragraphs(text_buffer, flush=True)
+                    paragraphs, text_buffer = extract_paragraphs(text_buffer, flush=True)
                     for paragraph in paragraphs:
                         await self._send_text(target, paragraph)
 
                     await self._send_tool_message(target, event)
 
-            paragraphs, _ = _extract_paragraphs(text_buffer, flush=True)
+            paragraphs, _ = extract_paragraphs(text_buffer, flush=True)
             for paragraph in paragraphs:
                 await self._send_text(target, paragraph)
         except asyncio.CancelledError:
@@ -477,57 +418,17 @@ class OneBotHub:
             await self._send_text(target, f"Request failed: {exc}")
 
     async def _send_tool_message(self, target: OneBotChatTarget, tool_call: CompletionResponseToolCall):
-        tool_message = self._format_tool_paragraph(tool_call)
-        if len(tool_message) <= _TOOL_FORWARD_THRESHOLD:
+        tool_message = format_tool_paragraph(tool_call)
+        if len(tool_message) <= TOOL_FORWARD_THRESHOLD:
             await self._send_text(target, tool_message)
             return
 
-        if len(tool_message) > _TOOL_TRUNCATE_THRESHOLD:
-            tool_message = self._format_tool_paragraph(tool_call, trim_long_fields=True)
-            if len(tool_message) > _TOOL_TRUNCATE_THRESHOLD:
-                tool_message = self._trim_head(tool_message, _TOOL_TRUNCATE_THRESHOLD)
+        if len(tool_message) > TOOL_TRUNCATE_THRESHOLD:
+            tool_message = format_tool_paragraph(tool_call, trim_long_fields=True)
+            if len(tool_message) > TOOL_TRUNCATE_THRESHOLD:
+                tool_message = trim_head(tool_message, TOOL_TRUNCATE_THRESHOLD)
 
         await self._send_forward_message(target, tool_message)
-
-    def _format_tool_paragraph(self, tool_call: CompletionResponseToolCall, trim_long_fields: bool = False) -> str:
-        lines = [f"Tool: {tool_call.tool_name}"]
-
-        if tool_call.tool_arguments:
-            arguments = "; ".join(
-                f"{argument.argument_name}={argument.argument}"
-                for argument in tool_call.tool_arguments
-            )
-            if trim_long_fields:
-                arguments = self._trim_head(arguments, _TOOL_FIELD_HEAD_LIMIT)
-            lines.append(f"Arguments: {arguments}")
-
-        if tool_call.status == "pending":
-            lines.append("Status: pending")
-            if tool_call.pending_reason.strip():
-                lines.append(tool_call.pending_reason.strip())
-            return "\n".join(lines)
-
-        if tool_call.status == "rejected":
-            lines.append("Status: rejected")
-            if tool_call.pending_reason.strip():
-                lines.append(tool_call.pending_reason.strip())
-            return "\n".join(lines)
-
-        if tool_call.tool_response.strip():
-            tool_response = tool_call.tool_response.strip()
-            if trim_long_fields:
-                tool_response = self._trim_head(tool_response, _TOOL_FIELD_HEAD_LIMIT)
-            lines.append("Status: completed")
-            lines.append(tool_response)
-            return "\n".join(lines)
-
-        lines.append("Status: running")
-        return "\n".join(lines)
-
-    def _trim_head(self, text: str, limit: int) -> str:
-        if len(text) <= limit:
-            return text
-        return f"{text[:limit].rstrip()}\n...(truncated)"
 
     async def _send_text(self, target: OneBotChatTarget, text: str):
         message = text.strip()
@@ -569,26 +470,3 @@ class OneBotHub:
 
         await self.call_action(target.account_id, "send_msg", params)
 
-
-def _extract_paragraphs(text: str, flush: bool = False) -> tuple[list[str], str]:
-    normalized = text.replace("\r\n", "\n")
-    parts = _PARAGRAPH_SPLIT_RE.split(normalized)
-    if len(parts) == 1:
-        if flush:
-            stripped = normalized.strip()
-            return ([stripped] if stripped else []), ""
-        return [], normalized
-
-    if flush:
-        paragraphs = [part.strip() for part in parts if part.strip()]
-        return paragraphs, ""
-
-    paragraphs = [part.strip() for part in parts[:-1] if part.strip()]
-    remainder = parts[-1]
-    return paragraphs, remainder
-
-
-@router.websocket("/onebot/ws")
-async def onebot_reverse_websocket(websocket: WebSocket):
-    hub: OneBotHub = websocket.app.state.OneBotHub
-    await hub.serve(websocket)
