@@ -101,9 +101,6 @@ async def convert_file_to_markdown(
     poll_timeout: float = 300.0,
 ) -> Path:
     """Convert a local file to markdown via MinerU and save it next to source file."""
-    source_file = source_file.resolve()
-    markdown_file = markdown_file.resolve()
-
     if not source_file.exists():
         raise FileNotFoundError(f"Source file not found: {source_file}")
 

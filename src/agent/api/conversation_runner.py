@@ -1,8 +1,9 @@
 import asyncio
 import datetime as dt
-from pathlib import Path
 from typing import Any, Dict, cast
 from uuid import uuid4
+
+from fastapi import HTTPException
 
 from langchain.messages import (
     AIMessage,
@@ -21,6 +22,13 @@ import agent.db.utils as db_utils
 from agent.api.conversation_models import (
     CompletionResponseHistory,
     CompletionUserMessage,
+)
+from agent.api.title_generator import ConversationTitleGenerator
+from agent.config import AppConfig
+from agent.file_utils.utils import (
+    PendingMessageAttachmentRef,
+    bind_pending_message_attachments,
+    load_attachment_content,
 )
 from agent.api.title_generator import ConversationTitleGenerator
 from agent.config import AppConfig
@@ -130,7 +138,7 @@ class ConversationRunner:
             self._conversation_jobs[conversation_id] = _ConversationJobState()
         else:
             raise ValueError(f"Conversation {conversation_id} is already running")
-
+        
         try:
             async with self.session_factory() as session:
                 session : AsyncSession
@@ -161,7 +169,8 @@ class ConversationRunner:
                         await session.execute(
                             delete(db_models.Message)
                                 .where(db_models.Message.conversation_id == conversation_id)
-                                .where(db_models.Message.seq >= restart_message.seq)
+                                .where(db_models.Message.seq > restart_message.seq)
+                            # db can update now, so we don't delete restart_message itself to keep foreign key
                         )
                         
                         # erase checkpoints after restart_message_seq(inclusive)
@@ -181,68 +190,6 @@ class ConversationRunner:
                 }
             }
             
-            #dealing with attachments
-            async def _get_attachment(attachment_id: str):
-                async with self.session_factory() as session:
-                    session : AsyncSession
-                    attachment_row = await session.execute(
-                        select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
-                    )
-                    attachment = attachment_row.scalars().first()
-                    if not attachment:
-                        raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
-                    return attachment
-            async def _wait_extracted(attachment_id: str, timeout: int = 300):
-                start = asyncio.get_event_loop().time()
-                while True:
-                    attachment = await _get_attachment(attachment_id)
-                    if attachment.status == "completed":
-                        return attachment
-                    elif attachment.status == "failed":
-                        raise ValueError(f"Attachment failed to extract: attachment_id={attachment_id}")
-                    else:
-                        if asyncio.get_event_loop().time() - start > timeout:
-                            raise TimeoutError(f"Attachment wait timeout: attachment_id={attachment_id}, timeout={timeout}s")
-                        await asyncio.sleep(1)
-            async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
-                attachment = await _wait_extracted(attachment_id)
-                type = Path(attachment.path).suffix.lower()
-                name = Path(attachment.path).name
-                read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
-                content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
-                return content, name
-            
-            async def _link_message_attachment(message_id: str, attachment_id: str, name: str | None = None):
-                async with self.session_factory() as session:
-                    session : AsyncSession
-                    async with session.begin():
-                        attachment = (await session.execute(
-                            select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
-                        )).scalar_one_or_none()
-                        if not attachment:
-                            raise ValueError(f"Attachment not found in database during linking: attachment_id={attachment_id}")
-                        existed = (
-                            await session.execute(
-                                select(db_models.MessageAttachment)
-                                    .where(db_models.MessageAttachment.message_id == message_id)
-                                    .where(db_models.MessageAttachment.attachment_id == attachment_id)
-                                    .limit(1)
-                            )
-                        ).scalar_one_or_none()
-                        if existed:
-                            return
-                        display_name = name or Path(attachment.path).name
-                        message_attachment_row = db_models.MessageAttachment(
-                            message_id=message_id,
-                            attachment_id=attachment_id,
-                            name=display_name
-                        )
-                        session.add(message_attachment_row)
-            async def _link_message_attachments(message_id: str, attachment_ids: list[str]):
-                for attachment_id in attachment_ids:
-                    print(f"Linking attachment {attachment_id} to message {message_id}")
-                    await _link_message_attachment(message_id, attachment_id)
-
             async def _ensure_thread_waiting_for_resume():
                 needs_prime = True
                 try:
@@ -257,16 +204,42 @@ class ConversationRunner:
             #give back and insert user message
             user_message_id = restart_message_id or str(uuid4())
             self._conversation_jobs[conversation_id].user_message_id = user_message_id
+            bound_attachments: list[PendingMessageAttachmentRef] = []
+            attachment_ids: list[str] = []
+
+            await db_utils.db_update_message(
+                self.session_factory,
+                conversation_id=conversation_id,
+                message_id=user_message_id,
+                langchain_id=None,
+                content=HumanMessage(role="user", content=user_message).model_dump_json(),
+                attachments=[],
+            )
+            if attachments:
+                try:
+                    bound_attachments = await bind_pending_message_attachments(
+                        self.session_factory,
+                        user_message_id,
+                        attachments,
+                    )
+                    attachment_ids = [attachment.attachment_id for attachment in bound_attachments]
+                except HTTPException as exc:
+                    raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+        
             
             human_message =  HumanMessage(role="user",content=user_message)
-            if attachments:
-                human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
-                attachment_idx = 0
-                for attachment_id in attachments:
-                    attachment_content, attachment_name = await _load_attachment(attachment_id)
-                    human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{attachment_name}]:\n{attachment_content}\n\n"
-                    attachment_idx += 1
-                human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
+            if bound_attachments:
+                try:
+                    human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
+                    attachment_idx = 0
+                    for attachment in bound_attachments:
+                        attachment_content, attachment_name = await load_attachment_content(self.session_factory, attachment.attachment_id)
+                        display_name = attachment.name or attachment_name
+                        human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{display_name}]:\n{attachment_content}\n\n"
+                        attachment_idx += 1
+                    human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
+                except HTTPException as exc:
+                    raise HTTPException(status_code=exc.status_code, detail=exc.detail)
             else:
                 human_message_with_attachments = human_message
             
@@ -280,8 +253,6 @@ class ConversationRunner:
                 content=human_message.model_dump_json(),
                 attachments=attachments,
             )
-            if attachments:
-                await _link_message_attachments(user_message_id, attachments)
             self.title_task_manager.request_title_generation(
                 conversation_id,
                 conversation.title,
@@ -322,7 +293,7 @@ class ConversationRunner:
                                 message_id = user_message_id,
                                 langchain_id = None,
                                 content = human_message.model_dump_json(), # do not store message with injected attachment content
-                                attachments = attachments,
+                                attachments = attachment_ids,
                                 checkpoint_id = checkpoint
                             )
                             user_message_checkpoint_written = True
@@ -547,5 +518,3 @@ class ConversationRunner:
                     return
                 await asyncio.sleep(0.1)
             raise ValueError(f"Failed to cancel conversation {conversation_id}")
-        
-                
