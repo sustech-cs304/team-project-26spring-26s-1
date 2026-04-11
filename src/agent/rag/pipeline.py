@@ -50,7 +50,12 @@ def _chunk_file_for_source(chunks_dir: Path, source_rel_path: str) -> Path:
     return chunks_dir / f"{safe_name}.chunks.jsonl"
 
 
-async def run_rag_pipeline_for_file(raw_file: Path, config: AppConfig, store_db: Path) -> RagPipelineResult:
+async def run_rag_pipeline_for_file(
+    raw_file: Path,
+    config: AppConfig,
+    store_db: Path,
+    source_url: str | None = None,
+) -> RagPipelineResult:
     from agent.rag.partition_langgraph import partition_files
 
     rag_paths = get_rag_paths(config)
@@ -74,6 +79,7 @@ async def run_rag_pipeline_for_file(raw_file: Path, config: AppConfig, store_db:
         input_dir=rag_paths.cleaned_dir,
         output_dir=rag_paths.chunks_dir,
         checkpoint_file=checkpoint_file,
+        source_url=source_url,
     )
 
     chunks_count = int(partition_result.get("chunks", 0))
