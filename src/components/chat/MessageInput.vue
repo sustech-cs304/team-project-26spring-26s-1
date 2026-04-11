@@ -4,8 +4,8 @@
             @click="focusTextarea">
             <FilePreview v-if="attachments.length" v-model="attachments" class="pt-4 pb-0" />
             <v-textarea ref="textareaRef" :model-value="modelValue"
-                @update:model-value="emit('update:modelValue', $event)" :placeholder="disabled ? '请先处理待审批的操作…' : '发送消息，或输入 / 使用命令…'" variant="plain"
-                rows="1" auto-grow max-rows="6" hide-details :disabled="disabled" @keydown.enter.exact.prevent="send" @paste="onPaste">
+                @update:model-value="emit('update:modelValue', $event)" :placeholder="disabled ? '请先处理待审批的操作…' : '发送消息（Ctrl + Enter）'" variant="plain"
+                rows="1" auto-grow max-rows="6" hide-details :disabled="disabled" @keydown.ctrl.enter.exact.prevent="send" @paste="onPaste">
             </v-textarea>
             <!-- Toolbar -->
             <v-row align="center" density="compact" class="mt-1">
