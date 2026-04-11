@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 import datetime as dt
-from sqlalchemy import String, Boolean, Integer, DateTime, ForeignKey, Text
+from sqlalchemy import String, Boolean, Integer, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -20,6 +20,7 @@ class Conversation(Base):
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
 
     messages: Mapped[list["Message"]] = relationship("Message", back_populates="conversation")
+    im_session_binding: Mapped["IMSessionBinding | None"] = relationship("IMSessionBinding", back_populates="conversation")
 
 class Message(Base):
     __tablename__ = "messages"
@@ -57,3 +58,28 @@ class MessageAttachment(Base):
 
     message: Mapped["Message"] = relationship("Message", back_populates="attachments")
     attachment: Mapped["Attachment"] = relationship("Attachment", back_populates="message_links")
+
+class IMSessionBinding(Base):
+    __tablename__ = "im_session_bindings"
+    __table_args__ = (
+        UniqueConstraint("conversation_id"),
+    )
+
+    account_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    chat_type: Mapped[str] = mapped_column(String(16), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+
+    conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="im_session_binding")
+
+class IMPermission(Base):
+    __tablename__ = "im_permissions"
+
+    account_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    chat_type: Mapped[str] = mapped_column(String(16), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    is_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))

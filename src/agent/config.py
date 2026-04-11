@@ -52,11 +52,17 @@ class WebSearchConfig(BaseModel):
     path: str = "/api/search"
     timeout_ms: int = 30000
 
+class OneBotConfig(BaseModel):
+    access_token: str = ""
+    superuser_id: str = ""
+    command_name: str = "agent"
+
 class AppConfig(BaseModel):
     api: ApiConfig
     file: FileConfig
     webfetch: WebFetchConfig
     websearch: WebSearchConfig
+    onebot: OneBotConfig = OneBotConfig()
 
 def load_config(file_path: str = "config.yaml") -> AppConfig:
     """Loads config.yaml into a verified Pydantic object with env var lookups."""
@@ -69,6 +75,5 @@ def save_config(config: AppConfig, file_path: str = "config.yaml"):
     """Saves the Pydantic config object back to a YAML file."""
     with open(file_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config.model_dump(), f)
-
 
 config = load_config()
