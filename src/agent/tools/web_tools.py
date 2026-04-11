@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Literal
 
@@ -34,6 +35,22 @@ async def _post_json(base_url: str, path: str, api_key: str, payload: dict[str, 
             return body
 
 
+def _fallback_payload(tool_name: str, reason: str, query: str | None = None, url: str | None = None) -> str:
+    payload: dict[str, Any] = {
+        "ok": False,
+        "fallback": True,
+        "tool": tool_name,
+        "error": reason,
+    }
+    if query is not None:
+        payload["query"] = query
+        payload["results"] = []
+    if url is not None:
+        payload["url"] = url
+        payload["clean_markdown"] = ""
+    return json.dumps(payload, ensure_ascii=False)
+
+
 @tool
 async def webfetch(
     url: str,
@@ -59,9 +76,10 @@ async def webfetch(
         A JSON string converted from response ``data``. It usually includes
         upstream fields plus ``clean_markdown`` when available.
 
-    Raises:
-        RuntimeError: When the upstream service returns HTTP >= 400 or a
-            malformed response.
+    Notes:
+        If the upstream service is unavailable or returns an error, this tool
+        returns a fallback JSON payload with ``fallback=true`` instead of
+        raising an exception.
     """
     payload: dict[str, Any] = {
         "url": url,
@@ -71,14 +89,17 @@ async def webfetch(
     if country_code:
         payload["country_code"] = country_code
 
-    response = await _post_json(
-        base_url=config.webfetch.base_url,
-        path=config.webfetch.path,
-        api_key=config.webfetch.api_key,
-        payload=payload,
-        timeout_ms=config.webfetch.timeout_ms,
-    )
-    return json.dumps(response.get("data", response), ensure_ascii=False)
+    try:
+        response = await _post_json(
+            base_url=config.webfetch.base_url,
+            path=config.webfetch.path,
+            api_key=config.webfetch.api_key,
+            payload=payload,
+            timeout_ms=config.webfetch.timeout_ms,
+        )
+        return json.dumps(response.get("data", response), ensure_ascii=False)
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError, RuntimeError) as exc:
+        return _fallback_payload("webfetch", str(exc), url=url)
 
 
 @tool
@@ -118,9 +139,10 @@ async def websearch(
         fields (for example organic results, news blocks, or image results,
         depending on ``search_type``).
 
-    Raises:
-        RuntimeError: When the upstream service returns HTTP >= 400 or a
-            malformed response.
+    Notes:
+        If the upstream service is unavailable or returns an error, this tool
+        returns a fallback JSON payload with ``fallback=true`` instead of
+        raising an exception.
     """
     payload = {
         "q": q,
@@ -130,11 +152,14 @@ async def websearch(
         "hl": hl,
     }
 
-    response = await _post_json(
-        base_url=config.websearch.base_url,
-        path=config.websearch.path,
-        api_key=config.websearch.api_key,
-        payload=payload,
-        timeout_ms=config.websearch.timeout_ms,
-    )
-    return json.dumps(response.get("data", response), ensure_ascii=False)
+    try:
+        response = await _post_json(
+            base_url=config.websearch.base_url,
+            path=config.websearch.path,
+            api_key=config.websearch.api_key,
+            payload=payload,
+            timeout_ms=config.websearch.timeout_ms,
+        )
+        return json.dumps(response.get("data", response), ensure_ascii=False)
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError, RuntimeError) as exc:
+        return _fallback_payload("websearch", str(exc), query=q)
