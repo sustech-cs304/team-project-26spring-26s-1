@@ -189,29 +189,35 @@ async def extract_attachment(file_id: str, session_factory: async_sessionmaker, 
             await session.commit()
             raise FileProcessError(f"Attachment has no parser task id: {file_id}")
         
-        print(f"Extracting attachment {file_id} with MinerU task {attachment.mineru_id}...")
-        source_file = Path(attachment.path)
-        markdown_file = source_file.with_suffix(".md")
-        task_id = attachment.mineru_id
-        base_url=config.file.mineru.base_url
-        api_key=config.file.mineru.api_key
-        timeout = aiohttp.ClientTimeout(total=120)
-        try:
-            async with aiohttp.ClientSession(headers=_make_headers(api_key), timeout=timeout) as csession:
-                markdown_url = await _poll_markdown_url(
-                    csession,
-                    base_url,
-                    task_id,
-                )
-                markdown_content = await _download_markdown(csession, markdown_url)
-            markdown_file.parent.mkdir(parents=True, exist_ok=True)
-            await asyncio.to_thread(markdown_file.write_text, markdown_content, "utf-8")
+    print(f"Extracting attachment {file_id} with MinerU task {attachment.mineru_id}...")
+    source_file = Path(attachment.path)
+    markdown_file = source_file.with_suffix(".md")
+    task_id = attachment.mineru_id
+    base_url=config.file.mineru.base_url
+    api_key=config.file.mineru.api_key
+    timeout = aiohttp.ClientTimeout(total=120)
+    try:
+        async with aiohttp.ClientSession(headers=_make_headers(api_key), timeout=timeout) as csession:
+            markdown_url = await _poll_markdown_url(
+                csession,
+                base_url,
+                task_id,
+            )
+            markdown_content = await _download_markdown(csession, markdown_url)
+        markdown_file.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(markdown_file.write_text, markdown_content, "utf-8")
+        normalized_path = _relative_storage_path(source_file)
+        if normalized_path != source_file:
+            attachment.path = str(normalized_path)
+        async with session_factory() as session:
+            existing = await session.execute(select(Attachment).where(Attachment.id == file_id).limit(1))
+            attachment = existing.scalar_one_or_none()
             attachment.status = "completed"
-            normalized_path = _relative_storage_path(source_file)
-            if normalized_path != source_file:
-                attachment.path = str(normalized_path)
             await session.commit()
-        except Exception as exc:
+    except Exception as exc:
+        async with session_factory() as session:
+            existing = await session.execute(select(Attachment).where(Attachment.id == file_id).limit(1))
+            attachment = existing.scalar_one_or_none()
             attachment.status = "failed"
             await session.commit()
-            raise FileProcessError(str(exc)) from exc
+        raise FileProcessError(str(exc)) from exc
