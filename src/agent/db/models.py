@@ -73,3 +73,13 @@ class IMSessionBinding(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="im_session_binding")
+
+class IMPermission(Base):
+    __tablename__ = "im_permissions"
+
+    account_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    chat_type: Mapped[str] = mapped_column(String(16), primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    is_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))

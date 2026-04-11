@@ -42,6 +42,8 @@ class FileConfig(BaseModel):
 
 class OneBotConfig(BaseModel):
     access_token: str = ""
+    superuser_id: str = ""
+    command_name: str = "agent"
 
 class AppConfig(BaseModel):
     api: ApiConfig
