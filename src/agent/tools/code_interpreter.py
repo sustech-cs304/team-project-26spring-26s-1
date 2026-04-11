@@ -12,11 +12,19 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolRuntime
 from langgraph.types import interrupt
 
+from agent.core.state import ResumePayload
 from agent.config import config
 from agent.tools import ToolArtifact
 
 REVIEW_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
-    ("system", "You are a security expert. Review the following code for potential security vulnerabilities and provide feedback."),
+    ("system", """
+You are a security expert. Review the following code for potential security vulnerabilities and provide a concise feedback.
+Provide JSON output like this:
+{{
+    "review": "Your review text here",
+    "threat_level": "Low"  // or "Medium", or "High"    
+}}
+     """.strip()),
     ("human", "{code}")
 ])
 
@@ -26,7 +34,7 @@ MAX_EXECUTION_OUTPUT_CHARS = 12000
 class ReviewOutput(TypedDict):
     review: str
     threat_level: Literal["Low", "Medium", "High"]
-    
+
 class CodeInterpreterGraph(TypedDict):
     code: str
     tool_call_id: str
@@ -84,7 +92,7 @@ async def _run_python_script(code: str) -> str:
         output = "(no output)"
 
     return _truncate_output(output)
-    
+
 async def security_review_node(state: CodeInterpreterGraph):
     utility_config = config.api.utility
     language_model = ChatOpenAI(
@@ -99,11 +107,12 @@ async def security_review_node(state: CodeInterpreterGraph):
     }
     
 async def feedback_node(state: CodeInterpreterGraph):
-    user_input = interrupt({
+    resume_payload: ResumePayload = interrupt({
         "message": f"Agent wants to execute code. Risk assessment: {state['review_output']['threat_level']}.",
         "options": ["approve", "skip", "reject"],
         "tool_call_id": state["tool_call_id"]
     })
+    user_input = resume_payload["user_input"]
 
     normalized = ""
     if isinstance(user_input, dict):

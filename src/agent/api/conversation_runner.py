@@ -25,6 +25,7 @@ from agent.api.conversation_models import (
 )
 from agent.api.title_generator import ConversationTitleGenerator
 from agent.config import AppConfig
+from agent.core.state import ResumePayload
 from agent.file_utils.utils import (
     PendingMessageAttachmentRef,
     bind_pending_message_attachments,
@@ -226,22 +227,29 @@ class ConversationRunner:
                 except HTTPException as exc:
                     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
         
-            
-            human_message =  HumanMessage(role="user",content=user_message)
+            human_message = HumanMessage(role="user",content=user_message)
+            attachment_content = ""
             if bound_attachments:
                 try:
-                    human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
-                    attachment_idx = 0
-                    for attachment in bound_attachments:
-                        attachment_content, attachment_name = await load_attachment_content(self.session_factory, attachment.attachment_id)
+                    # human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
+                    # attachment_idx = 0
+                    # for attachment in bound_attachments:
+                    #     attachment_content, attachment_name = await load_attachment_content(self.session_factory, attachment.attachment_id)
+                    #     display_name = attachment.name or attachment_name
+                    #     human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{display_name}]:\n{attachment_content}\n\n"
+                    #     attachment_idx += 1
+                    # human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
+                    for i, attachment in enumerate(bound_attachments):
+                        content, attachment_name = await load_attachment_content(self.session_factory, attachment.attachment_id)
                         display_name = attachment.name or attachment_name
-                        human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{display_name}]:\n{attachment_content}\n\n"
-                        attachment_idx += 1
-                    human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
+                        attachment_content += f"Attachment {i + 1} [{display_name}]:\n{content}\n\n"
                 except HTTPException as exc:
                     raise HTTPException(status_code=exc.status_code, detail=exc.detail)
-            else:
-                human_message_with_attachments = human_message
+            
+            resume_payload : ResumePayload = {
+                "user_input": user_message,
+                "attachment_content": attachment_content
+            }
             
             await _ensure_thread_waiting_for_resume()
 
@@ -260,7 +268,7 @@ class ConversationRunner:
             )
 
             gen = self.graph.astream(
-                Command(resume=human_message_with_attachments.content),
+                Command(resume=resume_payload),
                 config,
                 version="v2",
                 stream_mode=["messages","checkpoints","updates", "values"]

@@ -32,3 +32,7 @@ tests/*
 
 rag_data
 test_data
+#cron relevent files
+cron/
+runs/
+.DS_Store
