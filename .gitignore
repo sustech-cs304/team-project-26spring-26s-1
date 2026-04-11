@@ -18,3 +18,12 @@ uv.lock
 # data files
 *.db
 config.yaml
+
+#uploaded files
+uploads/*
+
+*.db-shm
+*.db-wal
+
+tests/*
+.gitignore
