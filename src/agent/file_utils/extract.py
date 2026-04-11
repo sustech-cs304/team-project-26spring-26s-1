@@ -29,6 +29,10 @@ def _safe_file_name(file_name: str | None) -> str:
     clean_name = Path(file_name).name
     return clean_name or "uploaded_file"
 
+def _relative_upload_root(config: AppConfig) -> Path:
+    root = Path(config.file.upload_path)
+    return _relative_storage_path(root) if root.is_absolute() else root
+
 
 async def _read_file_and_hash(file: UploadFile) -> tuple[bytes, str]:
     content = await file.read()
@@ -57,7 +61,7 @@ async def _persist_uploaded_file(
     config: AppConfig,
 ) -> Path:
     timestamp = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-    target_dir = _resolve_upload_root(config) / timestamp
+    target_dir = _relative_upload_root(config) / timestamp
     target_dir.mkdir(parents=True, exist_ok=True)
     source_file = target_dir / _build_stored_file_name(attachment_id, file_name)
     await asyncio.to_thread(source_file.write_bytes, content)
