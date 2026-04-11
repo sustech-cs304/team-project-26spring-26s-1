@@ -19,5 +19,13 @@ uv.lock
 *.db
 config.yaml
 
+#uploaded files
+uploads/*
+
+*.db-shm
+*.db-wal
+
+tests/*
+.gitignore
 # AI tools
 .codex
