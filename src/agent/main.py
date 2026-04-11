@@ -41,6 +41,10 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.engine = engine
 	app.state.async_session = async_session
 	app.state.ConversationRunner = ConversationRunner(graph, async_session, config)
+<<<<<<< HEAD
+=======
+	app.state.FileRunner = FileRunner(async_session, config)
+>>>>>>> 0a90f11... backend - implement onebot integration with access control
 	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner, config.onebot)
 	app.state.config = config
 	app.state.graph = graph
