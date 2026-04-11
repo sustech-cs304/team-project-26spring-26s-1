@@ -14,11 +14,11 @@
             </v-sheet>
 
             <v-sheet class="d-flex align-center ga-2">
-                <v-btn icon size="x-small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
+                <v-btn icon size="small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
                     <v-icon size="14">{{ searchRailCollapsed ? 'mdi-dock-right' : 'mdi-dock-window' }}</v-icon>
                     <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show search' : 'Hide search' }}</v-tooltip>
                 </v-btn>
-                <v-btn size="x-small" color="primary" @click="openCreate(selectedCell?.dateKey ?? todayKey)">
+                <v-btn size="small" color="primary" @click="openCreate(selectedCell?.dateKey ?? todayKey)">
                     <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
                 </v-btn>
             </v-sheet>
