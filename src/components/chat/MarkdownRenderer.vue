@@ -3,8 +3,8 @@
 </template>
 
 <script lang="ts">
-// 模块级：所有 MarkdownRenderer 实例共享同一个引用计数
-let _themeRefCount = 0
+    // 模块级：所有 MarkdownRenderer 实例共享同一个引用计数
+    let _themeRefCount = 0
 </script>
 
 <script setup lang="ts">
@@ -61,7 +61,7 @@ let _themeRefCount = 0
         linkify: true,
         typographer: true,
         breaks: true,
-        highlight(str: string, lang: string): string {
+        highlight (str: string, lang: string): string {
             if (lang && hljs.getLanguage(lang)) {
                 try {
                     return hljs.highlight(str, { language: lang }).value
@@ -376,14 +376,18 @@ let _themeRefCount = 0
         border-collapse: collapse;
         margin: 0.5em 0;
         font-size: 0.9em;
-        width: max-content;
+        width: 100%;
         max-width: 100%;
+        table-layout: auto;
     }
 
     .md-body th,
     .md-body td {
         border: 1px solid rgba(128, 128, 128, 0.3);
         padding: 0.4em 0.8em;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
     }
 
     .md-body th {

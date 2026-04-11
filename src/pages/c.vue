@@ -1,8 +1,8 @@
 <template>
-    <v-layout class="h-100">
+    <v-layout class="h-100 overflow-hidden min-height-0">
 
         <!-- 对话列表侧边栏 -->
-        <v-navigation-drawer v-model="drawer" permanent width="250">
+        <v-navigation-drawer v-model="drawer" permanent width="250" class="min-height-0">
             <v-list nav density="compact" v-if="!searchMode">
                 <!-- 新对话按钮 -->
                 <v-list-item title="新对话" @click="newConversation" rounded="lg" slim prepend-gap="6" :ripple="false"
@@ -122,7 +122,7 @@
 
 
         <!-- 子路由内容区 -->
-        <v-main scrollable>
+        <v-main class="overflow-hidden min-height-0">
             <RouterView />
         </v-main>
 

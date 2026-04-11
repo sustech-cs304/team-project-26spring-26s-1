@@ -1,9 +1,9 @@
 <template>
-    <v-container fluid class="d-flex flex-column h-100 pa-0">
+    <v-container fluid class="d-flex flex-column h-100 pa-0 overflow-hidden min-height-0">
 
         <!-- 消息列表 -->
-        <v-sheet ref="scrollEl" color="transparent" class="flex-grow-1 overflow-y-auto">
-            <v-container max-width="800" class="px-6 py-4">
+        <v-sheet ref="scrollEl" color="transparent" class="flex-grow-1 overflow-y-auto min-height-0">
+            <v-container max-width="800" class="px-6 py-4 min-height-0">
                 <template v-for="(msg, i) in messages" :key="msg.message_id || `${i}-${msg.role}`">
 
                     <!-- 用户消息 -->
@@ -90,7 +90,7 @@
         </v-sheet>
 
         <!-- 底部输入区 -->
-        <v-sheet elevation="0" color="transparent">
+        <v-sheet elevation="0" color="transparent" class="flex-shrink-0">
             <v-container max-width="800" class="px-6 pb-5 pt-2">
                 <MessageInput ref="messageInputRef" v-model="input" :loading="loading" :disabled="hasPendingTool"
                     @send="send" @stop="stop" />

@@ -9,6 +9,7 @@ import { createApp } from 'vue'
 
 // Plugins
 import { registerPlugins } from '@/plugins'
+import { installGlobalLinkHandler } from '@/utils/link'
 
 // Components
 import App from './App.vue'
@@ -20,6 +21,7 @@ import 'katex/dist/katex.min.css'
 const app = createApp(App)
 
 registerPlugins(app)
+installGlobalLinkHandler()
 
 app.mount('#app')
 

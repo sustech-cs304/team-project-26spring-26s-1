@@ -6,7 +6,20 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager,
 };
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+
+#[tauri::command]
+fn open_external_link(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let value = url.trim();
+    if value.is_empty() {
+        return Err("empty url".to_string());
+    }
+
+    app.opener()
+        .open_url(value, None::<&str>)
+        .map_err(|error| error.to_string())
+}
 
 #[derive(Default)]
 struct ShortcutThrottle {
@@ -51,6 +64,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(ShortcutThrottle::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![open_external_link])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
