@@ -6,8 +6,8 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager,
 };
-use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
 fn open_external_link(app: tauri::AppHandle, url: String) -> Result<(), String> {

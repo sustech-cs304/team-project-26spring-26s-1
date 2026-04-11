@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import router from '@/router'
 
 const isTauriClient = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -75,10 +76,14 @@ export const installGlobalLinkHandler = (): void => {
         event.preventDefault()
 
         if (resolved.target === 'internal') {
-            window.location.assign(resolved.url)
+            const parsed = new URL(resolved.url)
+            const path = `${parsed.pathname}${parsed.search}${parsed.hash}`
+            if (path !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+                void router.push(path)
+            }
             return
         }
 
         void openExternalLink(href)
-    }, true)
+    })
 }
