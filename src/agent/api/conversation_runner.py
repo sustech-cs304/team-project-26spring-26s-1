@@ -1,4 +1,5 @@
 import asyncio
+import datetime as dt
 from pathlib import Path
 from typing import Any, Dict, cast
 from uuid import uuid4
@@ -129,167 +130,173 @@ class ConversationRunner:
             self._conversation_jobs[conversation_id] = _ConversationJobState()
         else:
             raise ValueError(f"Conversation {conversation_id} is already running")
-        
-        async with self.session_factory() as session:
-            session : AsyncSession
-            conversation_row = await session.execute(
-                select(db_models.Conversation).where(db_models.Conversation.id == conversation_id)
-            )
-            conversation = conversation_row.scalars().first()
-            if not conversation:
-                raise ValueError(f"Conversation {conversation_id} not found in database")
-        
-        # checkpoint_id = None
-        
-        if restart_message_id:
+
+        try:
             async with self.session_factory() as session:
                 session : AsyncSession
-                async with session.begin():
-                    restart_message = (await session.execute(
-                        select(db_models.Message)
-                            .where(db_models.Message.conversation_id == conversation_id)
-                            .where(db_models.Message.id == restart_message_id)
-                        )).scalar()
-                    if restart_message is None:
-                        raise ValueError(f"Restart message {restart_message_id} not found in conversation {conversation_id}")
-                    
-                    # erase messages after restart_message_seq(inclusive)
-                    await session.execute(
-                        delete(db_models.Message)
-                            .where(db_models.Message.conversation_id == conversation_id)
-                            .where(db_models.Message.seq >= restart_message.seq)
-                    )
-                    
-                    # erase checkpoints after restart_message_seq(inclusive)
-                    conn = self.graph.checkpointer.conn
-                    await conn.execute(
-                        "DELETE FROM checkpoints WHERE thread_id = ? AND checkpoint_id >= ?",
-                        (conversation_id, restart_message.checkpoint_id)
-                    )
-                    await conn.execute(
-                        "DELETE FROM writes WHERE thread_id = ? AND checkpoint_id >= ?",
-                        (conversation_id, restart_message.checkpoint_id)
-                    )
-        
-        config : RunnableConfig = {
-            "configurable": {
-                "thread_id": conversation_id
-            }
-        }
-        
-        #dealing with attachments
-        async def _get_attachment(attachment_id: str):
-            async with self.session_factory() as session:
-                session : AsyncSession
-                attachment_row = await session.execute(
-                    select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
+                conversation_row = await session.execute(
+                    select(db_models.Conversation).where(db_models.Conversation.id == conversation_id)
                 )
-                attachment = attachment_row.scalars().first()
-                if not attachment:
-                    raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
-                return attachment
-        async def _wait_extracted(attachment_id: str, timeout: int = 300):
-            start = asyncio.get_event_loop().time()
-            while True:
-                attachment = await _get_attachment(attachment_id)
-                if attachment.status == "completed":
-                    return attachment
-                elif attachment.status == "failed":
-                    raise ValueError(f"Attachment failed to extract: attachment_id={attachment_id}")
-                else:
-                    if asyncio.get_event_loop().time() - start > timeout:
-                        raise TimeoutError(f"Attachment wait timeout: attachment_id={attachment_id}, timeout={timeout}s")
-                    await asyncio.sleep(1)
-        async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
-            attachment = await _wait_extracted(attachment_id)
-            type = Path(attachment.path).suffix.lower()
-            name = Path(attachment.path).name
-            read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
-            content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
-            return content, name
-        
-        async def _link_message_attachment(message_id: str, attachment_id: str, name: str | None = None):
-            async with self.session_factory() as session:
-                session : AsyncSession
-                async with session.begin():
-                    attachment = (await session.execute(
-                        select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
-                    )).scalar_one_or_none()
-                    if not attachment:
-                        raise ValueError(f"Attachment not found in database during linking: attachment_id={attachment_id}")
-                    existed = (
+                conversation = conversation_row.scalars().first()
+                if not conversation:
+                    raise ValueError(f"Conversation {conversation_id} not found in database")
+                conversation.time_last_used = dt.datetime.now(dt.timezone.utc)
+                await session.commit()
+            
+            # checkpoint_id = None
+            
+            if restart_message_id:
+                async with self.session_factory() as session:
+                    session : AsyncSession
+                    async with session.begin():
+                        restart_message = (await session.execute(
+                            select(db_models.Message)
+                                .where(db_models.Message.conversation_id == conversation_id)
+                                .where(db_models.Message.id == restart_message_id)
+                            )).scalar()
+                        if restart_message is None:
+                            raise ValueError(f"Restart message {restart_message_id} not found in conversation {conversation_id}")
+                        
+                        # erase messages after restart_message_seq(inclusive)
                         await session.execute(
-                            select(db_models.MessageAttachment)
-                                .where(db_models.MessageAttachment.message_id == message_id)
-                                .where(db_models.MessageAttachment.attachment_id == attachment_id)
-                                .limit(1)
+                            delete(db_models.Message)
+                                .where(db_models.Message.conversation_id == conversation_id)
+                                .where(db_models.Message.seq >= restart_message.seq)
                         )
-                    ).scalar_one_or_none()
-                    if existed:
-                        return
-                    display_name = name or Path(attachment.path).name
-                    message_attachment_row = db_models.MessageAttachment(
-                        message_id=message_id,
-                        attachment_id=attachment_id,
-                        name=display_name
+                        
+                        # erase checkpoints after restart_message_seq(inclusive)
+                        conn = self.graph.checkpointer.conn
+                        await conn.execute(
+                            "DELETE FROM checkpoints WHERE thread_id = ? AND checkpoint_id >= ?",
+                            (conversation_id, restart_message.checkpoint_id)
+                        )
+                        await conn.execute(
+                            "DELETE FROM writes WHERE thread_id = ? AND checkpoint_id >= ?",
+                            (conversation_id, restart_message.checkpoint_id)
+                        )
+            
+            config : RunnableConfig = {
+                "configurable": {
+                    "thread_id": conversation_id
+                }
+            }
+            
+            #dealing with attachments
+            async def _get_attachment(attachment_id: str):
+                async with self.session_factory() as session:
+                    session : AsyncSession
+                    attachment_row = await session.execute(
+                        select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
                     )
-                    session.add(message_attachment_row)
-        async def _link_message_attachments(message_id: str, attachment_ids: list[str]):
-            for attachment_id in attachment_ids:
-                print(f"Linking attachment {attachment_id} to message {message_id}")
-                await _link_message_attachment(message_id, attachment_id)
+                    attachment = attachment_row.scalars().first()
+                    if not attachment:
+                        raise ValueError(f"Attachment not found in database: attachment_id={attachment_id}")
+                    return attachment
+            async def _wait_extracted(attachment_id: str, timeout: int = 300):
+                start = asyncio.get_event_loop().time()
+                while True:
+                    attachment = await _get_attachment(attachment_id)
+                    if attachment.status == "completed":
+                        return attachment
+                    elif attachment.status == "failed":
+                        raise ValueError(f"Attachment failed to extract: attachment_id={attachment_id}")
+                    else:
+                        if asyncio.get_event_loop().time() - start > timeout:
+                            raise TimeoutError(f"Attachment wait timeout: attachment_id={attachment_id}, timeout={timeout}s")
+                        await asyncio.sleep(1)
+            async def _load_attachment(attachment_id: str) -> tuple[str, str]: # content, name
+                attachment = await _wait_extracted(attachment_id)
+                type = Path(attachment.path).suffix.lower()
+                name = Path(attachment.path).name
+                read_path = Path(attachment.path) if type == ".txt" else Path(attachment.path).with_suffix(".md")
+                content = await asyncio.to_thread(lambda: read_path.read_text(encoding="utf-8"))
+                return content, name
+            
+            async def _link_message_attachment(message_id: str, attachment_id: str, name: str | None = None):
+                async with self.session_factory() as session:
+                    session : AsyncSession
+                    async with session.begin():
+                        attachment = (await session.execute(
+                            select(db_models.Attachment).where(db_models.Attachment.id == attachment_id)
+                        )).scalar_one_or_none()
+                        if not attachment:
+                            raise ValueError(f"Attachment not found in database during linking: attachment_id={attachment_id}")
+                        existed = (
+                            await session.execute(
+                                select(db_models.MessageAttachment)
+                                    .where(db_models.MessageAttachment.message_id == message_id)
+                                    .where(db_models.MessageAttachment.attachment_id == attachment_id)
+                                    .limit(1)
+                            )
+                        ).scalar_one_or_none()
+                        if existed:
+                            return
+                        display_name = name or Path(attachment.path).name
+                        message_attachment_row = db_models.MessageAttachment(
+                            message_id=message_id,
+                            attachment_id=attachment_id,
+                            name=display_name
+                        )
+                        session.add(message_attachment_row)
+            async def _link_message_attachments(message_id: str, attachment_ids: list[str]):
+                for attachment_id in attachment_ids:
+                    print(f"Linking attachment {attachment_id} to message {message_id}")
+                    await _link_message_attachment(message_id, attachment_id)
 
-        async def _ensure_thread_waiting_for_resume():
-            needs_prime = True
-            try:
-                snapshot = await self.graph.aget_state(config)
-                needs_prime = len(snapshot.next) == 0
-            except Exception:
+            async def _ensure_thread_waiting_for_resume():
                 needs_prime = True
+                try:
+                    snapshot = await self.graph.aget_state(config)
+                    needs_prime = len(snapshot.next) == 0
+                except Exception:
+                    needs_prime = True
 
-            if needs_prime:
-                await self.graph.ainvoke({}, config, version="v2")
+                if needs_prime:
+                    await self.graph.ainvoke({}, config, version="v2")
 
-        #give back and insert user message
-        user_message_id = restart_message_id or str(uuid4())
-        self._conversation_jobs[conversation_id].user_message_id = user_message_id
-        
-        human_message =  HumanMessage(role="user",content=user_message)
-        if attachments:
-            human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
-            attachment_idx = 0
-            for attachment_id in attachments:
-                attachment_content, attachment_name = await _load_attachment(attachment_id)
-                human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{attachment_name}]:\n{attachment_content}\n\n"
-                attachment_idx += 1
-            human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
-        else:
-            human_message_with_attachments = human_message
-        
-        await _ensure_thread_waiting_for_resume()
+            #give back and insert user message
+            user_message_id = restart_message_id or str(uuid4())
+            self._conversation_jobs[conversation_id].user_message_id = user_message_id
+            
+            human_message =  HumanMessage(role="user",content=user_message)
+            if attachments:
+                human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
+                attachment_idx = 0
+                for attachment_id in attachments:
+                    attachment_content, attachment_name = await _load_attachment(attachment_id)
+                    human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{attachment_name}]:\n{attachment_content}\n\n"
+                    attachment_idx += 1
+                human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
+            else:
+                human_message_with_attachments = human_message
+            
+            await _ensure_thread_waiting_for_resume()
 
-        await db_utils.db_update_message(
-            self.session_factory,
-            conversation_id=conversation_id,
-            message_id=user_message_id,
-            langchain_id=None,
-            content=human_message.model_dump_json(),
-            attachments=attachments,
-        )
-        if attachments:
-            await _link_message_attachments(user_message_id, attachments)
-        self.title_task_manager.request_title_generation(
-            conversation_id,
-            conversation.title,
-            user_message,
-        )
+            await db_utils.db_update_message(
+                self.session_factory,
+                conversation_id=conversation_id,
+                message_id=user_message_id,
+                langchain_id=None,
+                content=human_message.model_dump_json(),
+                attachments=attachments,
+            )
+            if attachments:
+                await _link_message_attachments(user_message_id, attachments)
+            self.title_task_manager.request_title_generation(
+                conversation_id,
+                conversation.title,
+                user_message,
+            )
 
-        gen = self.graph.astream(
-            Command(resume=human_message_with_attachments.content),
-            config,
-            version="v2",
-            stream_mode=["messages","checkpoints","updates", "values"]
-        )
+            gen = self.graph.astream(
+                Command(resume=human_message_with_attachments.content),
+                config,
+                version="v2",
+                stream_mode=["messages","checkpoints","updates", "values"]
+            )
+        except Exception:
+            self._conversation_jobs.pop(conversation_id, None)
+            raise
                 
         async def _run(job: _ConversationJobState):
             current_message: AnyMessage | None = None
@@ -454,8 +461,9 @@ class ConversationRunner:
                 self._conversation_jobs.pop(conversation_id, None)
         
         self._conversation_jobs[conversation_id].task = asyncio.create_task(_run(self._conversation_jobs[conversation_id]))
+        return self._conversation_jobs[conversation_id]
         
-    async def stream(self, conversation_id : str, need_history: bool):
+    async def stream(self, conversation_id : str, need_history: bool, job: _ConversationJobState | None = None):
         if need_history:
             async def _get_history():
                 async with self.session_factory() as session:
@@ -481,12 +489,13 @@ class ConversationRunner:
             history_messages = []
             attachment_map = {}
 
-        if conversation_id in self._conversation_jobs:
+        active_job = job or self._conversation_jobs.get(conversation_id)
+
+        if active_job is not None:
             yield CompletionUserMessage(
-                message_id = self._conversation_jobs[conversation_id].user_message_id,
+                message_id = active_job.user_message_id,
             )
             
-            job = self._conversation_jobs[conversation_id]
             idx = 0
             if need_history:
                 finalized_messages = set()
@@ -501,19 +510,19 @@ class ConversationRunner:
                     finalized_messages.add(message.id)
                 
                 print(f"Last message seq in history: {history_messages[-1].seq if history_messages else 'No history messages'}")
-                while idx < len(job.history) and job.history[idx].message_id in finalized_messages:
+                while idx < len(active_job.history) and active_job.history[idx].message_id in finalized_messages:
                     idx += 1
                 
             print(f"Starting stream from idx {idx}")
             while True:
-                async with job.cond:
-                    while idx < len(job.history):
-                        yield job.history[idx]
+                async with active_job.cond:
+                    while idx < len(active_job.history):
+                        yield active_job.history[idx]
                         idx += 1
-                    if self._conversation_jobs.get(conversation_id) != job:
+                    if active_job.task.done() and idx >= len(active_job.history):
                         break
                     try:
-                        await asyncio.wait_for(job.cond.wait(), timeout=2)
+                        await asyncio.wait_for(active_job.cond.wait(), timeout=2)
                     except asyncio.TimeoutError:
                         pass
         
