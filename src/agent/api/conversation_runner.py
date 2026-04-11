@@ -43,7 +43,6 @@ class _ConversationJobState:
         self.cond = asyncio.Condition()
         self.task : asyncio.Task = None # type: ignore
         self.user_message_id = ""
-        self.parser = AnthropicEventParser() # TODO: select parser based on model type
 
 
 class TitleTaskManager:
@@ -120,6 +119,7 @@ class ConversationRunner:
         self.graph = graph
         self.session_factory = session_factory
         self.config = config
+        self.parser = AnthropicEventParser() # TODO: select parser based on model type
         
         self.title_task_manager = TitleTaskManager(
             self.session_factory,
@@ -314,7 +314,7 @@ class ConversationRunner:
                                 content = current_message.model_dump_json(),
                                 attachments = []
                             )
-                            deltas = job.parser.parse_event(event, message_uuid)
+                            deltas = self.parser.parse_event(event, message_uuid)
                         
                         if isinstance(current_message, ToolMessage):
                             tool_call_request_message = await db_utils.db_get_message_by_langchain_id(
@@ -335,7 +335,7 @@ class ConversationRunner:
                                 attachments = [],
                                 checkpoint_id = last_checkpoint
                             )
-                            deltas = job.parser.parse_message_delta(tool_call_response_message, message_uuid)
+                            deltas = self.parser.parse_message_delta(tool_call_response_message, message_uuid)
                         
                         print(f"Received message chunk: {message_chunk}")
                     elif event["type"] == "updates":
@@ -382,7 +382,7 @@ class ConversationRunner:
                                         attachments = [],
                                         checkpoint_id = last_checkpoint
                                     )
-                                    deltas.extend(job.parser.parse_message_delta(tool_message, tool_message_id))
+                                    deltas.extend(self.parser.parse_message_delta(tool_message, tool_message_id))
                     elif event["type"] == "values":
                         value_event = cast(dict[str, Any], event)
                         interrupts = value_event.get("interrupts") or []
@@ -416,7 +416,7 @@ class ConversationRunner:
                                 attachments = [],
                                 checkpoint_id = last_checkpoint
                             )
-                            deltas.extend(job.parser.parse_message_delta(tool_message, tool_message_row.id))
+                            deltas.extend(self.parser.parse_message_delta(tool_message, tool_message_row.id))
 
                     if deltas:
                         async with job.cond:
@@ -476,7 +476,7 @@ class ConversationRunner:
                             message_id = message.id,
                             created_at = int(message.created_at.timestamp()),
                             finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
-                            data = job.parser.parse_message(message_type_adapter.validate_json(message.content), attachment_map.get(message.id, []))
+                            data = self.parser.parse_message(message_type_adapter.validate_json(message.content), attachment_map.get(message.id, []))
                         )
                     finalized_messages.add(message.id)
                 
@@ -498,14 +498,13 @@ class ConversationRunner:
                         pass
         
         else:
-            parser = AnthropicEventParser()
             for message in history_messages:
                 message_object = message_type_adapter.validate_json(message.content)
                 yield CompletionResponseHistory(
                         message_id = message.id,
                         created_at = int(message.created_at.timestamp()),
                         finished_at = int(message.finished_at.timestamp()) if message.finished_at else int(message.created_at.timestamp()),
-                        data = parser.parse_message(message_object, attachment_map.get(message.id, []))
+                        data = self.parser.parse_message(message_object, attachment_map.get(message.id, []))
                     )
 
     async def cancel(self, conversation_id : str):
