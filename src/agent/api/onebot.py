@@ -23,6 +23,9 @@ from agent.config import OneBotConfig
 router = APIRouter()
 
 _PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n+")
+_TOOL_FORWARD_THRESHOLD = 200
+_TOOL_TRUNCATE_THRESHOLD = 8000
+_TOOL_FIELD_HEAD_LIMIT = 2000
 
 
 class OneBotApiError(Exception):
@@ -462,9 +465,7 @@ class OneBotHub:
                     for paragraph in paragraphs:
                         await self._send_text(target, paragraph)
 
-                    tool_paragraph = self._format_tool_paragraph(event)
-                    if tool_paragraph:
-                        await self._send_text(target, tool_paragraph)
+                    await self._send_tool_message(target, event)
 
             paragraphs, _ = _extract_paragraphs(text_buffer, flush=True)
             for paragraph in paragraphs:
@@ -475,7 +476,20 @@ class OneBotHub:
             print(f"OneBot conversation failed for {conversation_id}: {exc}")
             await self._send_text(target, f"Request failed: {exc}")
 
-    def _format_tool_paragraph(self, tool_call: CompletionResponseToolCall) -> str:
+    async def _send_tool_message(self, target: OneBotChatTarget, tool_call: CompletionResponseToolCall):
+        tool_message = self._format_tool_paragraph(tool_call)
+        if len(tool_message) <= _TOOL_FORWARD_THRESHOLD:
+            await self._send_text(target, tool_message)
+            return
+
+        if len(tool_message) > _TOOL_TRUNCATE_THRESHOLD:
+            tool_message = self._format_tool_paragraph(tool_call, trim_long_fields=True)
+            if len(tool_message) > _TOOL_TRUNCATE_THRESHOLD:
+                tool_message = self._trim_head(tool_message, _TOOL_TRUNCATE_THRESHOLD)
+
+        await self._send_forward_message(target, tool_message)
+
+    def _format_tool_paragraph(self, tool_call: CompletionResponseToolCall, trim_long_fields: bool = False) -> str:
         lines = [f"Tool: {tool_call.tool_name}"]
 
         if tool_call.tool_arguments:
@@ -483,6 +497,8 @@ class OneBotHub:
                 f"{argument.argument_name}={argument.argument}"
                 for argument in tool_call.tool_arguments
             )
+            if trim_long_fields:
+                arguments = self._trim_head(arguments, _TOOL_FIELD_HEAD_LIMIT)
             lines.append(f"Arguments: {arguments}")
 
         if tool_call.status == "pending":
@@ -498,23 +514,54 @@ class OneBotHub:
             return "\n".join(lines)
 
         if tool_call.tool_response.strip():
+            tool_response = tool_call.tool_response.strip()
+            if trim_long_fields:
+                tool_response = self._trim_head(tool_response, _TOOL_FIELD_HEAD_LIMIT)
             lines.append("Status: completed")
-            lines.append(tool_call.tool_response.strip())
+            lines.append(tool_response)
             return "\n".join(lines)
 
         lines.append("Status: running")
         return "\n".join(lines)
+
+    def _trim_head(self, text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return f"{text[:limit].rstrip()}\n...(truncated)"
 
     async def _send_text(self, target: OneBotChatTarget, text: str):
         message = text.strip()
         if not message:
             return
 
+        await self._send_message(target, message, auto_escape=True)
+
+    async def _send_forward_message(self, target: OneBotChatTarget, text: str):
+        message = text.strip()
+        if not message:
+            return
+
+        await self._send_message(
+            target,
+            [
+                {
+                    "type": "node",
+                    "data": {
+                        "user_id": target.account_id,
+                        "nickname": self.command_name,
+                        "content": message,
+                    },
+                }
+            ],
+        )
+
+    async def _send_message(self, target: OneBotChatTarget, message: Any, auto_escape: bool = False):
         params: dict[str, Any] = {
             "message_type": target.chat_type,
             "message": message,
-            "auto_escape": True,
         }
+        if isinstance(message, str):
+            params["auto_escape"] = auto_escape
         if target.chat_type == "private":
             params["user_id"] = int(target.chat_id)
         else:
