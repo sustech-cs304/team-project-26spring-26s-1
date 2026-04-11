@@ -8,6 +8,7 @@ from agent.api.file import router as file_router
 from agent.api.conversation_runner import ConversationRunner
 from agent.config import config
 from agent.core.graph import create_graph
+from agent.api.onebot import OneBotHub
 
 import aiosqlite
 from langgraph.store.sqlite import AsyncSqliteStore
@@ -40,6 +41,7 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.engine = engine
 	app.state.async_session = async_session
 	app.state.ConversationRunner = ConversationRunner(graph, async_session, config)
+	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner, config.onebot)
 	app.state.config = config
 	app.state.graph = graph
 

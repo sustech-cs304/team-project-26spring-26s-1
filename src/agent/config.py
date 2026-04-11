@@ -40,6 +40,11 @@ class FileConfig(BaseModel):
     upload_path: str
     mineru: MineruConfig
 
+class OneBotConfig(BaseModel):
+    access_token: str = ""
+    superuser_id: str = ""
+    command_name: str = "agent"
+
 class AppConfig(BaseModel):
     api: ApiConfig
     file: FileConfig
