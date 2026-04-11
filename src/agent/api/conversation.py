@@ -1,6 +1,7 @@
 import asyncio
 from fastapi import APIRouter, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+from fastapi.responses import JSONResponse
 import websockets
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from agent.api.conversation_runner import ConversationRunner
 from agent.api.conversation_service import (
     create_conversation as create_conversation_record,
     delete_conversation as delete_conversation_record,
+    search_conversations as search_conversations_record,
 )
 
 
@@ -104,6 +106,34 @@ async def list_conversations(request: Request, page: int = 1, page_size: int = 2
             for conv in conversations
         ]
     )
+
+
+@router.get("/conversations/search", response_model=ConversationListResponse)
+async def search_conversations(request: Request, keywords: str = "", page: int = 1, page_size: int = 25):
+    session_factory = request.app.state.async_session
+    runner: ConversationRunner = request.app.state.ConversationRunner
+
+    if page < 1 or page_size < 1 or not keywords.strip():
+        return JSONResponse(status_code=400, content={"message": "Invalid request parameters"})
+
+    try:
+        conversations = await search_conversations_record(session_factory, keywords, page, page_size)
+
+        return ConversationListResponse(
+            conversations=[
+                ConversationListItem(
+                    conversation_id=conv.id,
+                    created_at=int(conv.time_last_used.timestamp()),
+                    updated_at=int(conv.time_last_used.timestamp()),
+                    title=conv.title,
+                    is_active=runner.is_running(conv.id),
+                    is_pinned=conv.pinned,
+                )
+                for conv in conversations
+            ]
+        )
+    except Exception:
+        return JSONResponse(status_code=500, content={"message": "Internal server error"})
         
 @router.post("/conversation/cancelchat")
 async def cancel_conversation(request: Request, conversation_id: str):
