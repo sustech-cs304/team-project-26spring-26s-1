@@ -222,7 +222,7 @@ def _format_retrieve_results(results) -> str:
         rerank_text = f"{rerank_score:.6f}" if isinstance(rerank_score, (int, float)) else "unknown"
 
         metadata = value.get("metadata", {})
-        source_url = metadata.get("file_path", source_file)
+        source_url = metadata.get("source_url")
         lines.append(
             (
                 f"{idx}. score={score_text} semantic={semantic_text} rerank={rerank_text} "

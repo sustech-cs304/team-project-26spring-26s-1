@@ -304,7 +304,21 @@ def enrich_chunks_with_title_path(chunks: List[Dict[str, Any]], source_file: str
     return enriched_chunks
 
 
-def split_document_sync(file_path: Path, options: PipelineOptions) -> List[Dict[str, Any]]:
+def attach_source_url(chunks: List[Dict[str, Any]], source_url: str | None) -> List[Dict[str, Any]]:
+    if not source_url:
+        return chunks
+    for chunk in chunks:
+        metadata = dict(chunk.get("metadata") or {})
+        metadata["source_url"] = source_url
+        chunk["metadata"] = metadata
+    return chunks
+
+
+def split_document_sync(
+    file_path: Path,
+    options: PipelineOptions,
+    source_url: str | None = None,
+) -> List[Dict[str, Any]]:
     reader = SimpleDirectoryReader(input_files=[str(file_path)], required_exts=[file_path.suffix])
     docs = reader.load_data()
     if not docs:
@@ -325,11 +339,16 @@ def split_document_sync(file_path: Path, options: PipelineOptions) -> List[Dict[
         if not text or not text.strip():
             continue
         chunks.append({"text": text, "metadata": getattr(node, "metadata", {}) or {}})
-    return enrich_chunks_with_title_path(chunks, file_path.name)
+    enriched = enrich_chunks_with_title_path(chunks, file_path.name)
+    return attach_source_url(enriched, source_url)
 
 
-async def split_document_async(file_path: Path, options: PipelineOptions) -> List[Dict[str, Any]]:
-    return await asyncio.to_thread(split_document_sync, file_path, options)
+async def split_document_async(
+    file_path: Path,
+    options: PipelineOptions,
+    source_url: str | None = None,
+) -> List[Dict[str, Any]]:
+    return await asyncio.to_thread(split_document_sync, file_path, options, source_url)
 
 
 def append_chunk(chunk_file: Path, data: Dict[str, Any]) -> None:
@@ -353,6 +372,7 @@ async def process_one_document(
     output_dir: Path,
     checkpoint_file: Path,
     options: PipelineOptions,
+    source_url: str | None = None,
 ) -> str:
     rel_path = safe_rel_path(file_path, input_dir)
     safe_name = sanitize_rel_for_output(rel_path)
@@ -388,7 +408,7 @@ async def process_one_document(
         print(f"[恢复] 从 chunk #{entry['next_chunk_index']} 继续")
 
     try:
-        chunks = await split_document_async(file_path, options)
+        chunks = await split_document_async(file_path, options, source_url=source_url)
     except Exception as exc:
         async with CHECKPOINT_LOCK:
             checkpoint_data = load_checkpoint(checkpoint_file)
@@ -469,6 +489,7 @@ async def node_process_single_file(state: FileGraphState) -> Dict[str, Any]:
         output_dir=Path(state["output_dir"]),
         checkpoint_file=Path(state["checkpoint_file"]),
         options=PipelineOptions(),
+        source_url=None,
     )
     return {"result": result}
 
@@ -479,6 +500,7 @@ async def partition_files(
     output_dir: Path,
     checkpoint_file: Path,
     options: PipelineOptions | None = None,
+    source_url: str | None = None,
 ) -> Dict[str, int]:
     options = options or PipelineOptions()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -493,6 +515,7 @@ async def partition_files(
             output_dir=output_dir,
             checkpoint_file=checkpoint_file,
             options=options,
+            source_url=source_url,
         )
         if result == "done":
             done += 1
