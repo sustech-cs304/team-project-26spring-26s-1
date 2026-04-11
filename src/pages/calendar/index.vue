@@ -10,13 +10,13 @@
                 <v-btn icon size="x-small" variant="text" @click="nextMonth">
                     <v-icon size="16">mdi-chevron-right</v-icon>
                 </v-btn>
-                <v-btn size="x-small" variant="outlined" class="ml-1" @click="goToday">Today</v-btn>
+                <v-btn size="small" variant="outlined" class="ml-1" @click="goToday">Today</v-btn>
             </v-sheet>
 
             <v-sheet class="d-flex align-center ga-2">
                 <v-btn icon size="x-small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
                     <v-icon size="14">{{ searchRailCollapsed ? 'mdi-dock-right' : 'mdi-dock-window' }}</v-icon>
-                    <v-tooltip activator="parent">{{ searchRailCollapsed ? 'Show search' : 'Hide search' }}</v-tooltip>
+                    <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show search' : 'Hide search' }}</v-tooltip>
                 </v-btn>
                 <v-btn size="x-small" color="primary" @click="openCreate(selectedCell?.dateKey ?? todayKey)">
                     <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
@@ -27,8 +27,7 @@
         <v-sheet class="d-flex flex-grow-1 min-height-0" style="overflow: hidden;">
             <aside class="border-e d-flex flex-column" style="width: 260px; min-width: 260px; overflow-y: auto;">
                 <v-sheet class="pa-3 border-b">
-                    <v-sheet class="d-flex align-center justify-space-between mb-2">
-                        <span class="text-caption text-medium-emphasis">Mini Calendar</span>
+                    <v-sheet class="d-flex align-center justify-center mb-2">
                         <span class="text-caption font-weight-bold">{{ monthLabel }}</span>
                     </v-sheet>
                     <v-sheet style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;">
@@ -146,13 +145,7 @@
                     <v-sheet class="text-caption text-medium-emphasis mt-2">{{ searchResults.length }} result{{ searchResults.length === 1 ? '' : 's' }}</v-sheet>
                     <v-sheet v-if="searchError" class="text-caption text-error mt-1">{{ searchError }}</v-sheet>
 
-                    <v-list density="compact" class="search-result-list mt-2">
-                        <v-sheet v-if="!hasSearched" class="text-caption text-medium-emphasis pa-2">
-                            Enter keyword and click Search.
-                        </v-sheet>
-                        <v-sheet v-else-if="searchResultEvents.length === 0" class="text-caption text-medium-emphasis pa-2">
-                            No matching events.
-                        </v-sheet>
+                    <v-list v-if="searchResultEvents.length > 0" density="compact" class="search-result-list mt-2">
                         <v-list-item v-for="ev in searchResultEvents" :key="`search-${ev.id}`"
                             :active="selectedEventId === ev.id" active-color="primary" rounded="lg" class="mb-1 px-2 py-2"
                             @click="onEventClick(ev)">

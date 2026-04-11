@@ -1,16 +1,16 @@
 <template>
     <v-btn block height="20" min-width="0" rounded="sm" variant="text" class="pa-0 ma-0 overflow-hidden justify-start align-stretch text-none" type="button" :title="event.title" :style="chipStyle" @mouseenter="isHovered = true" @mouseleave="isHovered = false" @click.stop="$emit('click', event)" @contextmenu.prevent.stop="$emit('contextmenu', { event, mouseEvent: $event })">
         <span :style="sourceStyle"></span>
-        <span class="d-flex align-center flex-grow-1" :style="contentStyle">
-            <span class="text-truncate flex-grow-1" :style="titleStyle">{{ event.title }}</span>
-            <span class="flex-shrink-0" :style="timeStyle">{{ event.time }}</span>
+        <span class="flex-grow-1" :style="contentStyle">
+            <span class="flex-shrink-0" :style="timeStyle">{{ timeLabel }}</span>
+            <span :style="titleStyle">{{ event.title }}</span>
         </span>
     </v-btn>
 </template>
 
 <script setup lang="ts">
     import type { CalEvent } from '@/types/calendar'
-import { over } from 'lodash';
+    import { getEventChipTimeLabel } from '@/utils/calendar'
 
     const props = withDefaults(defineProps<{ event: CalEvent; dimmed?: boolean; sourceColorMap?: Record<string, string> }>(), {
         dimmed: false,
@@ -21,6 +21,7 @@ import { over } from 'lodash';
     }>()
 
     const isHovered = ref(false)
+    const timeLabel = computed(() => getEventChipTimeLabel(props.event))
     const sourceColor = computed(() => props.sourceColorMap?.[props.event.source] ?? '#2563eb')
     const fillColor = computed(() => props.event.color || '#3b82f6')
     const categoryColor = computed(() => `color-mix(in srgb, ${fillColor.value} 28%, transparent)`)
@@ -39,23 +40,29 @@ import { over } from 'lodash';
         backgroundColor: sourceColor.value,
     }))
     const contentStyle = computed(() => ({
+        display: 'grid',
+        gridTemplateColumns: 'max-content minmax(0, 1fr)',
+        alignItems: 'center',
         height: '100%',
-        gap: '5px',
+        columnGap: '3px',
         minWidth: '0',
-        padding: '0 6px',
+        overflow: 'hidden',
+        padding: '0 2px',
         color: 'rgba(var(--v-theme-on-surface), 0.95)',
     }))
     const titleStyle = {
+        display: 'block',
         minWidth: '0',
-        maxWidth: '60px',
         overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        textOverflow: 'ellipsis',
         fontSize: '11px',
         fontWeight: 500,
     }
     const timeStyle = {
         whiteSpace: 'nowrap',
         overflow: 'hidden',
-        fontSize: '9px',
-        opacity: '0.72',
+        fontSize: '11px',
+        opacity: '0.8',
     }
 </script>
