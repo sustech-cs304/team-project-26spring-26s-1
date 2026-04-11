@@ -21,8 +21,9 @@ class FileMetadata(BaseModel):
 
 
 class FileUploadResponse(BaseModel):
-	file_id: str = Field(description="上传成功后返回的文件唯一标识符")
+	file_id: str = Field(description="上传后预创建的消息附件唯一标识符，实际表示关系到MessageAttachment表的id")
 	mime_type: str | None = Field(description="文件的MIME类型")
+	file_name: str = Field(description="服务端确认后的合法文件名")
 
 
 class FileInfoResponse(BaseModel):

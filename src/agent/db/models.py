@@ -44,7 +44,7 @@ class Attachment(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     path: Mapped[str] = mapped_column(String(1024), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")
     mineru_id: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     message_links: Mapped[list["MessageAttachment"]] = relationship("MessageAttachment", back_populates="attachment")
@@ -52,8 +52,9 @@ class Attachment(Base):
 class MessageAttachment(Base):
     __tablename__ = "message_attachments"
 
-    message_id: Mapped[str] = mapped_column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True)
-    attachment_id: Mapped[str] = mapped_column(String(36), ForeignKey("attachments.id"), primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    message_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), nullable=True)
+    attachment_id: Mapped[str] = mapped_column(String(36), ForeignKey("attachments.id"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     message: Mapped["Message"] = relationship("Message", back_populates="attachments")
