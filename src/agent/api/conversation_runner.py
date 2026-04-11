@@ -111,16 +111,11 @@ class ConversationRunner:
         self.graph = graph
         self.session_factory = session_factory
         self.config = config
-
-    _title_task_manager = None
-
-    def _get_title_task_manager(self) -> TitleTaskManager:
-        if self._title_task_manager is None:
-            self._title_task_manager = TitleTaskManager(
-                self.session_factory,
-                self.config,
-            )
-        return self._title_task_manager
+        
+        self.title_task_manager = TitleTaskManager(
+            self.session_factory,
+            self.config,
+        )
     
     def is_running(self, conversation_id: str) -> bool:
         return conversation_id in self._conversation_jobs
@@ -283,7 +278,7 @@ class ConversationRunner:
         )
         if attachments:
             await _link_message_attachments(user_message_id, attachments)
-        self._get_title_task_manager().request_title_generation(
+        self.title_task_manager.request_title_generation(
             conversation_id,
             conversation.title,
             user_message,
