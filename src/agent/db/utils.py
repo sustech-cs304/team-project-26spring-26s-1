@@ -15,6 +15,24 @@ async def db_get_message_by_langchain_id(session_factory: async_sessionmaker, co
                 .limit(1)
         )
         return result.scalars().first()
+
+
+async def db_get_conversation(session_factory: async_sessionmaker, conversation_id: str) -> db_models.Conversation | None:
+    async with session_factory() as session:
+        session: AsyncSession
+        return await session.get(db_models.Conversation, conversation_id)
+
+
+async def db_update_conversation_title(session_factory: async_sessionmaker, conversation_id: str, title: str) -> bool:
+    async with session_factory() as session:
+        session: AsyncSession
+        result = await session.execute(
+            update(db_models.Conversation)
+                .where(db_models.Conversation.id == conversation_id)
+                .values(title=title)
+        )
+        await session.commit()
+        return result.rowcount > 0
     
 async def db_update_message(session_factory: async_sessionmaker, conversation_id: str, content: str, message_id: str | None = None, langchain_id: str | None = None, attachments: list[str] = [], checkpoint_id: str | None = None) -> str:
     async with session_factory() as session:

@@ -40,7 +40,7 @@ class CompletionResponseDelta(pydantic.BaseModel):
     
 class CompletionResponseMetadata(pydantic.BaseModel):
     title: str
-    _event_type: ClassVar[str] = "meta_data"
+    _event_type: ClassVar[str] = "metadata"
 
 class CompletionResponseToolCall(ToolMessage):
     message_id: str
