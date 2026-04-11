@@ -29,3 +29,8 @@ tests/*
 .gitignore
 # AI tools
 .codex
+
+#cron relevent files
+cron/
+runs/
+.DS_Store
