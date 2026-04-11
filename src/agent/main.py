@@ -12,6 +12,7 @@ from agent.api.conversation import router as conversation_router
 from agent.api.file import router as file_router
 from agent.api.notifications import router as notifications_router
 from agent.api.onebot import OneBotHub, router as onebot_router
+from agent.api.rag import router as rag_router
 from agent.api.conversation_runner import ConversationRunner
 from agent.core.graph import create_graph
 from agent.notifications import configure_notification_service
@@ -119,3 +120,4 @@ app.include_router(env_vars_router, prefix="/api")
 app.include_router(school_settings_router, prefix="/api")
 app.include_router(routine_events_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
+app.include_router(rag_router, prefix="/api")
