@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 import fastapi
 from agent.db.database import Base, create_session_factory, create_sqlite_engine
@@ -58,6 +60,11 @@ async def lifespan(app: fastapi.FastAPI):
 		await checkpointer_conn.close()
 
 app = fastapi.FastAPI(lifespan=lifespan)
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(_: fastapi.Request, __: RequestValidationError):
+	return JSONResponse(status_code=400, content={"message": "Invalid request parameters"})
+
 app.add_middleware(
 	CORSMiddleware,
     allow_credentials=True, 
