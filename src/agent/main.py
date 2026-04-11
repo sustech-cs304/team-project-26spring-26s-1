@@ -6,6 +6,7 @@ from agent.db.database import Base, create_session_factory, create_sqlite_engine
 from agent.api.conversation import router as conversation_router
 from agent.api.file import router as file_router
 from agent.api.onebot import OneBotHub, router as onebot_router
+from agent.api.rag import router as rag_router
 from agent.api.conversation_runner import ConversationRunner
 from agent.config import config
 from agent.core.graph import create_graph
@@ -68,3 +69,4 @@ app.add_middleware(
 app.include_router(conversation_router, prefix="/api")
 app.include_router(file_router, prefix="/api")
 app.include_router(onebot_router, prefix="/api")
+app.include_router(rag_router, prefix="/api")

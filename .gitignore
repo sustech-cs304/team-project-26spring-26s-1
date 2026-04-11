@@ -29,3 +29,6 @@ tests/*
 .gitignore
 # AI tools
 .codex
+
+rag_data
+test_data
