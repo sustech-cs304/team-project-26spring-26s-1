@@ -115,6 +115,21 @@ export const getEventStartTime = (event: CalEvent): string => event.startTime ??
 
 export const getEventEndTime = (event: CalEvent): string => event.endTime ?? ''
 
+export const formatCompact12HourTime = (value?: string): string => {
+    if (!value) return ''
+    const start = value.split(' - ')[0]?.trim() ?? ''
+    if (!start) return ''
+    const { hour, minute } = parseHHMM(start)
+    const meridiem = hour < 12 ? 'AM' : 'PM'
+    const hour12 = hour % 12 || 12
+
+    if (minute === 0) return `${hour12}${meridiem}`
+    return `${hour12}:${`${minute}`.padStart(2, '0')}${meridiem}`
+}
+
+export const getEventChipTimeLabel = (event: CalEvent): string =>
+    formatCompact12HourTime(getEventStartTime(event))
+
 export const getEventDisplayTime = (event: CalEvent): string => {
     const start = getEventStartTime(event)
     const end = getEventEndTime(event)
