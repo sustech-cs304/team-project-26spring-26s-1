@@ -48,6 +48,7 @@ class OneBotConfig(BaseModel):
 class AppConfig(BaseModel):
     api: ApiConfig
     file: FileConfig
+    onebot: OneBotConfig = OneBotConfig()
 
 def load_config(file_path: str = "config.yaml") -> AppConfig:
     """Loads config.yaml into a verified Pydantic object with env var lookups."""

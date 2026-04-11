@@ -20,6 +20,7 @@ class Conversation(Base):
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
 
     messages: Mapped[list["Message"]] = relationship("Message", back_populates="conversation")
+    im_session_binding: Mapped["IMSessionBinding | None"] = relationship("IMSessionBinding", back_populates="conversation")
 
 class Message(Base):
     __tablename__ = "messages"

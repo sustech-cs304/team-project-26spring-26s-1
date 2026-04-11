@@ -27,3 +27,5 @@ uploads/*
 
 tests/*
 .gitignore
+# AI tools
+.codex

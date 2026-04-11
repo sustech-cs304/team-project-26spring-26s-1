@@ -1,30 +1,17 @@
-from typing import Literal, Annotated, Union, ClassVar
 import asyncio
 from fastapi import APIRouter, Request, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-import json
 import websockets
-from uuid import uuid4
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 import pydantic
 from agent.config import AppConfig
 from contextlib import suppress
-from agent.db.models import Conversation, Message
-import datetime as dt
+from agent.db.models import Conversation
 from agent.api.conversation_runner import ConversationRunner
-import langgraph.graph.state
-from agent.core.state import AgentState
-from langchain.messages import HumanMessage
-from langchain_core.runnables import RunnableConfig
-from agent.api.conversation_models import (
-    CompletionResponseDelta,
-    CompletionResponseHistory,
-    CompletionResponseMetadata,
-    CompletionResponseToolCall,
-    CompletionResponseError,
-    CompletionEventKeepAlive,
-    CompletionUserMessage,
+from agent.api.conversation_service import (
+    create_conversation as create_conversation_record,
+    delete_conversation as delete_conversation_record,
 )
 
 
@@ -42,13 +29,19 @@ class ConversationCompletionRequest(pydantic.BaseModel):
 
 @router.post("/conversation/completion", response_class=EventSourceResponse)
 async def conversation_completion(params: ConversationCompletionRequest, request: Request):
-    id = str(uuid4())
-    
     ConversationRunner = request.app.state.ConversationRunner
-    run_task = asyncio.create_task(ConversationRunner.run(params.conversation_id, params.content or "", params.restart_message_id, params.attachments))
+    run_task = asyncio.create_task(
+        ConversationRunner.run(
+            params.conversation_id,
+            params.content or "",
+            params.restart_message_id,
+            params.attachments,
+        )
+    )
     await asyncio.shield(run_task)
+    job = run_task.result()
     
-    async for delta in ConversationRunner.stream(params.conversation_id, params.need_history):
+    async for delta in ConversationRunner.stream(params.conversation_id, params.need_history, job):
         yield ServerSentEvent(
             data=delta,
             event=delta._event_type
@@ -62,18 +55,11 @@ class ConversationCreateResponse(pydantic.BaseModel):
     
 @router.post("/conversation")
 async def create_conversation(request: Request):
-    session_factory = request.app.state.async_session
-    
-    id = str(uuid4())
-    ts = dt.datetime.now(tz=dt.timezone.utc)
-    conversation = Conversation(id=id, title=f"New Conversation", time_last_used=ts)
-    
-    async with session_factory() as session:
-        session : AsyncSession
-        
-        session.add_all([conversation])
-        await session.commit()
-    return ConversationCreateResponse(conversation_id=id, created_at=int(ts.timestamp()))
+    conversation = await create_conversation_record(request.app.state.async_session)
+    return ConversationCreateResponse(
+        conversation_id=conversation.id,
+        created_at=int(conversation.time_last_used.timestamp()),
+    )
 
 
 class ConversationListItem(pydantic.BaseModel):
@@ -131,24 +117,13 @@ async def cancel_conversation(request: Request, conversation_id: str):
 
 @router.delete("/conversation/{conversation_id}")
 async def delete_conversation(request: Request, conversation_id: str, restart_message_id: str | None = None):
-    session_factory = request.app.state.async_session
-    
-    async with session_factory() as session:
-        session : AsyncSession
-        
-        conversation = await session.get(Conversation, conversation_id)
-        if not conversation:
-            raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
-        
-        await session.execute(
-            delete(Message).where(Message.conversation_id == conversation_id)
-        )
-        await session.execute(
-            delete(Conversation).where(Conversation.id == conversation_id)
-        )
-        await session.commit()
-        
-        await request.app.state.graph.checkpointer.adelete_thread(conversation_id)
+    deleted = await delete_conversation_record(
+        request.app.state.async_session,
+        request.app.state.graph,
+        conversation_id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
         
 @router.websocket("/conversation/asr")
 async def conversation_asr(websocket: WebSocket):
