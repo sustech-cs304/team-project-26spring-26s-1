@@ -86,7 +86,9 @@
     import TaskListPane from '@/components/tasks/TaskListPane.vue'
     import { copyText } from '@/utils/copyText'
     import { validateEnvVarKey, type EnvVarRef } from '@/utils/tasks'
+    import { useRoute } from 'vue-router'
 
+    const route = useRoute()
     const drawer = ref(true)
     const currentView = ref<'tasks' | 'env-vars'>('tasks')
     const envVars = ref<EnvVarRef[]>([])
@@ -275,5 +277,30 @@
             onError: () => showSnackbar('复制 secret_ref 失败', 'error'),
         })
     }
+
+    watch(
+        () => [route.query.taskId, route.query.runId, route.query.tab],
+        ([taskId, runId, tab]) => {
+            if (typeof taskId === 'string' && taskId) {
+                currentView.value = 'tasks'
+                if (selectedTaskId.value !== taskId) {
+                    selectTask(taskId)
+                }
+            }
+
+            if (tab === 'runs' || tab === 'details') {
+                activeTab.value = tab
+            }
+
+            if (typeof runId === 'string' && runId) {
+                currentView.value = 'tasks'
+                activeTab.value = 'runs'
+                if (selectedRunId.value !== runId) {
+                    selectRun(runId)
+                }
+            }
+        },
+        { immediate: true }
+    )
 
 </script>

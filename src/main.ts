@@ -9,6 +9,7 @@ import { createApp } from 'vue'
 
 // Plugins
 import { registerPlugins } from '@/plugins'
+import { installDeepLinkHandler } from '@/utils/deeplink'
 import { installGlobalLinkHandler } from '@/utils/link'
 
 // Components
@@ -22,6 +23,7 @@ const app = createApp(App)
 
 registerPlugins(app)
 installGlobalLinkHandler()
+void installDeepLinkHandler()
 
 app.mount('#app')
 

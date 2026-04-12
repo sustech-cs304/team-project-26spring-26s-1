@@ -446,7 +446,9 @@
 <script setup lang="ts">
     import { testModelConnection } from '@/api/model'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
+    import { useRoute } from 'vue-router'
 
+    const route = useRoute()
     const activeTab = ref('llm')
     const { modelEndpoint, campusAuth, saveModelEndpoint, saveCampusAuth } = useOnboardingConfig()
 
@@ -459,6 +461,17 @@
         { id: 'preferences', icon: 'mdi-wrench-outline', label: 'System Preferences' },
         { id: 'capabilities', icon: 'mdi-puzzle-outline', label: 'Capability Hub' },
     ]
+
+    watch(
+        () => route.query.tab,
+        (value) => {
+            if (typeof value !== 'string') return
+            if (tabs.some(tab => tab.id === value)) {
+                activeTab.value = value
+            }
+        },
+        { immediate: true }
+    )
 
     // LLM
     const apiProviders = ['OpenAI', 'DeepSeek', 'Local Ollama']

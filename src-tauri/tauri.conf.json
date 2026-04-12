@@ -36,5 +36,14 @@
       "icons/128x128.png",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "opencrab"
+        ]
+      }
+    }
   }
 }
