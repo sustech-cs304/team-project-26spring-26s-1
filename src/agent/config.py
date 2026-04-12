@@ -1,6 +1,8 @@
+import threading
+from typing import Literal
+
 import yaml
 from pydantic import BaseModel
-from typing import Optional, Literal
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 jinja_env = Environment(
@@ -65,16 +67,52 @@ class AppConfig(BaseModel):
     websearch: WebSearchConfig
     onebot: OneBotConfig = OneBotConfig()
 
+
+class _ConfigHolder:
+    __slots__ = ("_lock", "_config")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._config: AppConfig | None = None
+
+    def set(self, config: AppConfig) -> None:
+        with self._lock:
+            self._config = config
+
+    def get(self) -> AppConfig:
+        with self._lock:
+            if self._config is None:
+                self._config = load_config()
+            return self._config
+
+
+_holder = _ConfigHolder()
+
+
+def get_config() -> AppConfig:
+    """Current in-memory config (replace via :func:`set_config` or :func:`reload_config`)."""
+    return _holder.get()
+
+
+def set_config(config: AppConfig) -> None:
+    """Install config (e.g. after startup or admin reload)."""
+    _holder.set(config)
+
+
 def load_config(file_path: str = "config.yaml") -> AppConfig:
-    """Loads config.yaml into a verified Pydantic object with env var lookups."""
+    """Load ``config.yaml`` into a verified model."""
     with open(file_path, "r", encoding="utf-8") as f:
         config_data = yaml.safe_load(f) or {}
-
     return AppConfig(**config_data)
 
-def save_config(config: AppConfig, file_path: str = "config.yaml"):
-    """Saves the Pydantic config object back to a YAML file."""
+
+def save_config(config: AppConfig, file_path: str = "config.yaml") -> None:
     with open(file_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config.model_dump(), f)
 
-config = load_config()
+
+def reload_config(file_path: str = "config.yaml") -> AppConfig:
+    """Reload from disk and apply to the global holder."""
+    cfg = load_config(file_path)
+    set_config(cfg)
+    return cfg

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import cast
 
 from langgraph.graph import START, StateGraph
@@ -12,15 +13,13 @@ from langgraph.types import Send
 from langgraph.store.base import BaseStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
-async def create_graph(config: AppConfig, store : BaseStore, checkpointer: BaseCheckpointSaver):
+async def create_graph(get_config: Callable[[], AppConfig], store : BaseStore, checkpointer: BaseCheckpointSaver):
     workflow = StateGraph(AgentState)
     
     model = Model.get(
-        name = config.api.agent.type,
-        model = config.api.agent.model,
-        api_key = config.api.agent.api_key,
-        base_url = config.api.agent.base_url,
-        tools = agent_tools
+        name="Agent",
+        get_config=get_config,
+        tools=agent_tools,
     )
     
     async def tool_route(state: AgentState):
@@ -71,5 +70,3 @@ async def create_graph(config: AppConfig, store : BaseStore, checkpointer: BaseC
 
     graph = workflow.compile(store=store, checkpointer=checkpointer)
     return graph
-    
-    

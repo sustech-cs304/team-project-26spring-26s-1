@@ -12,9 +12,9 @@ from agent.api.conversation import router as conversation_router
 from agent.api.file import router as file_router
 from agent.api.onebot import OneBotHub, router as onebot_router
 from agent.api.conversation_runner import ConversationRunner
-from agent.config import config
+from agent.api.config_reload import router as config_reload_router
+from agent.config import get_config, load_config, set_config
 from agent.core.graph import create_graph
-from agent.api.onebot import OneBotHub
 from agent.api.task import router as task_router
 from agent.api.env_vars import router as env_vars_router
 from agent.api.school_settings import router as school_settings_router
@@ -35,8 +35,9 @@ graph = None
 
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
-	global engine, async_session, config, graph
+	global engine, async_session, graph
 
+	set_config(load_config())
 	engine = create_sqlite_engine()
 	@event.listens_for(engine.sync_engine, "connect")
 	def set_sqlite_pragma(dbapi_connection, _):
@@ -50,13 +51,13 @@ async def lifespan(app: fastapi.FastAPI):
 	checkpointer_conn = await aiosqlite.connect("agent_checkpoints.db", isolation_level=None)
 	checkpointer = AsyncSqliteSaver(checkpointer_conn)
  
-	graph = await create_graph(config, store=store, checkpointer=checkpointer)
+	graph = await create_graph(get_config, store=store, checkpointer=checkpointer)
  
 	app.state.engine = engine
 	app.state.async_session = async_session
-	app.state.ConversationRunner = ConversationRunner(graph, async_session, config)
-	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner, config.onebot)
-	app.state.config = config
+	app.state.get_config = get_config
+	app.state.ConversationRunner = ConversationRunner(graph, async_session, get_config)
+	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner, get_config)
 	app.state.graph = graph
 
 	async with engine.begin() as conn:
@@ -114,3 +115,4 @@ app.include_router(task_router, prefix="/api")
 app.include_router(env_vars_router, prefix="/api")
 app.include_router(school_settings_router, prefix="/api")
 app.include_router(routine_events_router, prefix="/api")
+app.include_router(config_reload_router, prefix="/api")

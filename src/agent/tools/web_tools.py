@@ -7,7 +7,7 @@ from typing import Any, Literal
 import aiohttp
 from langchain.tools import tool
 
-from agent.config import config
+from agent.config import get_config
 
 
 async def _post_json(base_url: str, path: str, api_key: str, payload: dict[str, Any], timeout_ms: int) -> dict[str, Any]:
@@ -90,12 +90,13 @@ async def webfetch(
         payload["country_code"] = country_code
 
     try:
+        wf = get_config().webfetch
         response = await _post_json(
-            base_url=config.webfetch.base_url,
-            path=config.webfetch.path,
-            api_key=config.webfetch.api_key,
+            base_url=wf.base_url,
+            path=wf.path,
+            api_key=wf.api_key,
             payload=payload,
-            timeout_ms=config.webfetch.timeout_ms,
+            timeout_ms=wf.timeout_ms,
         )
         return json.dumps(response.get("data", response), ensure_ascii=False)
     except (aiohttp.ClientError, asyncio.TimeoutError, OSError, RuntimeError) as exc:
@@ -153,12 +154,13 @@ async def websearch(
     }
 
     try:
+        ws = get_config().websearch
         response = await _post_json(
-            base_url=config.websearch.base_url,
-            path=config.websearch.path,
-            api_key=config.websearch.api_key,
+            base_url=ws.base_url,
+            path=ws.path,
+            api_key=ws.api_key,
             payload=payload,
-            timeout_ms=config.websearch.timeout_ms,
+            timeout_ms=ws.timeout_ms,
         )
         return json.dumps(response.get("data", response), ensure_ascii=False)
     except (aiohttp.ClientError, asyncio.TimeoutError, OSError, RuntimeError) as exc:
