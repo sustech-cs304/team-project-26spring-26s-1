@@ -2,7 +2,8 @@
 
 Periodically checks ``cron/`` directory for file changes. When a task JSON is
 loaded, the next cron fire time (``next_run_at``, UTC minute boundary) is
-computed. Each poll compares ``now`` to ``next_run_at``; when due, the task is
+computed. Five-field expressions are interpreted in ``AppConfig.cron_timezone``
+(see ``config.yaml``); each poll compares ``now`` to ``next_run_at``; when due, the task is
 dispatched once and ``next_run_at`` advances to the following matching minute.
 Cold load initialises ``next_run_at`` from the **next** eligible minute (never
 the current minute if ``now`` is already past ``:00``), so dev reload / restart
@@ -30,8 +31,13 @@ import logging
 import signal
 import sys
 import threading
+import os
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from agent.config import AppConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,12 +63,20 @@ def _load_task_executor_module():
     return mod
 
 
+def _python_weekday_to_cron_dow(dt: datetime) -> int:
+    """Map ``datetime.weekday()`` to standard cron day-of-week: 0=Sun … 6=Sat."""
+    return (dt.weekday() + 1) % 7
+
+
 class CronMatcher:
     """Evaluate a standard 5-field cron expression against a datetime.
 
     Supports: ``*``, specific values (``5``), lists (``1,15``),
     ranges (``1-5``), and steps (``*/5``, ``1-10/2``).
-    Day-of-week: 0 = Monday … 6 = Sunday (Python convention).
+    Day-of-week (field 5): ``0`` or ``7`` = Sunday, ``1`` = Monday, … ``6`` = Saturday (Vixie cron).
+
+    Wall-clock fields (minute, hour, day, month, weekday) are compared after converting
+    the instant ``dt`` (UTC) to ``wall_tz`` — same idea as ``CRON_TZ`` in Vixie cron.
     """
 
     __slots__ = ("_fields",)
@@ -76,11 +90,14 @@ class CronMatcher:
             (0, 23),   # hour
             (1, 31),   # day of month
             (1, 12),   # month
-            (0, 6),    # day of week (0=Mon)
+            (0, 7),    # day of week: 0,7=Sun … 6=Sat (7 normalised to 0)
         ]
-        self._fields: list[set[int]] = [
+        fields: list[set[int]] = [
             self._parse_field(p, lo, hi) for p, (lo, hi) in zip(parts, ranges)
         ]
+        # ``7`` is an alias for Sunday, same as ``0``
+        fields[4] = {x % 7 for x in fields[4]}
+        self._fields = fields
 
     @staticmethod
     def _parse_field(field: str, lo: int, hi: int) -> set[int]:
@@ -103,12 +120,17 @@ class CronMatcher:
             result.update(range(start, end + 1, step))
         return result
 
-    def matches(self, dt: datetime) -> bool:
-        minute = dt.minute
-        hour = dt.hour
-        dom = dt.day
-        month = dt.month
-        dow = dt.weekday()  # 0=Mon
+    def matches(self, dt: datetime, *, wall_tz: ZoneInfo) -> bool:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        local = dt.astimezone(wall_tz)
+        minute = local.minute
+        hour = local.hour
+        dom = local.day
+        month = local.month
+        dow = _python_weekday_to_cron_dow(local)
         return (
             minute in self._fields[0]
             and hour in self._fields[1]
@@ -126,7 +148,12 @@ def _utc_minute_start(dt: datetime) -> datetime:
     return d.replace(second=0, microsecond=0)
 
 
-def initial_next_run_at(matcher: CronMatcher, now: datetime) -> datetime | None:
+def initial_next_run_at(
+    matcher: CronMatcher,
+    now: datetime,
+    *,
+    wall_tz: ZoneInfo,
+) -> datetime | None:
     """First matching UTC minute for a **cold** ``next_run_at`` (process / registry just loaded).
 
     If ``now`` is already past the current minute's ``:00``, search from the **next whole minute**
@@ -139,22 +166,42 @@ def initial_next_run_at(matcher: CronMatcher, now: datetime) -> datetime | None:
     if now > t:
         t += timedelta(minutes=1)
     for _ in range(_MAX_NEXT_SCAN_MINUTES):
-        if matcher.matches(t):
+        if matcher.matches(t, wall_tz=wall_tz):
             return t
         t += timedelta(minutes=1)
     log.error("initial_next_run_at: no cron match in one year (expression bug?)")
     return None
 
 
-def next_run_at_after(matcher: CronMatcher, after_minute: datetime) -> datetime | None:
+def next_run_at_after(
+    matcher: CronMatcher,
+    after_minute: datetime,
+    *,
+    wall_tz: ZoneInfo,
+) -> datetime | None:
     """First matching minute **strictly after** ``after_minute`` (which should be UTC minute start)."""
     t = _utc_minute_start(after_minute) + timedelta(minutes=1)
     for _ in range(_MAX_NEXT_SCAN_MINUTES):
-        if matcher.matches(t):
+        if matcher.matches(t, wall_tz=wall_tz):
             return t
         t += timedelta(minutes=1)
     log.error("next_run_at_after: no cron match in one year (expression bug?)")
     return None
+
+
+def resolve_cron_wall_tz(
+    get_config: Callable[[], AppConfig] | None,
+) -> ZoneInfo:
+    """IANA zone for cron wall clock; ``config.cron_timezone`` or env ``CRON_TZ`` when no app config."""
+    if get_config is not None:
+        raw = (get_config().cron_timezone or "UTC").strip() or "UTC"
+    else:
+        raw = (os.environ.get("CRON_TZ") or "UTC").strip() or "UTC"
+    try:
+        return ZoneInfo(raw)
+    except Exception:
+        log.warning("Invalid cron timezone %r, using UTC", raw)
+        return ZoneInfo("UTC")
 
 
 class _TaskEntry:
@@ -178,11 +225,17 @@ class _TaskEntry:
 class CronWatcher:
     """Watch ``cron/`` directory, evaluate schedules, dispatch to executor."""
 
-    def __init__(self, max_workers: int = 4, timeout: int = 300):
+    def __init__(
+        self,
+        max_workers: int = 4,
+        timeout: int = 300,
+        get_config: Callable[[], AppConfig] | None = None,
+    ):
         self._registry: dict[str, _TaskEntry] = {}
         self._running_threads: dict[str, threading.Thread] = {}
         self._max_workers = max_workers
         self._timeout = timeout
+        self._get_config = get_config
         self._stop = False
         self._wake = threading.Event()
 
@@ -216,7 +269,16 @@ class CronWatcher:
                 log.warning("Failed to read %s: %s", p, exc)
                 continue
 
-            self._registry[task_id] = _TaskEntry(data, mtime)
+            new_entry = _TaskEntry(data, mtime)
+            # Task JSON is rewritten after every run (status, last_run_*). That bumps mtime and would
+            # otherwise recreate this entry with next_run_at=None, forcing initial_next_run_at(now)
+            # and skipping minute-aligned slots — seen as "every two minutes" for */1-style crons.
+            if existing and existing.matcher and new_entry.matcher:
+                old_ce = (existing.task.get("cron_expression") or "").strip()
+                new_ce = (data.get("cron_expression") or "").strip()
+                if old_ce == new_ce and existing.next_run_at is not None:
+                    new_entry.next_run_at = existing.next_run_at
+            self._registry[task_id] = new_entry
             action = "reloaded" if existing else "loaded"
             log.info("Task %s (%s) %s", task_id, data.get("name", "?"), action)
 
@@ -228,15 +290,21 @@ class CronWatcher:
     def check_and_dispatch(self) -> int:
         """If ``now >= next_run_at``, fire once and advance ``next_run_at`` to the next matching minute.
 
+        ``next_run_at`` is preserved across task JSON reloads when ``cron_expression`` is unchanged
+        (each run rewrites the file; without this, the schedule would reset every time).
+
         Returns the number of tasks dispatched.
         """
         now = datetime.now(timezone.utc)
+        wall_tz = resolve_cron_wall_tz(self._get_config)
         dispatched = 0
 
         for task_id, entry in list(self._registry.items()):
             task = entry.task
 
-            if task.get("status") not in ("enabled",):
+            # Only disabled tasks are skipped. "running" still needs scheduling evaluation;
+            # overlap is prevented by _running_threads below.
+            if task.get("status") == "disabled":
                 continue
             if entry.matcher is None:
                 continue
@@ -244,7 +312,9 @@ class CronWatcher:
                 continue
 
             if entry.next_run_at is None:
-                entry.next_run_at = initial_next_run_at(entry.matcher, now)
+                entry.next_run_at = initial_next_run_at(
+                    entry.matcher, now, wall_tz=wall_tz,
+                )
                 if entry.next_run_at is None:
                     continue
 
@@ -274,7 +344,9 @@ class CronWatcher:
             if thread is not None:
                 self._running_threads[task_id] = thread
 
-            entry.next_run_at = next_run_at_after(entry.matcher, scheduled)
+            entry.next_run_at = next_run_at_after(
+                entry.matcher, scheduled, wall_tz=wall_tz,
+            )
             if entry.next_run_at is None:
                 log.warning("Task %s: failed to compute next cron slot", task_id)
             else:

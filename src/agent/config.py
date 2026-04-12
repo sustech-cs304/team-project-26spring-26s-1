@@ -66,6 +66,8 @@ class AppConfig(BaseModel):
     webfetch: WebFetchConfig
     websearch: WebSearchConfig
     onebot: OneBotConfig = OneBotConfig()
+    # IANA id (e.g. Asia/Shanghai). Cron fields are evaluated in this zone; schedules are still stored as UTC instants.
+    cron_timezone: str = "UTC"
 
 
 class _ConfigHolder:

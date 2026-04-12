@@ -69,7 +69,7 @@ async def lifespan(app: fastapi.FastAPI):
 
 	await asyncio.to_thread(ensure_task_run_sqlite_schema)
 
-	watcher = CronWatcher(max_workers=4, timeout=300)
+	watcher = CronWatcher(max_workers=4, timeout=300, get_config=get_config)
 	watcher_thread = threading.Thread(
 		target=watcher.run,
 		kwargs={"interval": 60},
