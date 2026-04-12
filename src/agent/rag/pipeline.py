@@ -9,7 +9,11 @@ from fastapi import UploadFile
 from agent.config import AppConfig
 from agent.rag.clean_markdown import process_file as clean_one_file
 from agent.rag.clean_markdown import CleanStats
-from agent.rag.embedding_and_restore import embed_and_restore
+from agent.rag.embedding_and_restore import (
+    embed_chunks_to_json,
+    load_embedding_array,
+    restore_from_embedding_array,
+)
 from agent.rag.paths import get_rag_paths
 
 
@@ -21,6 +25,7 @@ class RagPipelineResult:
     stored_file: Path
     cleaned_file: Path
     chunk_file: Path
+    embeddings_json_file: Path
     chunks_count: int
     embedded_added: int
     embedded_overwritten: int
@@ -92,9 +97,17 @@ async def run_rag_pipeline_for_file(
                 if line:
                     chunks.append(json.loads(line))
 
-    stats = await embed_and_restore(
+    embeddings_json_file = rag_paths.embeddings_dir / f"{raw_file.stem}.embeddings.json"
+    await embed_chunks_to_json(
         config=config,
         chunks=chunks,
+        output_file=embeddings_json_file,
+    )
+    embedding_items = load_embedding_array(embeddings_json_file)
+
+    stats = await restore_from_embedding_array(
+        config=config,
+        embedding_items=embedding_items,
         store_db=store_db,
         overwrite_sources={source_rel_path},
     )
@@ -103,6 +116,7 @@ async def run_rag_pipeline_for_file(
         stored_file=raw_file,
         cleaned_file=cleaned_file,
         chunk_file=chunk_file,
+        embeddings_json_file=embeddings_json_file,
         chunks_count=chunks_count,
         embedded_added=stats.added,
         embedded_overwritten=stats.overwritten,
