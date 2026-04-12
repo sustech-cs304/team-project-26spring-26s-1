@@ -17,6 +17,8 @@ uv.lock
 
 # data files
 *.db
+
+# Local config (may contain API keys / school.password_enc metadata)
 config.yaml
 
 #uploaded files
@@ -24,13 +26,18 @@ uploads/*
 
 *.db-shm
 *.db-wal
-
 tests/*
-.gitignore
+
+# Local secrets (SCHOOL_CREDENTIALS_FERNET_KEY, SUSTECH_*, etc.)
+.env
+.env.*
+!.env.example
+
 # AI tools
 .codex
 
-#cron relevent files
+# cron / run state (JSON under project root)
 cron/
 runs/
+
 .DS_Store

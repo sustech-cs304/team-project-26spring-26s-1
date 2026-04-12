@@ -1,4 +1,6 @@
+import logging
 import threading
+from pathlib import Path
 from typing import Literal
 
 import yaml
@@ -60,12 +62,30 @@ class OneBotConfig(BaseModel):
     superuser_id: str = ""
     command_name: str = "agent"
 
+
+class SchoolServiceCredentials(BaseModel):
+    """``student_id`` plus ``password_enc`` (Fernet) or optional plaintext ``password`` (local only)."""
+
+    student_id: str = ""
+    password_enc: str = ""
+    password: str = ""
+
+
+class SchoolFileConfig(BaseModel):
+    """Fernet key (url-safe base64) for ``password_enc`` fields under ``bb`` / ``tis``."""
+
+    fernet_key: str = ""
+    bb: SchoolServiceCredentials = SchoolServiceCredentials()
+    tis: SchoolServiceCredentials = SchoolServiceCredentials()
+
+
 class AppConfig(BaseModel):
     api: ApiConfig
     file: FileConfig
     webfetch: WebFetchConfig
     websearch: WebSearchConfig
     onebot: OneBotConfig = OneBotConfig()
+    school: SchoolFileConfig = SchoolFileConfig()
     # IANA id (e.g. Asia/Shanghai). Cron fields are evaluated in this zone; schedules are still stored as UTC instants.
     cron_timezone: str = "UTC"
 
@@ -90,6 +110,21 @@ class _ConfigHolder:
 
 _holder = _ConfigHolder()
 
+_log = logging.getLogger(__name__)
+
+
+def project_root() -> Path:
+    """Repository root (directory that contains ``config.yaml`` / ``pyproject.toml``)."""
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def resolve_config_path(file_path: str | Path | None = None) -> Path:
+    """Resolve ``config.yaml`` against :func:`project_root` when the path is relative."""
+    p = Path(file_path or "config.yaml")
+    if p.is_absolute():
+        return p
+    return project_root() / p
+
 
 def get_config() -> AppConfig:
     """Current in-memory config (replace via :func:`set_config` or :func:`reload_config`)."""
@@ -101,19 +136,26 @@ def set_config(config: AppConfig) -> None:
     _holder.set(config)
 
 
-def load_config(file_path: str = "config.yaml") -> AppConfig:
-    """Load ``config.yaml`` into a verified model."""
-    with open(file_path, "r", encoding="utf-8") as f:
+def load_config(file_path: str | Path | None = None) -> AppConfig:
+    """Load ``config.yaml`` into a verified model.
+
+    Paths are resolved from the repository root (not the process current working directory),
+    unless ``file_path`` is absolute.
+    """
+    path = resolve_config_path(file_path)
+    _log.info("Loading config from %s", path)
+    with open(path, "r", encoding="utf-8") as f:
         config_data = yaml.safe_load(f) or {}
     return AppConfig(**config_data)
 
 
-def save_config(config: AppConfig, file_path: str = "config.yaml") -> None:
-    with open(file_path, "w", encoding="utf-8") as f:
+def save_config(config: AppConfig, file_path: str | Path | None = None) -> None:
+    path = resolve_config_path(file_path)
+    with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config.model_dump(), f)
 
 
-def reload_config(file_path: str = "config.yaml") -> AppConfig:
+def reload_config(file_path: str | Path | None = None) -> AppConfig:
     """Reload from disk and apply to the global holder."""
     cfg = load_config(file_path)
     set_config(cfg)
