@@ -231,14 +231,6 @@ class ConversationRunner:
             attachment_content = ""
             if bound_attachments:
                 try:
-                    # human_message_with_attachments_content = f"User Input:\n{human_message.content}\n\n"
-                    # attachment_idx = 0
-                    # for attachment in bound_attachments:
-                    #     attachment_content, attachment_name = await load_attachment_content(self.session_factory, attachment.attachment_id)
-                    #     display_name = attachment.name or attachment_name
-                    #     human_message_with_attachments_content += f"Attachment {attachment_idx + 1} [{display_name}]:\n{attachment_content}\n\n"
-                    #     attachment_idx += 1
-                    # human_message_with_attachments = HumanMessage(role="user",content=human_message_with_attachments_content)
                     for i, attachment in enumerate(bound_attachments):
                         content, attachment_name = await load_attachment_content(self.session_factory, attachment.attachment_id)
                         display_name = attachment.name or attachment_name
@@ -433,7 +425,32 @@ class ConversationRunner:
                             job.cond.notify_all()
                 
             except asyncio.CancelledError:
-                pass
+                # handling cancellation and partial message
+                if current_message and isinstance(current_message, AIMessage):
+                    # see if we have already stored a message
+                    message_row = await db_utils.db_get_message_by_langchain_id(
+                        self.session_factory,
+                        conversation_id=conversation_id,
+                        langchain_id=current_message.id
+                    )
+                    if not message_row or not message_row.checkpoint_id:
+                        # no checkpoint, mutate graph with the partial message and get a checkpoint
+                        new_config = await self.graph.aupdate_state(
+                            config,
+                            { "messages": [current_message] }
+                        )
+                        checkpoint = new_config["configurable"]["checkpoint_id"]
+                        # store the partial message with checkpoint
+                        await db_utils.db_update_message(
+                            self.session_factory,
+                            conversation_id=conversation_id,
+                            message_id = None,
+                            langchain_id = current_message.id,
+                            content = current_message.model_dump_json(),
+                            attachments = [],
+                            checkpoint_id = checkpoint
+                        )
+                        
             finally:
                 async with job.cond:
                     job.cond.notify_all()
