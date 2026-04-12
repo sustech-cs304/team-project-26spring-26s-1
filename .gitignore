@@ -25,7 +25,6 @@ uploads/*
 *.db-shm
 *.db-wal
 
-tests/*
 .gitignore
 # AI tools
 .codex
@@ -34,3 +33,5 @@ tests/*
 cron/
 runs/
 .DS_Store
+workspace/
+assets/

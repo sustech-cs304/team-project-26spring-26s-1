@@ -58,12 +58,21 @@ class OneBotConfig(BaseModel):
     superuser_id: str = ""
     command_name: str = "agent"
 
+class NotificationConfig(BaseModel):
+    enabled: bool = True
+    app_name: str = "Agent"
+    app_icon: str | None = "assets/opencrab.png"
+    notification_limit: int | None = 8
+    default_timeout_s: int = 10
+    deeplink_scheme: str = "opencrab"
+
 class AppConfig(BaseModel):
     api: ApiConfig
     file: FileConfig
     webfetch: WebFetchConfig
     websearch: WebSearchConfig
     onebot: OneBotConfig = OneBotConfig()
+    notification: NotificationConfig = NotificationConfig()
 
 def load_config(file_path: str = "config.yaml") -> AppConfig:
     """Loads config.yaml into a verified Pydantic object with env var lookups."""
