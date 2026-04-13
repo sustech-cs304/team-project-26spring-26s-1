@@ -1,12 +1,11 @@
 """Cron directory watcher — monitors ``cron/`` for task changes and triggers execution.
 
-Periodically checks ``cron/`` directory for file changes. When a task JSON is
-loaded, the next cron fire time (``next_run_at``, UTC minute boundary) is
-computed. Each poll compares ``now`` to ``next_run_at``; when due, the task is
-dispatched once and ``next_run_at`` advances to the following matching minute.
-Cold load initialises ``next_run_at`` from the **next** eligible minute (never
-the current minute if ``now`` is already past ``:00``), so dev reload / restart
-does not immediately re-fire the same wall-clock minute.
+On each poll, every enabled task is checked: the **current clock minute** (UTC
+bucket, interpreted in **system local** wall time via ``datetime.astimezone()``)
+is tested with :class:`CronMatcher`. If it matches and that task was not already
+fired for this minute, it is dispatched. Shorter poll intervals (e.g. 10–60s)
+avoid missing a minute if the process is busy; the same calendar minute only
+fires once thanks to per-task ``last_fired`` bookkeeping.
 
 Usage::
 
@@ -30,7 +29,7 @@ import logging
 import signal
 import sys
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 logging.basicConfig(
@@ -62,7 +61,7 @@ class CronMatcher:
 
     Supports: ``*``, specific values (``5``), lists (``1,15``),
     ranges (``1-5``), and steps (``*/5``, ``1-10/2``).
-    Day-of-week: 0 = Monday … 6 = Sunday (Python convention).
+    Day-of-week: ``0`` = Sunday, ``1`` = Monday … ``6`` = Saturday.
     """
 
     __slots__ = ("_fields",)
@@ -76,7 +75,7 @@ class CronMatcher:
             (0, 23),   # hour
             (1, 31),   # day of month
             (1, 12),   # month
-            (0, 6),    # day of week (0=Mon)
+            (0, 6),    # day of week (0=Sun … 6=Sat)
         ]
         self._fields: list[set[int]] = [
             self._parse_field(p, lo, hi) for p, (lo, hi) in zip(parts, ranges)
@@ -104,11 +103,13 @@ class CronMatcher:
         return result
 
     def matches(self, dt: datetime) -> bool:
+        """``dt`` must be aware; minute/hour/DOM/month/DOW use ``dt``'s timezone (cron wall clock)."""
         minute = dt.minute
         hour = dt.hour
         dom = dt.day
         month = dt.month
-        dow = dt.weekday()  # 0=Mon
+        # Python: weekday0=Mon … 6=Sun → cron dow 0=Sun, 1=Mon … 6=Sat
+        dow = (dt.weekday() + 1) % 7
         return (
             minute in self._fields[0]
             and hour in self._fields[1]
@@ -118,55 +119,26 @@ class CronMatcher:
         )
 
 
-_MAX_NEXT_SCAN_MINUTES = 366 * 24 * 60
-
-
 def _utc_minute_start(dt: datetime) -> datetime:
     d = dt.astimezone(timezone.utc)
     return d.replace(second=0, microsecond=0)
 
 
-def initial_next_run_at(matcher: CronMatcher, now: datetime) -> datetime | None:
-    """First matching UTC minute for a **cold** ``next_run_at`` (process / registry just loaded).
-
-    If ``now`` is already past the current minute's ``:00``, search from the **next whole minute**
-    onward so hot reload / restart does not treat the same minute that already ran in the
-    previous process as due again.
-
-    If ``now`` is exactly on some minute's ``:00.000000``, that minute may still be used as the first slot.
-    """
-    t = _utc_minute_start(now)
-    if now > t:
-        t += timedelta(minutes=1)
-    for _ in range(_MAX_NEXT_SCAN_MINUTES):
-        if matcher.matches(t):
-            return t
-        t += timedelta(minutes=1)
-    log.error("initial_next_run_at: no cron match in one year (expression bug?)")
-    return None
-
-
-def next_run_at_after(matcher: CronMatcher, after_minute: datetime) -> datetime | None:
-    """First matching minute **strictly after** ``after_minute`` (which should be UTC minute start)."""
-    t = _utc_minute_start(after_minute) + timedelta(minutes=1)
-    for _ in range(_MAX_NEXT_SCAN_MINUTES):
-        if matcher.matches(t):
-            return t
-        t += timedelta(minutes=1)
-    log.error("next_run_at_after: no cron match in one year (expression bug?)")
-    return None
+def _cron_local_wall(utc_minute: datetime) -> datetime:
+    """Interpret ``utc_minute`` (UTC-aware) in the process's local timezone for cron matching."""
+    return utc_minute.astimezone()
 
 
 class _TaskEntry:
-    """In-memory cached task with its compiled cron matcher and scheduled next fire."""
+    """In-memory cached task with its compiled cron matcher."""
 
-    __slots__ = ("task", "mtime", "matcher", "next_run_at")
+    __slots__ = ("task", "mtime", "matcher", "last_fired_utc_minute")
 
     def __init__(self, task: dict, mtime: float):
         self.task = task
         self.mtime = mtime
         self.matcher: CronMatcher | None = None
-        self.next_run_at: datetime | None = None
+        self.last_fired_utc_minute: datetime | None = None
         cron_expr = task.get("cron_expression", "").strip()
         if cron_expr:
             try:
@@ -226,11 +198,15 @@ class CronWatcher:
             log.info("Task %s removed (file deleted)", tid)
 
     def check_and_dispatch(self) -> int:
-        """If ``now >= next_run_at``, fire once and advance ``next_run_at`` to the next matching minute.
+        """For the current UTC minute bucket, dispatch each task at most once if cron matches.
+
+        A long-running script does not block the next minute: the next poll uses a
+        new minute bucket.
 
         Returns the number of tasks dispatched.
         """
         now = datetime.now(timezone.utc)
+        minute_start = _utc_minute_start(now)
         dispatched = 0
 
         for task_id, entry in list(self._registry.items()):
@@ -243,24 +219,16 @@ class CronWatcher:
             if task.get("execution_mode") != "script":
                 continue
 
-            if entry.next_run_at is None:
-                entry.next_run_at = initial_next_run_at(entry.matcher, now)
-                if entry.next_run_at is None:
-                    continue
-
-            if now < entry.next_run_at:
+            if entry.last_fired_utc_minute == minute_start:
+                continue
+            if not entry.matcher.matches(_cron_local_wall(minute_start)):
                 continue
 
-            prev = self._running_threads.get(task_id)
-            if prev is not None and prev.is_alive():
-                continue
-
-            scheduled = entry.next_run_at
             log.info(
-                "Cron due — dispatching task %s (%s) scheduled=%s now=%s",
+                "Cron due — dispatching task %s (%s) minute=%s now=%s",
                 task_id,
                 task.get("name"),
-                scheduled.isoformat(),
+                minute_start.isoformat(),
                 now.isoformat(),
             )
             TaskExecutor = _load_task_executor_module().TaskExecutor
@@ -274,16 +242,7 @@ class CronWatcher:
             if thread is not None:
                 self._running_threads[task_id] = thread
 
-            entry.next_run_at = next_run_at_after(entry.matcher, scheduled)
-            if entry.next_run_at is None:
-                log.warning("Task %s: failed to compute next cron slot", task_id)
-            else:
-                log.info(
-                    "Task %s (%s) next cron fire at %s (UTC)",
-                    task_id,
-                    task.get("name"),
-                    entry.next_run_at.isoformat(),
-                )
+            entry.last_fired_utc_minute = minute_start
             dispatched += 1
 
         self._prune_dead_threads()
@@ -303,10 +262,15 @@ class CronWatcher:
         """Start the watch loop.
 
         Args:
-            interval: seconds between polls (default 60).
+            interval: seconds between polls (default 60). Prefer ≤60 for minute-level
+                cron so a matching local minute is unlikely to be skipped.
             once: if True, do a single check then return.
         """
-        log.info("CronWatcher starting — polling every %.0fs, cron dir: %s", interval, CRON_DIR)
+        log.info(
+            "CronWatcher starting — polling every %.0fs, cron dir: %s (cron uses system local time)",
+            interval,
+            CRON_DIR,
+        )
         self._stop = False
         self._wake.clear()
 
@@ -354,7 +318,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--interval", type=float, default=60,
-        help="Poll interval in seconds (default: 60)",
+        help="Poll interval in seconds (default: 60; ≤60 recommended for per-minute cron)",
     )
     parser.add_argument(
         "--once", action="store_true",
