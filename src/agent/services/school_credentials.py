@@ -11,7 +11,6 @@ from agent.api.env_vars import (
     upsert_env_var_value,
 )
 
-
 _CAS_STUDENT_ID_KEY = "SUSTECH_STUDENT_ID"
 _CAS_PASSWORD_KEY = "SUSTECH_CAS_PASSWORD"
 
@@ -40,33 +39,13 @@ def _read_shared_cas() -> tuple[str, str]:
 def resolve_bb_credentials(user_name: str | None, pwd: str | None) -> tuple[str, str]:
     """Tool args first, then shared SUSTECH CAS."""
     shared_u, shared_p = _read_shared_cas()
-    u = (
-        user_name
-        or shared_u
-        or ""
-    )
-    p = (
-        pwd
-        or shared_p
-        or ""
-    )
-    return u, p
+    return user_name or shared_u or "", pwd or shared_p or ""
 
 
 def resolve_tis_credentials(user_name: str | None, pwd: str | None) -> tuple[str, str]:
     """Tool args first, then shared SUSTECH CAS."""
     shared_u, shared_p = _read_shared_cas()
-    u = (
-        user_name
-        or shared_u
-        or ""
-    )
-    p = (
-        pwd
-        or shared_p
-        or ""
-    )
-    return u, p
+    return user_name or shared_u or "", pwd or shared_p or ""
 
 
 def set_school_cas_credentials(student_id: str | None, password: str | None) -> None:
