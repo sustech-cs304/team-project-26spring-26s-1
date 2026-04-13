@@ -1,11 +1,12 @@
+import ssl
 import warnings
 from json import loads
-from re import findall, search
+from re import search
 
-import requests
+import aiohttp
 from langchain.tools import tool
 
-from agent.tools.school_env import (
+from agent.tools.school_credentials import (
     missing_cas_message,
     missing_semester_message,
     resolve_tis_credentials,
@@ -14,43 +15,75 @@ from agent.tools.school_env import (
 
 warnings.filterwarnings("ignore")
 
-head = {
+_REQUEST_TIMEOUT_S = 15
+
+HEADERS = {
     "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Safari/605.1.15",
     "x-requested-with": "XMLHttpRequest",
 }
 
+_ssl_ctx = ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = ssl.CERT_NONE
+_client_timeout = aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT_S)
 
-def cas_login(user_name: str, pwd: str) -> dict:
+
+async def cas_login(user_name: str, pwd: str) -> dict:
     login_url = "https://cas.sustech.edu.cn/cas/login?service=https%3A%2F%2Ftis.sustech.edu.cn%2Fcas"
+    jar = aiohttp.CookieJar(unsafe=True)
+    session = aiohttp.ClientSession(headers=HEADERS, cookie_jar=jar, timeout=_client_timeout)
     try:
-        req = requests.get(login_url, headers=head, verify=False)
-        assert req.status_code == 200
-    except Exception:
-        return {"success": False, "message": "Cannot reach CAS; check network."}
+        async with session.get(login_url, ssl=_ssl_ctx) as resp:
+            if resp.status != 200:
+                await session.close()
+                return {"success": False, "message": "Cannot reach CAS; check network."}
+            text = await resp.text()
 
-    m = search(r'name="execution" value="([^"]+)"', req.text)
-    if not m:
-        return {"success": False, "message": "Failed to parse execution from CAS login page."}
-    execution = m.group(1)
-    data = {
-        "username": user_name,
-        "password": pwd,
-        "execution": execution,
-        "_eventId": "submit",
-    }
-    req = requests.post(login_url, data=data, allow_redirects=False, headers=head, verify=False)
-    if "Location" not in req.headers:
-        return {"success": False, "message": "Invalid username or password."}
+        m = search(r'name="execution" value="([^"]+)"', text)
+        if not m:
+            await session.close()
+            return {"success": False, "message": "Failed to parse execution from CAS login page."}
 
-    req = requests.get(req.headers["Location"], allow_redirects=False, headers=head, verify=False)
-    route_ = findall(r"route=(.+?);", req.headers["Set-Cookie"])[0]
-    jsessionid = findall(r"JSESSIONID=(.+?);", req.headers["Set-Cookie"])[0]
-    return {"success": True, "route": route_, "jsessionid": jsessionid}
+        async with session.post(
+            login_url,
+            data={
+                "username": user_name,
+                "password": pwd,
+                "execution": m.group(1),
+                "_eventId": "submit",
+            },
+            ssl=_ssl_ctx,
+            allow_redirects=False,
+        ) as resp:
+            location = resp.headers.get("Location")
+            if not location:
+                await session.close()
+                return {"success": False, "message": "Invalid username or password."}
+
+        async with session.get(location, ssl=_ssl_ctx, allow_redirects=True):
+            pass
+
+    except Exception as e:
+        await session.close()
+        return {"success": False, "message": "CAS login failed", "error": str(e)}
+
+    return {"success": True, "session": session}
 
 
-def _query_available_courses_impl(
+async def _post_json(
+    session: aiohttp.ClientSession,
+    url: str,
+    data: dict,
+) -> dict:
+    async with session.post(url, data=data, ssl=_ssl_ctx) as resp:
+        resp.raise_for_status()
+        text = await resp.text()
+    return loads(text)
+
+
+async def _query_available_courses_impl(
     semester_data: dict,
-    target_names: list | None = None,
+    target_names: list[str] | None = None,
     type_codes: list[str] | None = None,
 ) -> dict:
     course_list = []
@@ -74,32 +107,31 @@ def _query_available_courses_impl(
         if target_names is not None:
             name_set = {name.strip() for name in target_names}
 
-        for course_type in type_keys:
-            data = {
-                "p_xn": semester_data["p_xn"],
-                "p_xq": semester_data["p_xq"],
-                "p_xnxq": semester_data["p_xnxq"],
-                "p_pylx": 1,
-                "mxpylx": 1,
-                "p_xkfsdm": course_type,
-                "pageNum": 1,
-                "pageSize": 1000,
-            }
-            req = requests.post(
-                "https://tis.sustech.edu.cn/Xsxk/queryKxrw",
-                data=data,
-                headers=head,
-                verify=False,
-            )
-            raw_class_data = loads(req.text)
-            if not raw_class_data.get("kxrwList"):
-                continue
-
-            for item in raw_class_data["kxrwList"]["list"]:
-                name = item["rwmc"].strip()
-                if name_set is not None and name not in name_set:
+        async with aiohttp.ClientSession(headers=HEADERS, timeout=_client_timeout) as session:
+            for course_type in type_keys:
+                data = {
+                    "p_xn": semester_data["p_xn"],
+                    "p_xq": semester_data["p_xq"],
+                    "p_xnxq": semester_data["p_xnxq"],
+                    "p_pylx": 1,
+                    "mxpylx": 1,
+                    "p_xkfsdm": course_type,
+                    "pageNum": 1,
+                    "pageSize": 1000,
+                }
+                raw_class_data = await _post_json(
+                    session,
+                    "https://tis.sustech.edu.cn/Xsxk/queryKxrw",
+                    data,
+                )
+                if not raw_class_data.get("kxrwList"):
                     continue
-                course_list.append([item["id"], course_type, name])
+
+                for item in raw_class_data["kxrwList"]["list"]:
+                    name = item["rwmc"].strip()
+                    if name_set is not None and name not in name_set:
+                        continue
+                    course_list.append([item["id"], course_type, name])
 
     except Exception as e:
         return {"success": False, "message": "queryKxrw failed", "error": str(e)}
@@ -107,49 +139,52 @@ def _query_available_courses_impl(
     return {"success": True, "courses": course_list, "course_types": course_types}
 
 
-def query_xszykbzong(semester_data: dict) -> dict:
+async def query_xszykbzong(session: aiohttp.ClientSession, semester_data: dict) -> dict:
     try:
         data = {
             "xn": semester_data.get("p_xn", ""),
             "xq": semester_data.get("p_xq", ""),
         }
-        req = requests.post(
+        payload = await _post_json(
+            session,
             "https://tis.sustech.edu.cn/xszykb/queryxszykbzong",
-            data=data,
-            headers=head,
-            verify=False,
+            data,
         )
-        req.raise_for_status()
-        return {"success": True, "data": loads(req.text)}
+        return {"success": True, "data": payload}
     except Exception as e:
         return {"success": False, "message": "queryxszykbzong failed", "error": str(e)}
 
 
 @tool
-def get_schedule(user_name: str | None = None, pwd: str | None = None) -> dict:
+async def get_schedule(user_name: str | None = None, pwd: str | None = None) -> dict:
     """TIS full timetable for the current term. Keys include xq (weekday) and jc (period).
 
-    Credentials optional: Global Settings (``PUT /api/settings/tis/credentials`` or shared CAS with BB) or ``TIS_*`` / ``SUSTECH_*``.
+    Credentials optional: shared CAS in Global Settings
+    (``PUT /api/settings/tis/credentials``),
+    or ``SUSTECH_STUDENT_ID`` / ``SUSTECH_CAS_PASSWORD``.
     """
     u, p = resolve_tis_credentials(user_name, pwd)
     if not u or not p:
         return missing_cas_message()
-    login_result = cas_login(u, p)
+    login_result = await cas_login(u, p)
     if not login_result["success"]:
         return login_result
-    head["cookie"] = f'route={login_result["route"]}; JSESSIONID={login_result["jsessionid"]};'
-    semester_resp = requests.post(
-        "https://tis.sustech.edu.cn/Xsxk/queryXkdqXnxq",
-        data={"mxpylx": 1},
-        headers=head,
-        verify=False,
-    )
-    semester_info = loads(semester_resp.text)
-    return query_xszykbzong(semester_info)
+    session: aiohttp.ClientSession = login_result["session"]
+    try:
+        semester_info = await _post_json(
+            session,
+            "https://tis.sustech.edu.cn/Xsxk/queryXkdqXnxq",
+            {"mxpylx": 1},
+        )
+        return await query_xszykbzong(session, semester_info)
+    except Exception as e:
+        return {"success": False, "message": "queryXkdqXnxq failed", "error": str(e)}
+    finally:
+        await session.close()
 
 
 @tool
-def query_available_courses(
+async def query_available_courses(
     p_xn: str | None = None,
     p_xq: str | None = None,
     p_xnxq: str | None = None,
@@ -164,6 +199,8 @@ def query_available_courses(
     if not xn or not xq or not xnxq:
         return missing_semester_message()
     semester_data = {"p_xn": xn, "p_xq": xq, "p_xnxq": xnxq}
-    return _query_available_courses_impl(
-        semester_data, target_names=target_names, type_codes=type_codes
+    return await _query_available_courses_impl(
+        semester_data,
+        target_names=target_names,
+        type_codes=type_codes,
     )

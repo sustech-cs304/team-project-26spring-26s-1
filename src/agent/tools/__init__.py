@@ -10,6 +10,7 @@ class ToolArtifact(TypedDict):
 from .bb import get_calendar_events
 from .code_interpreter import python_interpreter
 from .core_memory import core_memory_insert
+from .env_vars import list_global_env_vars
 from .tis import get_schedule, query_available_courses
 from .routine_tools import (
     add_routine_event,
@@ -46,6 +47,7 @@ tools = [
     update_scheduled_task,
     delete_scheduled_task,
     core_memory_insert,
+    list_global_env_vars,
     python_interpreter,
     webfetch,
     websearch,
