@@ -7,9 +7,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, TypedDict
-
-from langgraph.graph import END, StateGraph
+from typing import Any, Dict, List
 
 from agent.config import config as app_config
 from scripts.rag.paths import get_rag_paths
@@ -58,24 +56,6 @@ CODE_EXT_TO_LANG = {
     ".go": "go",
     ".rs": "rust",
 }
-
-
-class ChunkGraphState(TypedDict):
-    input_dir: str
-    output_dir: str
-    checkpoint_file: str
-    all_files: List[str]
-    done_files: List[str]
-    failed_files: List[str]
-    skipped_files: List[str]
-
-
-class FileGraphState(TypedDict):
-    file_path: str
-    input_dir: str
-    output_dir: str
-    checkpoint_file: str
-    result: str
 
 
 @dataclass
@@ -482,29 +462,6 @@ async def process_one_document(
     return "done"
 
 
-async def node_discover_files(state: ChunkGraphState) -> Dict[str, Any]:
-    input_dir = Path(state["input_dir"])
-    files = collect_input_files(input_dir)
-    print(f"[节点] 发现文档: {len(files)} 个")
-    return {"all_files": [str(p) for p in files]}
-
-
-async def node_process_single_file(state: FileGraphState) -> Dict[str, Any]:
-    file_path = Path(state["file_path"])
-    if not file_path.exists():
-        return {"result": "skipped"}
-
-    result = await process_one_document(
-        file_path=file_path,
-        input_dir=Path(state["input_dir"]),
-        output_dir=Path(state["output_dir"]),
-        checkpoint_file=Path(state["checkpoint_file"]),
-        options=PipelineOptions(),
-        source_url=None,
-    )
-    return {"result": result}
-
-
 async def partition_files(
     files: list[Path],
     input_dir: Path,
@@ -540,109 +497,8 @@ async def partition_files(
     return {"done": done, "failed": failed, "chunks": total_chunks}
 
 
-def build_file_subgraph() -> Any:
-    builder = StateGraph(FileGraphState)
-    builder.add_node("process_single_file", node_process_single_file)
-    builder.set_entry_point("process_single_file")
-    builder.add_edge("process_single_file", END)
-    return builder.compile()
-
-
-async def run_file_subgraph(
-    file_path: str,
-    input_dir: str,
-    output_dir: str,
-    checkpoint_file: str,
-) -> str:
-    subgraph = build_file_subgraph()
-    result = await subgraph.ainvoke(
-        {
-            "file_path": file_path,
-            "input_dir": input_dir,
-            "output_dir": output_dir,
-            "checkpoint_file": checkpoint_file,
-            "result": "",
-        }
-    )
-    return result.get("result", "failed")
-
-
-async def node_run_subgraphs(state: ChunkGraphState) -> Dict[str, Any]:
-    input_dir = Path(state["input_dir"])
-    output_dir = Path(state["output_dir"])
-    checkpoint_file = Path(state["checkpoint_file"])
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    done_files: List[str] = []
-    failed_files: List[str] = []
-    skipped_files: List[str] = []
-
-    file_paths = state.get("all_files", [])
-    coroutines = [
-        run_file_subgraph(
-            file_path=file_path,
-            input_dir=str(input_dir),
-            output_dir=str(output_dir),
-            checkpoint_file=str(checkpoint_file),
-        )
-        for file_path in file_paths
-    ]
-
-    results = await asyncio.gather(*coroutines, return_exceptions=True)
-    for file_path, result in zip(file_paths, results):
-        if isinstance(result, Exception):
-            failed_files.append(file_path)
-            print(f"[失败] 子图执行异常: {file_path}: {result}")
-            continue
-
-        if result == "done":
-            done_files.append(file_path)
-        elif result == "failed":
-            failed_files.append(file_path)
-        else:
-            skipped_files.append(file_path)
-
-    return {"done_files": done_files, "failed_files": failed_files, "skipped_files": skipped_files}
-
-
-def node_summary(state: ChunkGraphState) -> Dict[str, Any]:
-    total = len(state.get("all_files", []))
-    done = len(state.get("done_files", []))
-    failed = len(state.get("failed_files", []))
-    skipped = len(state.get("skipped_files", []))
-
-    print("\n" + "=" * 56)
-    print("[汇总] LangGraph 文档切分完成")
-    print("=" * 56)
-    print(f"总数: {total}")
-    print(f"成功: {done}")
-    print(f"失败: {failed}")
-    print(f"跳过: {skipped}")
-
-    if failed:
-        print("\n失败文件:")
-        for path in state["failed_files"]:
-            print(f"  - {path}")
-
-    return {}
-
-
-def build_graph() -> Any:
-    graph_builder = StateGraph(ChunkGraphState)
-    graph_builder.add_node("discover_files", node_discover_files)
-    graph_builder.add_node("run_subgraphs", node_run_subgraphs)
-    graph_builder.add_node("summary", node_summary)
-
-    graph_builder.set_entry_point("discover_files")
-    graph_builder.add_edge("discover_files", "run_subgraphs")
-    graph_builder.add_edge("run_subgraphs", "summary")
-    graph_builder.add_edge("summary", END)
-
-    return graph_builder.compile()
-
-
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="LangGraph 异步文档切分工具（支持断点恢复）")
+    parser = argparse.ArgumentParser(description="文档切分工具（支持断点恢复）")
     parser.add_argument("--input-file", type=str, default=None, help="仅切分单个文件")
     parser.add_argument("--input-dir", type=str, default=None, help="输入目录（覆盖默认 rag 路径）")
     parser.add_argument("--output-dir", type=str, default=None, help="输出目录（覆盖默认 rag 路径）")
@@ -673,34 +529,34 @@ async def run() -> None:
     output_dir = Path(args.output_dir) if args.output_dir else rag_paths.chunks_dir
     checkpoint_file = Path(args.checkpoint_file) if args.checkpoint_file else output_dir / ".partition_checkpoint.json"
 
-    print("LangGraph 异步文档切分工具")
+    print("文档切分工具")
     print(f"输入目录: {input_dir}")
     print(f"输出目录: {output_dir}")
     print(f"断点文件: {checkpoint_file}")
 
     if args.input_file:
-        result = await partition_files(
-            files=[Path(args.input_file)],
-            input_dir=input_dir,
-            output_dir=output_dir,
-            checkpoint_file=checkpoint_file,
-            options=options,
-        )
-        print(f"[汇总] done={result['done']} failed={result['failed']} chunks={result['chunks']}")
+        files = [Path(args.input_file)]
+    else:
+        files = collect_input_files(input_dir)
+
+    if not files:
+        print("[完成] 未发现可处理文件")
         return
 
-    graph = build_graph()
-    initial_state: ChunkGraphState = {
-        "input_dir": str(input_dir),
-        "output_dir": str(output_dir),
-        "checkpoint_file": str(checkpoint_file),
-        "all_files": [],
-        "done_files": [],
-        "failed_files": [],
-        "skipped_files": [],
-    }
-
-    await graph.ainvoke(initial_state)
+    result = await partition_files(
+        files=files,
+        input_dir=input_dir,
+        output_dir=output_dir,
+        checkpoint_file=checkpoint_file,
+        options=options,
+    )
+    print("\n" + "=" * 56)
+    print("[汇总] 文档切分完成")
+    print("=" * 56)
+    print(f"总数: {len(files)}")
+    print(f"成功: {result['done']}")
+    print(f"失败: {result['failed']}")
+    print(f"chunks: {result['chunks']}")
 
 
 def main() -> None:

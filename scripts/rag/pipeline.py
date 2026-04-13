@@ -86,7 +86,7 @@ async def run_rag_pipeline_for_file(
     store_db: Path,
     source_url: str | None = None,
 ) -> RagPipelineResult:
-    from scripts.rag.partition_langgraph import partition_files
+    from scripts.rag.partition import partition_files
 
     rag_paths = get_rag_paths(config)
 
