@@ -2,7 +2,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from langchain.tools import ToolRuntime, tool
+from langchain.tools import ToolRuntime
 from langchain_openai import OpenAIEmbeddings
 from langgraph.store.sqlite import AsyncSqliteStore
 
@@ -10,16 +10,16 @@ NAMESPACE = "embeddings"
 
 
 async def embed_texts(
-    texts: list[str], 
-    embedding_config
+    texts: list[str],
+    embedding_config,
 ) -> list[list[float]]:
     """
     使用 embedding_model 对文本进行嵌入。
-    
+
     Args:
         texts: 待嵌入的文本列表
         embedding_config: 来自 config.yaml 的嵌入配置
-        
+
     Returns:
         嵌入向量列表
     """
@@ -28,12 +28,11 @@ async def embed_texts(
         api_key=embedding_config.api_key,
         base_url=embedding_config.base_url,
     )
-    
-    # 使用线程池异步嵌入文本
+
     embedded = await asyncio.gather(
         *[asyncio.to_thread(embeddings.embed_query, text) for text in texts]
     )
-    
+
     return embedded
 
 
@@ -61,42 +60,42 @@ def build_indexed_store(runtime_store, embedding_config) -> AsyncSqliteStore:
 async def load_chunks_from_jsonl(directory_path: str) -> list[dict]:
     """
     从指定目录读取所有 .jsonl 文件中的 chunks。
-    
+
     Args:
         directory_path: 包含 .jsonl 文件的目录路径
-        
+
     Returns:
         chunks 列表，每个 chunk 包含 source_file, chunk_index, text, metadata
     """
     chunks = []
     directory = Path(directory_path)
-    
+
     if not directory.exists():
         raise FileNotFoundError(f"Directory not found: {directory_path}")
-    
+
     jsonl_files = list(directory.glob("*.jsonl"))
-    
+
     for jsonl_file in jsonl_files:
-        with open(jsonl_file, 'r', encoding='utf-8') as f:
+        with open(jsonl_file, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     chunk = json.loads(line)
                     chunks.append(chunk)
-    
+
     return chunks
 
 
 async def store_embeddings(
-    runtime: ToolRuntime, 
-    chunks: list[dict]
+    runtime: ToolRuntime,
+    chunks: list[dict],
 ) -> None:
     """
     对 chunks 进行嵌入并存储到 store 中。
-    
+
     Args:
         runtime: ToolRuntime 对象，包含 store 引用
         chunks: 待处理的 chunks 列表
-        
+
     Raises:
         ValueError: 如果 store 不可用
         Exception: 如果嵌入或存储过程中出错
@@ -104,8 +103,7 @@ async def store_embeddings(
     store = runtime.store
     if not store:
         raise ValueError("Store is not available from runtime")
-    
-    # config = load_config()
+
     config = runtime.config
     embedding_config = config.api.embed
 
@@ -118,9 +116,9 @@ async def store_embeddings(
     for chunk, embedding in zip(chunks, embeddings):
         source_file = chunk.get("source_file", "unknown")
         chunk_index = chunk.get("chunk_index", 0)
-        
+
         key = f"{source_file}#{chunk_index}"
-        
+
         value = {
             "text": chunk.get("text", ""),
             "title_path": chunk.get("title_path", ""),
@@ -137,5 +135,10 @@ async def store_embeddings(
             "metadata": chunk.get("metadata", {}),
             "embedding": embedding,
         }
-        
-        await indexed_store.aput((NAMESPACE,), key=key, value=value, index=["retrieval_text"])
+
+        await indexed_store.aput(
+            (NAMESPACE,),
+            key=key,
+            value=value,
+            index=["retrieval_text"],
+        )

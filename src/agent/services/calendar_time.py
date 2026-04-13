@@ -26,7 +26,7 @@ def local_ymdhms_to_bb_ms(
     minute: int = 0,
     second: int = 0,
 ) -> int:
-    """year/month/day/hour/minute/second → Blackboard **milliseconds** (local wall clock)."""
+    """year/month/day/hour/minute/second -> Blackboard **milliseconds** (local wall clock)."""
     base_ms = standardize_time(year, month, day)
     return base_ms + hour * 3600000 + minute * 60000 + second * 1000
 
@@ -39,12 +39,12 @@ def local_ymdhms_to_unix_sec(
     minute: int = 0,
     second: int = 0,
 ) -> int:
-    """year/month/day/hour/minute/second → Unix **seconds** (for ``routine.time_``)."""
+    """year/month/day/hour/minute/second -> Unix **seconds** (for ``routine.time_``)."""
     return local_ymdhms_to_bb_ms(year, month, day, hour, minute, second) // 1000
 
 
 def unix_sec_to_local_ymdhms(ts: int) -> dict[str, int]:
-    """Inverse of ``local_ymdhms_to_unix_sec``: ``routine.time_`` → local wall-clock parts."""
+    """Inverse of ``local_ymdhms_to_unix_sec``: ``routine.time_`` -> local wall-clock parts."""
     ms = int(ts) * 1000 - _BB_MS_ORIGIN
     days = int(math.floor(ms / 86400000.0))
     rem = ms - days * 86400000
@@ -64,12 +64,12 @@ def unix_sec_to_local_ymdhms(ts: int) -> dict[str, int]:
 
 
 def format_local_ymd(ts: int) -> str:
-    """``routine.time_`` (unix sec) → ``YYYY-MM-DD`` for agent-facing payloads."""
+    """``routine.time_`` (unix sec) -> ``YYYY-MM-DD`` for agent-facing payloads."""
     p = unix_sec_to_local_ymdhms(ts)
     return f"{p['year']:04d}-{p['month']:02d}-{p['day']:02d}"
 
 
 def format_local_hms(ts: int) -> str:
-    """``routine.time_`` → ``HH:MM:SS`` (same local model as ``format_local_ymd``)."""
+    """``routine.time_`` -> ``HH:MM:SS`` (same local model as ``format_local_ymd``)."""
     p = unix_sec_to_local_ymdhms(ts)
     return f"{p['hour']:02d}:{p['minute']:02d}:{p['second']:02d}"

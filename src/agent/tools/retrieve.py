@@ -6,7 +6,7 @@ import aiohttp
 
 from langchain.tools import ToolRuntime, tool
 
-from .embedding_store import NAMESPACE, build_indexed_store
+from agent.services.embedding_store import NAMESPACE, build_indexed_store
 
 from agent.config import get_config
 

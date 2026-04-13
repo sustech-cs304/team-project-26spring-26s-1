@@ -10,7 +10,7 @@ import os
 import pydantic
 from fastapi import APIRouter, Header, HTTPException
 
-from agent.tools import school_credentials
+from agent.services import school_credentials
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
