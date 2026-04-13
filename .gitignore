@@ -26,6 +26,7 @@ uploads/*
 *.db-wal
 
 .gitignore
+tests/*
 # AI tools
 .codex
 
@@ -35,3 +36,7 @@ runs/
 .DS_Store
 workspace/
 assets/
+#rag files
+rag_data/
+test_data/
+testdata_embeddings/
