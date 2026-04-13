@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 
 import aiohttp
 
-from agent.config import AppConfig
+from agent.config import get_config
 from agent.rag.restore import load_embedding_array, restore_from_embedding_array
 
 
@@ -47,8 +47,8 @@ class RagCloudSyncStatus:
 
 
 class RagCloudSyncService:
-    def __init__(self, config: AppConfig):
-        self._config = config
+    def __init__(self):
+        self._config = get_config()
         self._status = RagCloudSyncStatus()
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None

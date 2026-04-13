@@ -63,7 +63,7 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.graph = graph
 	app.state.NotificationService = notification_service
 	configure_notification_service(notification_service)
-	app.state.rag_cloud_sync_service = RagCloudSyncService(config)
+	app.state.rag_cloud_sync_service = RagCloudSyncService()
 
 	async with engine.begin() as conn:
 		await conn.run_sync(Base.metadata.create_all)
