@@ -188,15 +188,24 @@
                                                     <div class="text-caption text-medium-emphasis">课程知识、院校上下文与计算机相关基础资料</div>
                                                 </div>
                                                 <v-btn color="primary" size="small" rounded="lg"
-                                                    :loading="knowledgePack.status === 'downloading'" :disabled="knowledgePack.status === 'downloading'"
+                                                    :loading="isKnowledgeSubmitting" :disabled="knowledgeSync.status === 'running'"
                                                     @click="triggerKnowledgeDownload">
-                                                    {{ knowledgePack.status === 'ready' ? '重新下载' : '开始下载' }}
+                                                    {{ knowledgeButtonLabel }}
                                                 </v-btn>
                                             </div>
                                             <v-progress-linear :model-value="knowledgeProgress" color="primary" rounded height="8" />
                                             <div class="d-flex align-center justify-space-between mt-3">
                                                 <span class="text-caption text-medium-emphasis">{{ knowledgeStatusText }}</span>
                                                 <span class="text-caption text-medium-emphasis">{{ Math.round(knowledgeProgress) }}%</span>
+                                            </div>
+                                            <div v-if="knowledgeMetaLine" class="text-caption text-medium-emphasis mt-2">
+                                                {{ knowledgeMetaLine }}
+                                            </div>
+                                            <div v-if="knowledgeSummary" class="text-caption text-medium-emphasis mt-1">
+                                                {{ knowledgeSummary }}
+                                            </div>
+                                            <div v-if="knowledgeSync.status === 'failed' && knowledgeSync.error" class="text-caption text-error mt-2">
+                                                {{ knowledgeSync.error }}
                                             </div>
                                         </v-card>
 
@@ -295,7 +304,8 @@
 
 <script setup lang="ts">
     import confetti from 'canvas-confetti'
-    import { computed, onBeforeUnmount, ref, watch } from 'vue'
+    import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+    import { defaultRagSyncState, getApiErrorMessage, getRagSyncStatus, triggerRagSync, type RagSyncState } from '@/api/rag'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
 
     type StepKey = 'welcome' | 'profile' | 'identity' | 'campus' | 'model' | 'knowledge' | 'finish'
@@ -344,10 +354,11 @@
     const showApiKey = ref(false)
     const showCampusPassword = ref(false)
     const isCompleting = ref(false)
-    const knowledgeProgress = ref(knowledgePack.status === 'ready' ? 100 : 0)
     const snackbar = ref({ show: false, text: '', color: 'success' })
+    const knowledgeSync = ref<RagSyncState>(defaultRagSyncState())
+    const isKnowledgeSubmitting = ref(false)
 
-    let knowledgeTimer: ReturnType<typeof setInterval> | null = null
+    let knowledgePollTimer: ReturnType<typeof setInterval> | null = null
     let redirectTimer: ReturnType<typeof setTimeout> | null = null
     let celebrationTimers: ReturnType<typeof setTimeout>[] = []
     let confettiInstance: ReturnType<typeof confetti.create> | null = null
@@ -369,9 +380,28 @@
         }
     })
 
+    const knowledgeProgress = computed(() => {
+        if (knowledgePack.status === 'ready') return 100
+        return Math.max(0, Math.min(100, Math.round(knowledgeSync.value.progress || 0)))
+    })
+
+    const knowledgeButtonLabel = computed(() => {
+        if (knowledgeSync.value.status === 'running') return '同步中'
+        if (knowledgePack.status === 'ready') return '重新下载'
+        return '开始下载'
+    })
+
     const knowledgeStatusText = computed(() => {
-        if (knowledgePack.status === 'ready') return '知识包已准备完成'
-        if (knowledgePack.status === 'downloading') return '正在准备知识包资源'
+        if (knowledgeSync.value.status === 'running') {
+            return knowledgeSync.value.message || '正在同步知识库'
+        }
+        if (knowledgeSync.value.status === 'failed') {
+            return '知识库同步失败，请检查配置后重试'
+        }
+        if (knowledgePack.status === 'ready') {
+            const versionText = knowledgeSync.value.version ? `（版本 ${knowledgeSync.value.version}）` : ''
+            return `知识库已准备完成${versionText}`
+        }
         if (knowledgePack.status === 'failed') return '知识包准备失败，请重试'
         return '等待开始下载'
     })
@@ -379,6 +409,29 @@
     const footerHint = computed(() => currentMeta.value.key === 'knowledge' && knowledgePack.status !== 'ready'
         ? '需要先完成知识包准备'
         : '')
+
+    const knowledgeSummary = computed(() => {
+        if (knowledgeSync.value.status !== 'success' && knowledgePack.status !== 'ready') return ''
+
+        const stats = [
+            `新增 ${knowledgeSync.value.embedded_added}`,
+            `覆盖 ${knowledgeSync.value.embedded_overwritten}`,
+            `失败 ${knowledgeSync.value.embedded_failed}`,
+        ]
+
+        return stats.join(' · ')
+    })
+
+    const knowledgeMetaLine = computed(() => {
+        if (knowledgeSync.value.status === 'failed') return ''
+
+        const parts = [
+            knowledgeSync.value.knowledge_base_id ? `知识库 ${knowledgeSync.value.knowledge_base_id}` : '',
+            knowledgeSync.value.version ? `版本 ${knowledgeSync.value.version}` : '',
+        ].filter(Boolean)
+
+        return parts.join(' · ')
+    })
 
     function showNotice (text: string, color: 'success' | 'warning' | 'error' = 'success') {
         snackbar.value = { show: true, text, color }
@@ -404,32 +457,129 @@
         saveKnowledgePack({ ...knowledgePack })
     }
 
-    function triggerKnowledgeDownload () {
-        if (knowledgeTimer) {
-            clearInterval(knowledgeTimer)
-            knowledgeTimer = null
+    function stopKnowledgePolling () {
+        if (knowledgePollTimer) {
+            clearInterval(knowledgePollTimer)
+            knowledgePollTimer = null
+        }
+    }
+
+    function applyKnowledgeSyncState (state: RagSyncState) {
+        knowledgeSync.value = state
+
+        if (state.status === 'running') {
+            saveKnowledgePack({
+                packId: 'sustech-cs',
+                status: 'downloading',
+                lastTriggeredAt: knowledgePack.lastTriggeredAt ?? new Date().toISOString(),
+            })
+            return
         }
 
-        knowledgeProgress.value = 8
+        if (state.status === 'success') {
+            saveKnowledgePack({
+                packId: 'sustech-cs',
+                status: 'ready',
+                lastTriggeredAt: knowledgePack.lastTriggeredAt ?? new Date().toISOString(),
+            })
+            return
+        }
+
+        if (state.status === 'failed') {
+            saveKnowledgePack({
+                packId: 'sustech-cs',
+                status: 'failed',
+                lastTriggeredAt: knowledgePack.lastTriggeredAt ?? new Date().toISOString(),
+            })
+            return
+        }
+
+        if (knowledgePack.status !== 'ready') {
+            saveKnowledgePack({
+                packId: 'sustech-cs',
+                status: 'idle',
+            })
+        }
+    }
+
+    async function pollKnowledgeStatus (options?: { silent?: boolean }) {
+        try {
+            const state = await getRagSyncStatus()
+            const previousStatus = knowledgeSync.value.status
+            applyKnowledgeSyncState(state)
+
+            if (state.status === 'running') {
+                if (!knowledgePollTimer) {
+                    knowledgePollTimer = setInterval(() => {
+                        void pollKnowledgeStatus({ silent: true })
+                    }, 1000)
+                }
+                return
+            }
+
+            stopKnowledgePolling()
+
+            if (!options?.silent && state.status === 'success') {
+                showNotice('知识库更新成功')
+            }
+
+            if (previousStatus === 'running' && state.status === 'success') {
+                showNotice('知识库更新成功')
+            }
+
+            if (previousStatus === 'running' && state.status === 'failed') {
+                showNotice(state.error || '知识库同步失败', 'error')
+            }
+        } catch (error) {
+            stopKnowledgePolling()
+            applyKnowledgeSyncState({
+                ...knowledgeSync.value,
+                status: 'failed',
+                stage: 'failed',
+                error: getApiErrorMessage(error, '知识库同步失败'),
+            })
+            if (!options?.silent) {
+                showNotice(knowledgeSync.value.error || '知识库同步失败', 'error')
+            }
+        }
+    }
+
+    async function triggerKnowledgeDownload () {
+        if (isKnowledgeSubmitting.value || knowledgeSync.value.status === 'running') return
+
+        isKnowledgeSubmitting.value = true
         saveKnowledgePack({
             packId: 'sustech-cs',
             status: 'downloading',
             lastTriggeredAt: new Date().toISOString(),
         })
 
-        knowledgeTimer = setInterval(() => {
-            const next = Math.min(100, knowledgeProgress.value + 12 + Math.random() * 10)
-            knowledgeProgress.value = next
-            if (next >= 100) {
-                if (knowledgeTimer) {
-                    clearInterval(knowledgeTimer)
-                    knowledgeTimer = null
-                }
-                knowledgeProgress.value = 100
-                saveKnowledgePack({ status: 'ready', lastTriggeredAt: new Date().toISOString() })
-                showNotice('SUSTech-CS 知识包已准备完成')
+        try {
+            const state = await triggerRagSync()
+            applyKnowledgeSyncState(state)
+
+            if (state.status === 'running') {
+                stopKnowledgePolling()
+                knowledgePollTimer = setInterval(() => {
+                    void pollKnowledgeStatus({ silent: true })
+                }, 1000)
+            } else if (state.status === 'success') {
+                showNotice('知识库更新成功')
+            } else if (state.status === 'failed') {
+                showNotice(state.error || '知识库同步失败', 'error')
             }
-        }, 220)
+        } catch (error) {
+            const message = getApiErrorMessage(error, '知识库同步失败')
+            applyKnowledgeSyncState({
+                ...knowledgeSync.value,
+                status: 'failed',
+                stage: 'failed',
+                error: message,
+            })
+            showNotice(message, 'error')
+        } finally {
+            isKnowledgeSubmitting.value = false
+        }
     }
 
     function getConfettiInstance () {
@@ -511,10 +661,18 @@
         if (steps[step]?.key === 'finish') {
             replayCelebration()
         }
+
+        if (steps[step]?.key === 'knowledge' && knowledgeSync.value.status === 'idle') {
+            void pollKnowledgeStatus({ silent: true })
+        }
+    })
+
+    onMounted(() => {
+        void pollKnowledgeStatus({ silent: true })
     })
 
     onBeforeUnmount(() => {
-        if (knowledgeTimer) clearInterval(knowledgeTimer)
+        stopKnowledgePolling()
         if (redirectTimer) clearTimeout(redirectTimer)
         if (celebrationTimers.length > 0) {
             celebrationTimers.forEach(clearTimeout)
