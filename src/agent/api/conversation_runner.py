@@ -24,15 +24,12 @@ from agent.api.conversation_models import (
     CompletionUserMessage,
 )
 from agent.api.title_generator import ConversationTitleGenerator
-from agent.config import AppConfig
 from agent.core.state import ResumePayload
 from agent.file_utils.utils import (
     PendingMessageAttachmentRef,
     bind_pending_message_attachments,
     load_attachment_content,
 )
-from agent.api.title_generator import ConversationTitleGenerator
-from agent.config import AppConfig
 from agent.parser import AnthropicEventParser
 
 message_type_adapter = TypeAdapter(AnyMessage)
@@ -47,9 +44,9 @@ class _ConversationJobState:
 
 
 class TitleTaskManager:
-    def __init__(self, session_factory: async_sessionmaker, config: AppConfig):
+    def __init__(self, session_factory: async_sessionmaker):
         self.session_factory = session_factory
-        self.title_generator = ConversationTitleGenerator(config)
+        self.title_generator = ConversationTitleGenerator()
         self._tasks: Dict[str, asyncio.Task[None]] = {}
 
     def request_title_generation(
@@ -115,17 +112,13 @@ class TitleTaskManager:
             self._cleanup_task(conversation_id)
         
 class ConversationRunner:
-    def __init__(self, graph, session_factory : async_sessionmaker, config: AppConfig):
+    def __init__(self, graph, session_factory : async_sessionmaker):
         self._conversation_jobs: Dict[str, _ConversationJobState] = {}
         self.graph = graph
         self.session_factory = session_factory
-        self.config = config
         self.parser = AnthropicEventParser() # TODO: select parser based on model type
         
-        self.title_task_manager = TitleTaskManager(
-            self.session_factory,
-            self.config,
-        )
+        self.title_task_manager = TitleTaskManager(self.session_factory)
     
     def is_running(self, conversation_id: str) -> bool:
         return conversation_id in self._conversation_jobs

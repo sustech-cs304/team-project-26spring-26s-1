@@ -23,7 +23,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)) -> FileUpl
     """Upload a file and return only after the attachment is ready for downstream consumption."""
     file_name, _ = await validate_upload_file(file)
     try:
-        attachment_id, mime_type = await store_attachment(file, session_factory=request.app.state.async_session, config=request.app.state.config)
+        attachment_id, mime_type = await store_attachment(file, session_factory=request.app.state.async_session)
     except FileProcessError as exc:
         return JSONResponse(status_code=status.HTTP_417_EXPECTATION_FAILED, content={"message": str(exc)})
     pending_attachment = await create_pending_message_attachment(

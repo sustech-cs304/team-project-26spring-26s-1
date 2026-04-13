@@ -3,8 +3,7 @@ from typing import cast
 from langgraph.graph import START, StateGraph
 from langchain.messages import AIMessage, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallWithContext
-from agent.config import AppConfig
-from agent.nodes.model import Model
+from agent.nodes.model import ConfiguredModel
 from agent.nodes.user_input import user_input_node
 from agent.core.state import AgentState
 from agent.tools import ToolArtifact, tools as agent_tools, tool_node
@@ -12,16 +11,10 @@ from langgraph.types import Send
 from langgraph.store.base import BaseStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
-async def create_graph(config: AppConfig, store : BaseStore, checkpointer: BaseCheckpointSaver):
+async def create_graph(store : BaseStore, checkpointer: BaseCheckpointSaver):
     workflow = StateGraph(AgentState)
     
-    model = Model.get(
-        name = config.api.agent.type,
-        model = config.api.agent.model,
-        api_key = config.api.agent.api_key,
-        base_url = config.api.agent.base_url,
-        tools = agent_tools
-    )
+    model = ConfiguredModel(tools=agent_tools)
     
     async def tool_route(state: AgentState):
         if not state["messages"]:
@@ -71,5 +64,4 @@ async def create_graph(config: AppConfig, store : BaseStore, checkpointer: BaseC
 
     graph = workflow.compile(store=store, checkpointer=checkpointer)
     return graph
-    
     

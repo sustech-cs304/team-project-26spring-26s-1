@@ -15,7 +15,7 @@ from agent.api.conversation_service import (
     get_or_create_im_session_conversation,
     set_im_permission,
 )
-from agent.config import OneBotConfig
+from agent.config import get_config
 
 from .connection import OneBotApiError, OneBotConnection
 from .message_utils import (
@@ -35,20 +35,29 @@ class OneBotChatTarget:
 
 
 class OneBotHub:
-    def __init__(self, session_factory: async_sessionmaker, graph, runner: ConversationRunner, config: OneBotConfig):
+    def __init__(self, session_factory: async_sessionmaker, graph, runner: ConversationRunner):
         self.session_factory = session_factory
         self.graph = graph
         self.runner = runner
-        self.access_token = config.access_token
-        self.superuser_id = str(config.superuser_id).strip()
-        command_name = config.command_name.strip()
-        command_name = command_name.lstrip("#").strip()
-        command_name = command_name.split(maxsplit=1)[0] if command_name else ""
-        self.command_name = command_name or "agent"
         self._connections: dict[tuple[str, str], OneBotConnection] = {}
         self._connection_lock = asyncio.Lock()
         self._session_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
         self._background_tasks: set[asyncio.Task[Any]] = set()
+
+    @property
+    def access_token(self) -> str:
+        return get_config().onebot.access_token
+
+    @property
+    def superuser_id(self) -> str:
+        return str(get_config().onebot.superuser_id).strip()
+
+    @property
+    def command_name(self) -> str:
+        command_name = get_config().onebot.command_name.strip()
+        command_name = command_name.lstrip("#").strip()
+        command_name = command_name.split(maxsplit=1)[0] if command_name else ""
+        return command_name or "agent"
 
     async def serve(self, websocket: WebSocket):
         self_id = websocket.headers.get("x-self-id")
@@ -469,4 +478,3 @@ class OneBotHub:
             params["group_id"] = int(target.chat_id)
 
         await self.call_action(target.account_id, "send_msg", params)
-

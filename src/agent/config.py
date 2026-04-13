@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any, Literal
+
 import yaml
-from pydantic import BaseModel
-from typing import Optional, Literal
 from jinja2 import Environment, PackageLoader, select_autoescape
+from pydantic import BaseModel, Field
 
 jinja_env = Environment(
     loader=PackageLoader("agent"),
@@ -71,19 +75,55 @@ class AppConfig(BaseModel):
     file: FileConfig
     webfetch: WebFetchConfig
     websearch: WebSearchConfig
-    onebot: OneBotConfig = OneBotConfig()
-    notification: NotificationConfig = NotificationConfig()
+    onebot: OneBotConfig = Field(default_factory=OneBotConfig)
+    notification: NotificationConfig = Field(default_factory=NotificationConfig)
 
-def load_config(file_path: str = "config.yaml") -> AppConfig:
+
+DEFAULT_CONFIG_PATH = "config.yaml"
+
+
+def _merge_config_dict(base: dict[str, Any], delta: Mapping[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in delta.items():
+        if isinstance(value, Mapping) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_config_dict(merged[key], value)
+            continue
+        merged[key] = value
+    return merged
+
+
+def load_config(file_path: str = DEFAULT_CONFIG_PATH) -> AppConfig:
     """Loads config.yaml into a verified Pydantic object with env var lookups."""
     with open(file_path, "r", encoding="utf-8") as f:
         config_data = yaml.safe_load(f) or {}
 
-    return AppConfig(**config_data)
+    return AppConfig.model_validate(config_data)
 
-def save_config(config: AppConfig, file_path: str = "config.yaml"):
+
+_config = load_config()
+
+
+def get_config() -> AppConfig:
+    return _config
+
+
+def patch_config(delta: Mapping[str, Any]) -> AppConfig:
+    """Apply a validated partial update to the live config."""
+    global _config
+    merged = _merge_config_dict(_config.model_dump(), delta)
+    _config = AppConfig.model_validate(merged)
+    return _config
+
+
+def reload_config(file_path: str = DEFAULT_CONFIG_PATH) -> AppConfig:
+    """Reload the live config from disk."""
+    global _config
+    _config = load_config(file_path)
+    return _config
+
+
+def save_config(config_to_save: AppConfig | None = None, file_path: str = DEFAULT_CONFIG_PATH):
     """Saves the Pydantic config object back to a YAML file."""
+    current_config = get_config() if config_to_save is None else config_to_save
     with open(file_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(config.model_dump(), f)
-
-config = load_config()
+        yaml.safe_dump(current_config.model_dump(), f, sort_keys=False)

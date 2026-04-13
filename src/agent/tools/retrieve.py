@@ -8,7 +8,7 @@ from langchain.tools import ToolRuntime, tool
 
 from .embedding_store import NAMESPACE, build_indexed_store
 
-from agent.config import config as runtime_config
+from agent.config import get_config
 
 
 @dataclass
@@ -120,7 +120,7 @@ def _extract_rerank_from_candidate(candidate: Any) -> Any:
 
 def _resolve_embedding_config(runtime: ToolRuntime) -> Any:
     """Resolve embedding config from runtime or default config, supporting both object and dict shapes."""
-    embed = _extract_embed_from_candidate(runtime_config)
+    embed = _extract_embed_from_candidate(get_config())
     if embed is not None:
         return embed
     raise ValueError("Embedding config not found. Checked runtime.config/context and config.yaml in cwd/repository root.")
@@ -128,7 +128,7 @@ def _resolve_embedding_config(runtime: ToolRuntime) -> Any:
 
 def _resolve_rerank_config(runtime: ToolRuntime) -> Any:
     """Resolve rerank config from runtime or default config, supporting both object and dict shapes."""
-    rerank = _extract_rerank_from_candidate(runtime_config)
+    rerank = _extract_rerank_from_candidate(get_config())
     if rerank is not None:
         return rerank
     raise ValueError("Rerank config not found. Checked runtime.config/context and config.yaml in cwd/repository root.")

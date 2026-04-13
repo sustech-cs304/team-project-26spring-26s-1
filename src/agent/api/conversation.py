@@ -6,7 +6,7 @@ import websockets
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 import pydantic
-from agent.config import AppConfig
+from agent.config import get_config
 from contextlib import suppress
 from agent.db.models import Conversation
 from agent.api.conversation_runner import ConversationRunner
@@ -157,16 +157,16 @@ async def delete_conversation(request: Request, conversation_id: str, restart_me
         
 @router.websocket("/conversation/asr")
 async def conversation_asr(websocket: WebSocket):
-    config: AppConfig = websocket.app.state.config
     await websocket.accept()
  
     dashscope_ws = None
  
     try:
+        asr_config = get_config().api.asr
         dashscope_ws = await websockets.connect(
-            config.api.asr.base_url,
+            asr_config.base_url,
             additional_headers={
-                'Authorization': f'bearer {config.api.asr.api_key}',
+                'Authorization': f'bearer {asr_config.api_key}',
             },
             max_size=None,
         )

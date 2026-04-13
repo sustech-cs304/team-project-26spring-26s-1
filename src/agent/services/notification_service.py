@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlencode, urlparse, urlunparse
 
-from agent.config import NotificationConfig
+from agent.config import NotificationConfig, get_config
 from agent.notification_assets import (
     DEFAULT_NOTIFICATION_ICON_RELATIVE_PATH,
     ensure_default_notification_icon,
@@ -92,13 +92,12 @@ class AppNotification:
 class NotificationService:
     def __init__(
         self,
-        config: NotificationConfig,
         loop: asyncio.AbstractEventLoop,
     ) -> None:
-        self._config = config
         self._loop = loop
         self._default_icon_path = ensure_default_notification_icon()
         self._notifier: Any | None = None
+        self._notifier_signature: tuple[Any, ...] | None = None
         self._backend_loaded = False
         self._backend_available = False
         self._desktop_notifier: Any | None = None
@@ -106,6 +105,17 @@ class NotificationService:
         self._desktop_attachment: Any | None = None
         self._desktop_icon: Any | None = None
         self._desktop_urgency: Any | None = None
+
+    @property
+    def _config(self) -> NotificationConfig:
+        return get_config().notification
+
+    def _build_notifier_signature(self) -> tuple[Any, ...]:
+        return (
+            self._config.app_name,
+            self._config.app_icon,
+            self._config.notification_limit,
+        )
 
     def _resolve_path(self, raw_path: str | None) -> Path | None:
         if not raw_path:
@@ -207,7 +217,8 @@ class NotificationService:
         if not self._backend_available or self._desktop_notifier is None:
             return None
 
-        if self._notifier is None:
+        notifier_signature = self._build_notifier_signature()
+        if self._notifier is None or self._notifier_signature != notifier_signature:
             app_icon = None
             if self._config.app_icon and self._desktop_icon is not None:
                 resolved_icon = self._resolve_path(self._config.app_icon)
@@ -221,6 +232,7 @@ class NotificationService:
                 app_icon=app_icon,
                 notification_limit=self._config.notification_limit,
             )
+            self._notifier_signature = notifier_signature
 
         return self._notifier
 

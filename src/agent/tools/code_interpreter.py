@@ -13,7 +13,7 @@ from langgraph.prebuilt import ToolRuntime
 from langgraph.types import interrupt
 
 from agent.core.state import ResumePayload
-from agent.config import config
+from agent.config import get_config
 from agent.tools import ToolArtifact
 
 REVIEW_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
@@ -94,7 +94,7 @@ async def _run_python_script(code: str) -> str:
     return _truncate_output(output)
 
 async def security_review_node(state: CodeInterpreterGraph):
-    utility_config = config.api.utility
+    utility_config = get_config().api.utility
     language_model = ChatOpenAI(
         model=utility_config.model,
         api_key=cast(Any, utility_config.api_key),

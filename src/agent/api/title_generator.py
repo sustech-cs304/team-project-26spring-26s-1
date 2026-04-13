@@ -5,15 +5,12 @@ from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwen
 
-from agent.config import ApiEndpointConfig, AppConfig
+from agent.config import ApiEndpointConfig, get_config
 
 DEFAULT_CONVERSATION_TITLE = "New Conversation"
 
 
 class ConversationTitleGenerator:
-    def __init__(self, config: AppConfig):
-        self.config = config
-
     def should_generate_title(self, title: str | None) -> bool:
         normalized = (title or "").strip()
         return not normalized or normalized == DEFAULT_CONVERSATION_TITLE
@@ -28,7 +25,7 @@ class ConversationTitleGenerator:
     def _build_model(self, endpoint: ApiEndpointConfig):
         if endpoint.type == "OpenAI":
             default_headers = None
-            if endpoint == self.config.api.utility:
+            if endpoint == get_config().api.utility:
                 default_headers = {
                     "User-Agent": "OpenCrab/1.0 utility-title-generator"
                 }
@@ -118,7 +115,7 @@ class ConversationTitleGenerator:
         if not normalized_text:
             return None
 
-        endpoint = self.config.api.utility
+        endpoint = get_config().api.utility
         try:
             return await self._generate_with_endpoint(endpoint, normalized_text)
         except Exception as exc:

@@ -10,7 +10,7 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent.config import AppConfig
+from agent.config import get_config
 from agent.db.models import Attachment
 from agent.file_utils.mineru import _make_headers, _submit_task, _upload_file_to_signed_url, _poll_markdown_url, _download_markdown
 import aiohttp
@@ -29,8 +29,9 @@ def _safe_file_name(file_name: str | None) -> str:
     clean_name = Path(file_name).name
     return clean_name or "uploaded_file"
 
-def _relative_upload_root(config: AppConfig) -> Path:
-    root = Path(config.file.upload_path)
+
+def _relative_upload_root() -> Path:
+    root = Path(get_config().file.upload_path)
     return _relative_storage_path(root) if root.is_absolute() else root
 
 
@@ -58,10 +59,9 @@ async def _persist_uploaded_file(
     content: bytes,
     attachment_id: str,
     file_name: str | None,
-    config: AppConfig,
 ) -> Path:
     timestamp = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-    target_dir = _relative_upload_root(config) / timestamp
+    target_dir = _relative_upload_root() / timestamp
     target_dir.mkdir(parents=True, exist_ok=True)
     source_file = target_dir / _build_stored_file_name(attachment_id, file_name)
     await asyncio.to_thread(source_file.write_bytes, content)
@@ -70,9 +70,10 @@ async def _persist_uploaded_file(
     return source_file
 
 
-async def _request_mineru_parse(attachment_id: str, source_file: Path, session_factory: async_sessionmaker, config: AppConfig) -> None:
-    base_url = config.file.mineru.base_url
-    api_key = config.file.mineru.api_key
+async def _request_mineru_parse(attachment_id: str, source_file: Path, session_factory: async_sessionmaker) -> None:
+    file_config = get_config().file
+    base_url = file_config.mineru.base_url
+    api_key = file_config.mineru.api_key
     timeout = aiohttp.ClientTimeout(total=120)
     try:
         async with aiohttp.ClientSession(headers=_make_headers(api_key), timeout=timeout) as csession:
@@ -95,7 +96,7 @@ async def _request_mineru_parse(attachment_id: str, source_file: Path, session_f
         db_attachment.status = "processing"
         await session.commit()
 
-async def store_attachment(file: UploadFile, session_factory: async_sessionmaker, config: AppConfig) -> tuple[str, str | None]:
+async def store_attachment(file: UploadFile, session_factory: async_sessionmaker) -> tuple[str, str | None]:
     """Store uploaded file and synchronously produce a usable attachment."""
     content, digest = await _read_file_and_hash(file)
     safe_filename = file.filename or ""
@@ -117,7 +118,7 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
         else:
             attachment_id = str(uuid.uuid4())
             print(f"Creating new attachment for file: {file.filename}")
-            source_file = await _persist_uploaded_file(content, attachment_id, file.filename, config)
+            source_file = await _persist_uploaded_file(content, attachment_id, file.filename)
 
             attachment = Attachment(
                 id=attachment_id,
@@ -135,7 +136,7 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
     if need_extract and existing_attachment.status != "completed":
         source_file = Path(existing_attachment.path)
         if not source_file.exists():
-            source_file = await _persist_uploaded_file(content, existing_attachment.id, file.filename, config)
+            source_file = await _persist_uploaded_file(content, existing_attachment.id, file.filename)
             async with session_factory() as session:
                 db_attachment = await session.get(Attachment, existing_attachment.id)
                 if not db_attachment:
@@ -156,9 +157,9 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
                 db_attachment.mineru_id = None
                 await session.commit()
 
-        await _request_mineru_parse(existing_attachment.id, source_file, session_factory, config)
+        await _request_mineru_parse(existing_attachment.id, source_file, session_factory)
         try:
-            await extract_attachment(existing_attachment.id, session_factory, config)
+            await extract_attachment(existing_attachment.id, session_factory)
         except FileProcessError:
             raise
         except Exception as exc:
@@ -174,7 +175,7 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
         return attachment.id, mime_type
 
 
-async def extract_attachment(file_id: str, session_factory: async_sessionmaker, config: AppConfig):
+async def extract_attachment(file_id: str, session_factory: async_sessionmaker):
     """Poll and download markdown result for an attachment that has already submitted a parse task."""
     
     async with session_factory() as session:
@@ -193,8 +194,9 @@ async def extract_attachment(file_id: str, session_factory: async_sessionmaker, 
     source_file = Path(attachment.path)
     markdown_file = source_file.with_suffix(".md")
     task_id = attachment.mineru_id
-    base_url=config.file.mineru.base_url
-    api_key=config.file.mineru.api_key
+    file_config = get_config().file
+    base_url=file_config.mineru.base_url
+    api_key=file_config.mineru.api_key
     timeout = aiohttp.ClientTimeout(total=120)
     try:
         async with aiohttp.ClientSession(headers=_make_headers(api_key), timeout=timeout) as csession:

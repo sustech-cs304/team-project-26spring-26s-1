@@ -13,10 +13,8 @@ from agent.api.file import router as file_router
 from agent.api.notifications import router as notifications_router
 from agent.api.onebot import OneBotHub, router as onebot_router
 from agent.api.conversation_runner import ConversationRunner
-from agent.config import config
 from agent.core.graph import create_graph
 from agent.notifications import configure_notification_service
-from agent.api.onebot import OneBotHub
 from agent.api.task import router as task_router
 from agent.api.env_vars import router as env_vars_router
 from agent.api.school_settings import router as school_settings_router
@@ -38,7 +36,7 @@ graph = None
 
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
-	global engine, async_session, config, graph
+	global engine, async_session, graph
 
 	engine = create_sqlite_engine()
 	@event.listens_for(engine.sync_engine, "connect")
@@ -53,17 +51,13 @@ async def lifespan(app: fastapi.FastAPI):
 	checkpointer_conn = await aiosqlite.connect("agent_checkpoints.db", isolation_level=None)
 	checkpointer = AsyncSqliteSaver(checkpointer_conn)
  
-	graph = await create_graph(config, store=store, checkpointer=checkpointer)
-	notification_service = NotificationService(
-		config.notification,
-		asyncio.get_running_loop(),
-	)
+	graph = await create_graph(store=store, checkpointer=checkpointer)
+	notification_service = NotificationService(asyncio.get_running_loop())
  
 	app.state.engine = engine
 	app.state.async_session = async_session
-	app.state.ConversationRunner = ConversationRunner(graph, async_session, config)
-	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner, config.onebot)
-	app.state.config = config
+	app.state.ConversationRunner = ConversationRunner(graph, async_session)
+	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner)
 	app.state.graph = graph
 	app.state.NotificationService = notification_service
 	configure_notification_service(notification_service)
