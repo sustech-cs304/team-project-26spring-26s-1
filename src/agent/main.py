@@ -18,6 +18,7 @@ from agent.core.graph import create_graph
 from agent.notifications import configure_notification_service
 from agent.api.task import router as task_router
 from agent.api.env_vars import router as env_vars_router
+from agent.api.config import router as config_router
 from agent.api.school_settings import router as school_settings_router
 from agent.api.routine_events import ensure_routine_calendar_schema, router as routine_events_router
 from agent.cron_watcher import CronWatcher
@@ -119,6 +120,7 @@ app.include_router(file_router, prefix="/api")
 app.include_router(onebot_router, prefix="/api")
 app.include_router(task_router, prefix="/api")
 app.include_router(env_vars_router, prefix="/api")
+app.include_router(config_router, prefix="/api")
 app.include_router(school_settings_router, prefix="/api")
 app.include_router(routine_events_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")

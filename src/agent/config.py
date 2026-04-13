@@ -72,7 +72,7 @@ class NotificationConfig(BaseModel):
     deeplink_scheme: str = "opencrab"
 class RagCloudConfig(BaseModel):
     base_url: str = ""
-    manifest_path: str = "/manifest.json"
+    manifest_path: str = "manifest.json"
     timeout_ms: int = 30000
     api_key: str = ""
 
