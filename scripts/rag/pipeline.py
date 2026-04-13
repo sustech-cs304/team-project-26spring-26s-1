@@ -16,7 +16,7 @@ from scripts.rag.embedding_and_restore import (
     normalize_source_name,
     restore_from_embedding_array,
 )
-from scripts.rag.paths import get_rag_paths
+from scripts.rag.partition import get_rag_paths
 from scripts.rag.partition import (
     PipelineOptions,
     build_ingestion_transformations,
