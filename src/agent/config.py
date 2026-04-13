@@ -70,6 +70,11 @@ class NotificationConfig(BaseModel):
     notification_limit: int | None = 8
     default_timeout_s: int = 10
     deeplink_scheme: str = "opencrab"
+class RagCloudConfig(BaseModel):
+    base_url: str = ""
+    manifest_path: str = "/manifest.json"
+    timeout_ms: int = 30000
+    api_key: str = ""
 
 class AppConfig(BaseModel):
     api: ApiConfig
@@ -77,6 +82,7 @@ class AppConfig(BaseModel):
     webfetch: WebFetchConfig
     websearch: WebSearchConfig
     onebot: OneBotConfig = Field(default_factory=OneBotConfig)
+    rag_cloud: RagCloudConfig = RagCloudConfig()
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
 
 

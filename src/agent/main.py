@@ -21,6 +21,7 @@ from agent.api.env_vars import router as env_vars_router
 from agent.api.school_settings import router as school_settings_router
 from agent.api.routine_events import ensure_routine_calendar_schema, router as routine_events_router
 from agent.cron_watcher import CronWatcher
+from agent.rag.cloud_sync import RagCloudSyncService
 from agent.task_executor import ensure_task_run_sqlite_schema
 from agent.services import NotificationService
 
@@ -62,6 +63,7 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.graph = graph
 	app.state.NotificationService = notification_service
 	configure_notification_service(notification_service)
+	app.state.rag_cloud_sync_service = RagCloudSyncService(config)
 
 	async with engine.begin() as conn:
 		await conn.run_sync(Base.metadata.create_all)

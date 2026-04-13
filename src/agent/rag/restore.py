@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import aiosqlite
+import orjson
+import sqlite_vec
 
 from agent.config import AppConfig
 from agent.tools.embedding_store import NAMESPACE, build_indexed_store
@@ -78,10 +80,33 @@ async def restore_from_embedding_array(
                 }
                 if not value["retrieval_text"]:
                     value["retrieval_text"] = "\n".join([source_file, value["title_path"], value["text"]])
-
-                await indexed_store.aput((NAMESPACE,), key=key, value=value, index=["retrieval_text"])
+                await conn.execute(
+                    """
+                    INSERT OR REPLACE INTO store (
+                        prefix, key, value, created_at, updated_at, expires_at, ttl_minutes
+                    )
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL)
+                    """,
+                    (NAMESPACE, key, orjson.dumps(value)),
+                )
+                await conn.execute(
+                    """
+                    INSERT OR REPLACE INTO store_vectors (
+                        prefix, key, field_name, embedding, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """,
+                    (
+                        NAMESPACE,
+                        key,
+                        "retrieval_text",
+                        sqlite_vec.serialize_float32(value["embedding"]),
+                    ),
+                )
                 stats.added += 1
             except Exception:
                 stats.failed += 1
+
+        await conn.commit()
 
     return stats

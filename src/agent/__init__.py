@@ -1,1 +1,1 @@
-from agent.main import app
+"""Agent package."""
