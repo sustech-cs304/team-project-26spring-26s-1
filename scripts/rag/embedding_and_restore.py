@@ -10,7 +10,7 @@ from pathlib import Path
 import aiosqlite
 
 from agent.config import AppConfig, config as app_config
-from agent.rag.paths import get_rag_paths
+from scripts.rag.paths import get_rag_paths
 from agent.tools.embedding_store import NAMESPACE, build_indexed_store, embed_texts
 
 
@@ -19,6 +19,15 @@ class EmbedStats:
     added: int = 0
     overwritten: int = 0
     failed: int = 0
+
+
+def normalize_source_name(source: str) -> str:
+    name = Path(str(source or "unknown")).name
+    base = Path(name).stem
+    for marker in (".cleaned", ".chunks"):
+        if base.endswith(marker):
+            base = base[: -len(marker)]
+    return base or "unknown"
 
 
 def _load_chunks_from_file(path: Path) -> list[dict]:
@@ -45,9 +54,7 @@ def load_chunks(chunks_dir: Path, file_stem: str | None = None) -> list[dict]:
 def _chunk_to_embedding_item(chunk: dict, source_file: str, chunk_index: int, embedding: list[float]) -> dict:
     text = str(chunk.get("text") or "")
     title_path = str(chunk.get("title_path") or "")
-    retrieval_text = str(chunk.get("retrieval_text") or "")
-    if not retrieval_text:
-        retrieval_text = "\n".join([source_file, title_path, text])
+    retrieval_text = "\n".join([source_file, title_path, text])
 
     return {
         "source_file": source_file,
@@ -67,7 +74,7 @@ async def embed_chunks_to_json(config: AppConfig, chunks: list[dict], output_fil
     failed = 0
     by_source: dict[str, list[dict]] = defaultdict(list)
     for chunk in chunks:
-        source = str(chunk.get("source_file") or "unknown")
+        source = normalize_source_name(str(chunk.get("source_file") or "unknown"))
         by_source[source].append(chunk)
 
     embedding_items: list[dict] = []
@@ -119,7 +126,7 @@ async def restore_from_embedding_array(
     if not embedding_items:
         return stats
 
-    overwrite_sources = overwrite_sources or set()
+    overwrite_sources = {normalize_source_name(x) for x in (overwrite_sources or set())}
 
     async with aiosqlite.connect(str(store_db), isolation_level=None) as conn:
         indexed_store = build_indexed_store(type("Store", (), {"conn": conn})(), config.api.embed)
@@ -130,7 +137,7 @@ async def restore_from_embedding_array(
 
         for item in embedding_items:
             try:
-                source_file = str(item.get("source_file") or "unknown")
+                source_file = normalize_source_name(str(item.get("source_file") or "unknown"))
                 chunk_index = int(item.get("chunk_index", 0))
                 key = f"{source_file}#{chunk_index}"
                 value = {

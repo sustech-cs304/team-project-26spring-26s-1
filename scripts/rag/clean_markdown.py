@@ -7,7 +7,7 @@ from html import unescape
 from pathlib import Path
 
 from agent.config import config as app_config
-from agent.rag.paths import get_rag_paths
+from scripts.rag.paths import get_rag_paths
 
 MARKDOWN_SUFFIXES = {".md", ".markdown", ".txt"}
 

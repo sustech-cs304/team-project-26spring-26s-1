@@ -12,7 +12,7 @@ from typing import Any, Dict, List, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agent.config import config as app_config
-from agent.rag.paths import get_rag_paths
+from scripts.rag.paths import get_rag_paths
 
 from llama_index.core import Document, SimpleDirectoryReader
 from llama_index.core.node_parser import (
@@ -23,9 +23,6 @@ from llama_index.core.node_parser import (
     SemanticSplitterNodeParser,
     SentenceSplitter,
 )
-
-
-os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 SUPPORTED_EXTS = {
     ".txt",
@@ -144,10 +141,24 @@ def get_embed_model() -> Any:
 
     _EMBED_MODEL_READY = True
     try:
-        from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+        from llama_index.embeddings.openai import OpenAIEmbedding
 
-        _EMBED_MODEL = HuggingFaceEmbedding(model_name="BAAI/bge-small-zh-v1.5")
-        print("[信息] 语义切分嵌入模型已加载：BAAI/bge-small-zh-v1.5")
+        embed_cfg = app_config.api.embed
+        kwargs: dict[str, Any] = {
+            "model": embed_cfg.model,
+            "api_key": embed_cfg.api_key,
+            "api_base": embed_cfg.base_url,
+        }
+        # Some llama-index versions accept dimensions, some do not.
+        if getattr(embed_cfg, "dims", None):
+            kwargs["dimensions"] = embed_cfg.dims
+
+        try:
+            _EMBED_MODEL = OpenAIEmbedding(**kwargs)
+        except TypeError:
+            kwargs.pop("dimensions", None)
+            _EMBED_MODEL = OpenAIEmbedding(**kwargs)
+        print(f"[信息] 语义切分嵌入模型已加载：{embed_cfg.model}")
     except Exception as exc:
         _EMBED_MODEL = None
         print(f"[警告] 语义切分模型加载失败，将退化到非语义切分: {exc}")

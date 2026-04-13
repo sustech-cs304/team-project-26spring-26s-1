@@ -7,14 +7,15 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from agent.config import AppConfig
-from agent.rag.clean_markdown import process_file as clean_one_file
-from agent.rag.clean_markdown import CleanStats
-from agent.rag.embedding_and_restore import (
+from scripts.rag.clean_markdown import process_file as clean_one_file
+from scripts.rag.clean_markdown import CleanStats
+from scripts.rag.embedding_and_restore import (
     embed_chunks_to_json,
     load_embedding_array,
+    normalize_source_name,
     restore_from_embedding_array,
 )
-from agent.rag.paths import get_rag_paths
+from scripts.rag.paths import get_rag_paths
 
 
 ALLOWED_SUFFIXES = {".txt", ".md", ".markdown"}
@@ -55,13 +56,37 @@ def _chunk_file_for_source(chunks_dir: Path, source_rel_path: str) -> Path:
     return chunks_dir / f"{safe_name}.chunks.jsonl"
 
 
+def _safe_unlink(path: Path) -> None:
+    try:
+        if path.exists():
+            path.unlink()
+    except Exception:
+        # Best-effort cleanup should not fail the already completed restore path.
+        pass
+
+
+def cleanup_intermediate_files(
+    *,
+    raw_file: Path,
+    cleaned_file: Path,
+    chunk_file: Path,
+    checkpoint_file: Path,
+    embeddings_json_file: Path,
+) -> None:
+    _safe_unlink(raw_file)
+    _safe_unlink(cleaned_file)
+    _safe_unlink(chunk_file)
+    _safe_unlink(checkpoint_file)
+    _safe_unlink(embeddings_json_file)
+
+
 async def run_rag_pipeline_for_file(
     raw_file: Path,
     config: AppConfig,
     store_db: Path,
     source_url: str | None = None,
 ) -> RagPipelineResult:
-    from agent.rag.partition_langgraph import partition_files
+    from scripts.rag.partition_langgraph import partition_files
 
     rag_paths = get_rag_paths(config)
 
@@ -70,6 +95,7 @@ async def run_rag_pipeline_for_file(
     cleaned_file = rag_paths.cleaned_dir / f"{raw_file.stem}.cleaned.md"
 
     source_rel_path = str(cleaned_file.name)
+    normalized_source_name = normalize_source_name(raw_file.stem)
     chunk_file = _chunk_file_for_source(rag_paths.chunks_dir, source_rel_path)
     checkpoint_file = rag_paths.checkpoints_dir / f"{raw_file.stem}.partition_checkpoint.json"
 
@@ -95,7 +121,9 @@ async def run_rag_pipeline_for_file(
             for line in f:
                 line = line.strip()
                 if line:
-                    chunks.append(json.loads(line))
+                    payload = json.loads(line)
+                    payload["source_file"] = normalized_source_name
+                    chunks.append(payload)
 
     embeddings_json_file = rag_paths.embeddings_dir / f"{raw_file.stem}.embeddings.json"
     await embed_chunks_to_json(
@@ -109,8 +137,18 @@ async def run_rag_pipeline_for_file(
         config=config,
         embedding_items=embedding_items,
         store_db=store_db,
-        overwrite_sources={source_rel_path},
+        overwrite_sources={normalized_source_name},
     )
+
+    cleanup_intermediate_files(
+        raw_file=raw_file,
+        cleaned_file=cleaned_file,
+        chunk_file=chunk_file,
+        checkpoint_file=checkpoint_file,
+        embeddings_json_file=embeddings_json_file,
+    )
+    
+    _safe_unlink(rag_paths.root)
 
     return RagPipelineResult(
         stored_file=raw_file,
