@@ -10,10 +10,12 @@ import fastapi
 from agent.db.database import Base, create_session_factory, create_sqlite_engine
 from agent.api.conversation import router as conversation_router
 from agent.api.file import router as file_router
+from agent.api.notifications import router as notifications_router
 from agent.api.onebot import OneBotHub, router as onebot_router
 from agent.api.conversation_runner import ConversationRunner
 from agent.config import config
 from agent.core.graph import create_graph
+from agent.notifications import configure_notification_service
 from agent.api.onebot import OneBotHub
 from agent.api.task import router as task_router
 from agent.api.env_vars import router as env_vars_router
@@ -21,6 +23,7 @@ from agent.api.school_settings import router as school_settings_router
 from agent.api.routine_events import ensure_routine_calendar_schema, router as routine_events_router
 from agent.cron_watcher import CronWatcher
 from agent.task_executor import ensure_task_run_sqlite_schema
+from agent.services import NotificationService
 
 import aiosqlite
 from langgraph.store.sqlite import AsyncSqliteStore
@@ -51,6 +54,10 @@ async def lifespan(app: fastapi.FastAPI):
 	checkpointer = AsyncSqliteSaver(checkpointer_conn)
  
 	graph = await create_graph(config, store=store, checkpointer=checkpointer)
+	notification_service = NotificationService(
+		config.notification,
+		asyncio.get_running_loop(),
+	)
  
 	app.state.engine = engine
 	app.state.async_session = async_session
@@ -58,6 +65,8 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner, config.onebot)
 	app.state.config = config
 	app.state.graph = graph
+	app.state.NotificationService = notification_service
+	configure_notification_service(notification_service)
 
 	async with engine.begin() as conn:
 		await conn.run_sync(Base.metadata.create_all)
@@ -82,6 +91,7 @@ async def lifespan(app: fastapi.FastAPI):
 		yield
   
 	finally:
+		configure_notification_service(None)
 		watcher.stop()
 		watcher_thread.join(timeout=5)
 		if watcher_thread.is_alive():
@@ -114,3 +124,4 @@ app.include_router(task_router, prefix="/api")
 app.include_router(env_vars_router, prefix="/api")
 app.include_router(school_settings_router, prefix="/api")
 app.include_router(routine_events_router, prefix="/api")
+app.include_router(notifications_router, prefix="/api")
