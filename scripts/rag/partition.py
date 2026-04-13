@@ -3,20 +3,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from agent.config import config as app_config
 from scripts.rag.paths import get_rag_paths
 
 from llama_index.core import Document, SimpleDirectoryReader
+from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import (
     CodeSplitter,
     JSONNodeParser,
-    LangchainNodeParser,
     MarkdownNodeParser,
     SemanticSplitterNodeParser,
     SentenceSplitter,
@@ -68,11 +66,14 @@ class PipelineOptions:
 
 _EMBED_MODEL = None
 _EMBED_MODEL_READY = False
-CHECKPOINT_LOCK = asyncio.Lock()
 
 
-def now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def collect_input_files(input_dir: Path) -> list[Path]:
+    if not input_dir.exists():
+        return []
+    files = [p for p in input_dir.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS]
+    files.sort(key=lambda x: str(x))
+    return files
 
 
 def safe_rel_path(file_path: Path, base_dir: Path) -> str:
@@ -86,34 +87,6 @@ def sanitize_rel_for_output(rel_path: str) -> str:
     return rel_path.replace("\\", "__").replace("/", "__")
 
 
-def load_checkpoint(checkpoint_file: Path) -> Dict[str, Any]:
-    if not checkpoint_file.exists():
-        return {"version": 1, "updated_at": now_str(), "documents": {}}
-
-    with checkpoint_file.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    data.setdefault("version", 1)
-    data.setdefault("updated_at", now_str())
-    data.setdefault("documents", {})
-    return data
-
-
-def save_checkpoint(checkpoint_file: Path, checkpoint_data: Dict[str, Any]) -> None:
-    checkpoint_data["updated_at"] = now_str()
-    checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
-    with checkpoint_file.open("w", encoding="utf-8") as f:
-        json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
-
-
-def collect_input_files(input_dir: Path) -> List[Path]:
-    if not input_dir.exists():
-        return []
-    files = [p for p in input_dir.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS]
-    files.sort(key=lambda x: str(x))
-    return files
-
-
 def get_embed_model() -> Any:
     global _EMBED_MODEL, _EMBED_MODEL_READY
     if _EMBED_MODEL_READY:
@@ -125,11 +98,11 @@ def get_embed_model() -> Any:
 
         embed_cfg = app_config.api.embed
         kwargs: dict[str, Any] = {
-            "model": embed_cfg.model,
+            "model_name": embed_cfg.model,
             "api_key": embed_cfg.api_key,
             "api_base": embed_cfg.base_url,
+            "embed_batch_size": 64,
         }
-        # Some llama-index versions accept dimensions, some do not.
         if getattr(embed_cfg, "dims", None):
             kwargs["dimensions"] = embed_cfg.dims
 
@@ -138,101 +111,73 @@ def get_embed_model() -> Any:
         except TypeError:
             kwargs.pop("dimensions", None)
             _EMBED_MODEL = OpenAIEmbedding(**kwargs)
-        print(f"[信息] 语义切分嵌入模型已加载：{embed_cfg.model}")
+        print(f"[信息] 嵌入模型已加载: {embed_cfg.model}")
     except Exception as exc:
         _EMBED_MODEL = None
-        print(f"[警告] 语义切分模型加载失败，将退化到非语义切分: {exc}")
+        print(f"[警告] 嵌入模型加载失败: {exc}")
     return _EMBED_MODEL
 
 
-def parse_by_format(file_path: Path, documents: List[Document]) -> List[Any]:
+def parser_for_file(file_path: Path) -> Any:
     suffix = file_path.suffix.lower()
 
-    if suffix in {".md", ".markdown"}:
-        parser = MarkdownNodeParser.from_defaults()
-        return parser.get_nodes_from_documents(documents)
+    if suffix in {".md", ".markdown", ".txt"}:
+        return MarkdownNodeParser.from_defaults()
 
     if suffix in {".json", ".jsonl"}:
-        parser = JSONNodeParser.from_defaults()
-        return parser.get_nodes_from_documents(documents)
+        return JSONNodeParser.from_defaults()
 
     if suffix in CODE_EXT_TO_LANG:
-        parser = CodeSplitter(
+        return CodeSplitter(
             language=CODE_EXT_TO_LANG[suffix],
             chunk_lines=60,
             chunk_lines_overlap=15,
             max_chars=1800,
         )
-        return parser.get_nodes_from_documents(documents)
 
-    parser = SentenceSplitter(chunk_size=1200, chunk_overlap=100)
-    return parser.get_nodes_from_documents(documents)
+    return SentenceSplitter(chunk_size=1200, chunk_overlap=100)
 
 
-def _contains_table(text: str) -> bool:
-    stripped = text.strip()
-    return "<table" in stripped or ("|" in stripped and "---" in stripped)
+def load_documents(file_path: Path) -> list[Document]:
+    reader = SimpleDirectoryReader(input_files=[str(file_path)], required_exts=[file_path.suffix])
+    return reader.load_data()
 
 
-def recursive_split_nodes(nodes: List[Any], options: PipelineOptions) -> List[Any]:
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
+def build_ingestion_transformations(
+    file_path: Path,
+    options: PipelineOptions,
+    *,
+    include_embedding: bool,
+    enable_semantic: bool = True,
+) -> list[Any]:
+    transformations: list[Any] = [
+        parser_for_file(file_path),
+        SentenceSplitter(
+            chunk_size=options.recursive_chunk_size,
+            chunk_overlap=options.recursive_chunk_overlap,
+        ),
+    ]
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=options.recursive_chunk_size,
-        chunk_overlap=options.recursive_chunk_overlap,
-        separators=["\n\n", "\n", "。", "；", "，", " ", ""],
-    )
-    try:
-        parser = LangchainNodeParser(lc_splitter=text_splitter)
-    except TypeError:
-        parser = LangchainNodeParser(text_splitter=text_splitter)
-
-    recursive_docs: List[Document] = []
-    for node in nodes:
-        text = node.get_content()
-        if not text or not text.strip():
-            continue
-        recursive_docs.append(Document(text=text, metadata=getattr(node, "metadata", {}) or {}))
-
-    non_table_docs = [doc for doc in recursive_docs if not _contains_table(doc.text)]
-    table_docs = [doc for doc in recursive_docs if _contains_table(doc.text)]
-
-    split_nodes: List[Any] = []
-    if non_table_docs:
-        split_nodes.extend(parser.get_nodes_from_documents(non_table_docs))
-    split_nodes.extend(table_docs)
-    return split_nodes
-
-
-def semantic_refine_nodes(nodes: List[Any], options: PipelineOptions) -> List[Any]:
     embed_model = get_embed_model()
-    if embed_model is None:
-        return nodes
+    if enable_semantic and embed_model is not None:
+        transformations.append(
+            SemanticSplitterNodeParser(
+                embed_model=embed_model,
+                buffer_size=options.semantic_buffer_size,
+                breakpoint_percentile_threshold=options.semantic_breakpoint_percentile_threshold,
+            )
+        )
 
-    semantic_docs: List[Document] = []
-    preserved_nodes: List[Any] = []
-    for node in nodes:
-        text = node.get_content()
-        if not text or not text.strip():
-            continue
-        if _contains_table(text):
-            preserved_nodes.append(node)
-            continue
-        semantic_docs.append(Document(text=text, metadata=getattr(node, "metadata", {}) or {}))
+    if include_embedding:
+        if embed_model is None:
+            raise RuntimeError("Embedding model is not available; cannot run ingestion embedding stage.")
+        transformations.append(embed_model)
 
-    if not semantic_docs:
-        return preserved_nodes
-
-    parser = SemanticSplitterNodeParser(
-        embed_model=embed_model,
-        buffer_size=options.semantic_buffer_size,
-        breakpoint_percentile_threshold=options.semantic_breakpoint_percentile_threshold,
-    )
-    return parser.get_nodes_from_documents(semantic_docs) + preserved_nodes
+    return transformations
 
 
-def _extract_markdown_headings(text: str) -> List[tuple[int, str]]:
-    headings: List[tuple[int, str]] = []
+def _extract_markdown_headings(text: str) -> list[tuple[int, str]]:
+    headings: list[tuple[int, str]] = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line.startswith("#"):
@@ -244,18 +189,18 @@ def _extract_markdown_headings(text: str) -> List[tuple[int, str]]:
     return headings
 
 
-def _normalize_header_path(header_path: Any) -> List[str]:
+def _normalize_header_path(header_path: Any) -> list[str]:
     if not isinstance(header_path, str):
         return []
     return [part.strip() for part in header_path.split("/") if part.strip() and part.strip() != "/"]
 
 
-def enrich_chunks_with_title_path(chunks: List[Dict[str, Any]], source_file: str) -> List[Dict[str, Any]]:
-    heading_stack: List[str] = []
-    enriched_chunks: List[Dict[str, Any]] = []
+def enrich_chunks_with_title_path(chunks: list[dict[str, Any]], source_file: str) -> list[dict[str, Any]]:
+    heading_stack: list[str] = []
+    enriched_chunks: list[dict[str, Any]] = []
 
     for chunk in chunks:
-        text = chunk.get("text", "")
+        text = str(chunk.get("text") or "")
         metadata = dict(chunk.get("metadata") or {})
         headings = _extract_markdown_headings(text)
         header_path_parts = _normalize_header_path(metadata.get("header_path"))
@@ -282,20 +227,18 @@ def enrich_chunks_with_title_path(chunks: List[Dict[str, Any]], source_file: str
         retrieval_parts.append(text)
         retrieval_text = "\n".join(part for part in retrieval_parts if part)
 
+        enriched = dict(chunk)
         metadata["title_path"] = title_path
-        enriched_chunks.append(
-            {
-                "text": text,
-                "metadata": metadata,
-                "title_path": title_path,
-                "retrieval_text": retrieval_text,
-            }
-        )
+        enriched["text"] = text
+        enriched["metadata"] = metadata
+        enriched["title_path"] = title_path
+        enriched["retrieval_text"] = retrieval_text
+        enriched_chunks.append(enriched)
 
     return enriched_chunks
 
 
-def attach_source_url(chunks: List[Dict[str, Any]], source_url: str | None) -> List[Dict[str, Any]]:
+def attach_source_url(chunks: list[dict[str, Any]], source_url: str | None) -> list[dict[str, Any]]:
     if not source_url:
         return chunks
     for chunk in chunks:
@@ -305,204 +248,51 @@ def attach_source_url(chunks: List[Dict[str, Any]], source_url: str | None) -> L
     return chunks
 
 
-def split_document_sync(
-    file_path: Path,
-    options: PipelineOptions,
-    source_url: str | None = None,
-) -> List[Dict[str, Any]]:
-    reader = SimpleDirectoryReader(input_files=[str(file_path)], required_exts=[file_path.suffix])
-    docs = reader.load_data()
-    if not docs:
-        return []
-
-    format_nodes = parse_by_format(file_path, docs)
-    recursive_nodes = recursive_split_nodes(format_nodes, options)
-
-    try:
-        semantic_nodes = semantic_refine_nodes(recursive_nodes, options)
-    except Exception as exc:
-        print(f"[警告] 语义切分失败，回退到递归切分结果: {exc}")
-        semantic_nodes = recursive_nodes
-
-    chunks: List[Dict[str, Any]] = []
-    for node in semantic_nodes:
-        text = node.get_content()
-        if not text or not text.strip():
+def chunks_from_nodes(nodes: list[Any], source_file: str, source_url: str | None = None) -> list[dict[str, Any]]:
+    chunks: list[dict[str, Any]] = []
+    for node in nodes:
+        text = str(node.get_content() or "")
+        if not text.strip():
             continue
-        chunks.append({"text": text, "metadata": getattr(node, "metadata", {}) or {}})
-    enriched = enrich_chunks_with_title_path(chunks, file_path.name)
+        chunks.append(
+            {
+                "source_file": source_file,
+                "text": text,
+                "metadata": dict(getattr(node, "metadata", {}) or {}),
+                "embedding": getattr(node, "embedding", None),
+            }
+        )
+
+    enriched = enrich_chunks_with_title_path(chunks, source_file)
     return attach_source_url(enriched, source_url)
 
 
-async def split_document_async(
+async def run_partition_for_file(
     file_path: Path,
     options: PipelineOptions,
+    source_file: str,
     source_url: str | None = None,
-) -> List[Dict[str, Any]]:
-    return await asyncio.to_thread(split_document_sync, file_path, options, source_url)
+) -> list[dict[str, Any]]:
+    docs = load_documents(file_path)
+    if not docs:
+        return []
 
-
-def append_chunk(chunk_file: Path, data: Dict[str, Any]) -> None:
-    chunk_file.parent.mkdir(parents=True, exist_ok=True)
-    with chunk_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(data, ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
-
-
-def count_existing_lines(path: Path) -> int:
-    if not path.exists():
-        return 0
-    with path.open("r", encoding="utf-8") as f:
-        return sum(1 for _ in f)
-
-
-async def process_one_document(
-    file_path: Path,
-    input_dir: Path,
-    output_dir: Path,
-    checkpoint_file: Path,
-    options: PipelineOptions,
-    source_url: str | None = None,
-) -> str:
-    rel_path = safe_rel_path(file_path, input_dir)
-    safe_name = sanitize_rel_for_output(rel_path)
-    chunk_file = output_dir / f"{safe_name}.chunks.jsonl"
-
-    async with CHECKPOINT_LOCK:
-        checkpoint_data = load_checkpoint(checkpoint_file)
-        docs_state = checkpoint_data.setdefault("documents", {})
-        entry = docs_state.get(rel_path, {})
-
-        if entry.get("status") == "completed" and chunk_file.exists():
-            print(f"[跳过] 已完成: {rel_path}")
-            return "done"
-
-        entry.setdefault("source_path", rel_path)
-        entry.setdefault("chunks_file", str(chunk_file))
-        entry.setdefault("status", "pending")
-        entry.setdefault("next_chunk_index", 0)
-
-        if entry["next_chunk_index"] > 0 and not chunk_file.exists():
-            print(f"[警告] 检测到断点但 chunks 文件丢失，重置断点: {rel_path}")
-            entry["next_chunk_index"] = 0
-
-        real_count = count_existing_lines(chunk_file)
-        if real_count != entry["next_chunk_index"]:
-            entry["next_chunk_index"] = real_count
-
-        docs_state[rel_path] = entry
-        save_checkpoint(checkpoint_file, checkpoint_data)
-
-    print(f"[处理] {rel_path}")
-    if entry["next_chunk_index"] > 0:
-        print(f"[恢复] 从 chunk #{entry['next_chunk_index']} 继续")
-
-    try:
-        chunks = await split_document_async(file_path, options, source_url=source_url)
-    except Exception as exc:
-        async with CHECKPOINT_LOCK:
-            checkpoint_data = load_checkpoint(checkpoint_file)
-            docs_state = checkpoint_data.setdefault("documents", {})
-            fail_entry = docs_state.get(rel_path, {})
-            fail_entry["source_path"] = rel_path
-            fail_entry["chunks_file"] = str(chunk_file)
-            fail_entry["status"] = "failed"
-            fail_entry["error"] = str(exc)
-            fail_entry["updated_at"] = now_str()
-            docs_state[rel_path] = fail_entry
-            save_checkpoint(checkpoint_file, checkpoint_data)
-        print(f"[失败] {rel_path}: {exc}")
-        return "failed"
-
-    start_index = int(entry.get("next_chunk_index", 0))
-    total = len(chunks)
-    if start_index > total:
-        start_index = total
-
-    for idx in range(start_index, total):
-        chunk_payload = {
-            "source_file": rel_path,
-            "chunk_index": idx,
-            "text": chunks[idx]["text"],
-            "title_path": chunks[idx].get("title_path", ""),
-            "retrieval_text": chunks[idx].get("retrieval_text", chunks[idx]["text"]),
-            "metadata": chunks[idx].get("metadata", {}),
-        }
-        append_chunk(chunk_file, chunk_payload)
-
-        async with CHECKPOINT_LOCK:
-            checkpoint_data = load_checkpoint(checkpoint_file)
-            docs_state = checkpoint_data.setdefault("documents", {})
-            progress_entry = docs_state.get(rel_path, {})
-            progress_entry["source_path"] = rel_path
-            progress_entry["chunks_file"] = str(chunk_file)
-            progress_entry["status"] = "processing"
-            progress_entry["next_chunk_index"] = idx + 1
-            progress_entry["updated_at"] = now_str()
-            docs_state[rel_path] = progress_entry
-            save_checkpoint(checkpoint_file, checkpoint_data)
-
-        print(f"  [断点] 已写入 chunk {idx + 1}/{total}")
-
-    async with CHECKPOINT_LOCK:
-        checkpoint_data = load_checkpoint(checkpoint_file)
-        docs_state = checkpoint_data.setdefault("documents", {})
-        done_entry = docs_state.get(rel_path, {})
-        done_entry["source_path"] = rel_path
-        done_entry["chunks_file"] = str(chunk_file)
-        done_entry["status"] = "completed"
-        done_entry["total_chunks"] = total
-        done_entry["next_chunk_index"] = total
-        done_entry["updated_at"] = now_str()
-        docs_state[rel_path] = done_entry
-        save_checkpoint(checkpoint_file, checkpoint_data)
-
-    print(f"[完成] {rel_path} -> {chunk_file}")
-    return "done"
-
-
-async def partition_files(
-    files: list[Path],
-    input_dir: Path,
-    output_dir: Path,
-    checkpoint_file: Path,
-    options: PipelineOptions | None = None,
-    source_url: str | None = None,
-) -> Dict[str, int]:
-    options = options or PipelineOptions()
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    done = 0
-    failed = 0
-    total_chunks = 0
-    for file_path in files:
-        result = await process_one_document(
+    pipeline = IngestionPipeline(
+        transformations=build_ingestion_transformations(
             file_path=file_path,
-            input_dir=input_dir,
-            output_dir=output_dir,
-            checkpoint_file=checkpoint_file,
             options=options,
-            source_url=source_url,
+            include_embedding=False,
         )
-        if result == "done":
-            done += 1
-            rel_path = safe_rel_path(file_path, input_dir)
-            safe_name = sanitize_rel_for_output(rel_path)
-            chunk_file = output_dir / f"{safe_name}.chunks.jsonl"
-            total_chunks += count_existing_lines(chunk_file)
-        elif result == "failed":
-            failed += 1
-
-    return {"done": done, "failed": failed, "chunks": total_chunks}
+    )
+    nodes = await asyncio.to_thread(pipeline.run, documents=docs)
+    return chunks_from_nodes(nodes, source_file=source_file, source_url=source_url)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="文档切分工具（支持断点恢复）")
+    parser = argparse.ArgumentParser(description="文档切分工具（无断点）")
     parser.add_argument("--input-file", type=str, default=None, help="仅切分单个文件")
     parser.add_argument("--input-dir", type=str, default=None, help="输入目录（覆盖默认 rag 路径）")
     parser.add_argument("--output-dir", type=str, default=None, help="输出目录（覆盖默认 rag 路径）")
-    parser.add_argument("--checkpoint-file", type=str, default=None, help="checkpoint 文件路径")
     parser.add_argument("--recursive-chunk-size", type=int, default=800, help="递归切分 chunk 大小")
     parser.add_argument("--recursive-chunk-overlap", type=int, default=120, help="递归切分 overlap")
     parser.add_argument("--semantic-buffer-size", type=int, default=1, help="语义切分 buffer 大小")
@@ -527,12 +317,11 @@ async def run() -> None:
 
     input_dir = Path(args.input_dir) if args.input_dir else rag_paths.cleaned_dir
     output_dir = Path(args.output_dir) if args.output_dir else rag_paths.chunks_dir
-    checkpoint_file = Path(args.checkpoint_file) if args.checkpoint_file else output_dir / ".partition_checkpoint.json"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("文档切分工具")
+    print("文档切分工具（无断点）")
     print(f"输入目录: {input_dir}")
     print(f"输出目录: {output_dir}")
-    print(f"断点文件: {checkpoint_file}")
 
     if args.input_file:
         files = [Path(args.input_file)]
@@ -543,20 +332,48 @@ async def run() -> None:
         print("[完成] 未发现可处理文件")
         return
 
-    result = await partition_files(
-        files=files,
-        input_dir=input_dir,
-        output_dir=output_dir,
-        checkpoint_file=checkpoint_file,
-        options=options,
-    )
+    done = 0
+    failed = 0
+    total_chunks = 0
+
+    for file_path in files:
+        rel_path = safe_rel_path(file_path, input_dir)
+        safe_name = sanitize_rel_for_output(rel_path)
+        output_jsonl = output_dir / f"{safe_name}.chunks.jsonl"
+        print(f"[处理] {rel_path}")
+
+        try:
+            chunks = await run_partition_for_file(
+                file_path=file_path,
+                options=options,
+                source_file=file_path.stem,
+                source_url=None,
+            )
+            with output_jsonl.open("w", encoding="utf-8") as f:
+                for idx, chunk in enumerate(chunks):
+                    payload = {
+                        "source_file": file_path.stem,
+                        "chunk_index": idx,
+                        "text": chunk.get("text", ""),
+                        "title_path": chunk.get("title_path", ""),
+                        "retrieval_text": chunk.get("retrieval_text", chunk.get("text", "")),
+                        "metadata": chunk.get("metadata", {}),
+                    }
+                    f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            done += 1
+            total_chunks += len(chunks)
+            print(f"[完成] {rel_path} -> {output_jsonl}")
+        except Exception as exc:
+            failed += 1
+            print(f"[失败] {rel_path}: {exc}")
+
     print("\n" + "=" * 56)
     print("[汇总] 文档切分完成")
     print("=" * 56)
     print(f"总数: {len(files)}")
-    print(f"成功: {result['done']}")
-    print(f"失败: {result['failed']}")
-    print(f"chunks: {result['chunks']}")
+    print(f"成功: {done}")
+    print(f"失败: {failed}")
+    print(f"chunks: {total_chunks}")
 
 
 def main() -> None:

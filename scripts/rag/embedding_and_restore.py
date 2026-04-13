@@ -51,7 +51,12 @@ def load_chunks(chunks_dir: Path, file_stem: str | None = None) -> list[dict]:
     return chunks
 
 
-def _chunk_to_embedding_item(chunk: dict, source_file: str, chunk_index: int, embedding: list[float]) -> dict:
+def _chunk_to_embedding_item(
+    chunk: dict,
+    source_file: str,
+    chunk_index: int,
+    embedding: list[float] | None = None,
+) -> dict:
     text = str(chunk.get("text") or "")
     title_path = str(chunk.get("title_path") or "")
     retrieval_text = "\n".join([source_file, title_path, text])
@@ -63,8 +68,32 @@ def _chunk_to_embedding_item(chunk: dict, source_file: str, chunk_index: int, em
         "title_path": title_path,
         "retrieval_text": retrieval_text,
         "metadata": dict(chunk.get("metadata") or {}),
-        "embedding": embedding,
+        "embedding": embedding if embedding is not None else chunk.get("embedding"),
     }
+
+
+def chunks_to_embedding_items(chunks: list[dict]) -> list[dict]:
+    embedding_items: list[dict] = []
+    by_source_counter: dict[str, int] = {}
+
+    for chunk in chunks:
+        source = normalize_source_name(str(chunk.get("source_file") or "unknown"))
+        if "chunk_index" in chunk:
+            chunk_index = int(chunk.get("chunk_index", 0))
+        else:
+            chunk_index = by_source_counter.get(source, 0)
+            by_source_counter[source] = chunk_index + 1
+
+        embedding_items.append(
+            _chunk_to_embedding_item(
+                chunk,
+                source_file=source,
+                chunk_index=chunk_index,
+                embedding=chunk.get("embedding"),
+            )
+        )
+
+    return embedding_items
 
 
 async def embed_chunks_to_json(config: AppConfig, chunks: list[dict], output_file: Path) -> dict[str, int]:
@@ -79,11 +108,19 @@ async def embed_chunks_to_json(config: AppConfig, chunks: list[dict], output_fil
 
     embedding_items: list[dict] = []
     for source_file, source_chunks in by_source.items():
-        texts = [str(chunk.get("text") or "") for chunk in source_chunks]
-        vectors = await embed_texts(texts, config.api.embed)
-        for chunk, embedding in zip(source_chunks, vectors):
+        missing_indices = [idx for idx, chunk in enumerate(source_chunks) if chunk.get("embedding") is None]
+        missing_texts = [str(source_chunks[idx].get("text") or "") for idx in missing_indices]
+        missing_vectors: list[list[float]] = []
+        if missing_texts:
+            missing_vectors = await embed_texts(missing_texts, config.api.embed)
+        vectors_iter = iter(missing_vectors)
+
+        for idx, chunk in enumerate(source_chunks):
             try:
-                chunk_index = int(chunk.get("chunk_index", 0))
+                chunk_index = int(chunk.get("chunk_index", idx))
+                embedding = chunk.get("embedding")
+                if embedding is None:
+                    embedding = next(vectors_iter)
                 embedding_items.append(_chunk_to_embedding_item(chunk, source_file, chunk_index, embedding))
                 total += 1
             except Exception:

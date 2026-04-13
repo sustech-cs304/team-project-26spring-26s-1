@@ -12,7 +12,6 @@ class RagPaths:
     raw_dir: Path
     cleaned_dir: Path
     chunks_dir: Path
-    checkpoints_dir: Path
     embeddings_dir: Path
 
 
@@ -22,10 +21,9 @@ def get_rag_paths(config: AppConfig) -> RagPaths:
     raw_dir = root / "raw"
     cleaned_dir = root / "cleaned"
     chunks_dir = root / "chunks"
-    checkpoints_dir = root / "checkpoints"
     embeddings_dir = root / "embeddings"
 
-    for path in (root, raw_dir, cleaned_dir, chunks_dir, checkpoints_dir, embeddings_dir):
+    for path in (root, raw_dir, cleaned_dir, chunks_dir, embeddings_dir):
         path.mkdir(parents=True, exist_ok=True)
 
     return RagPaths(
@@ -33,6 +31,5 @@ def get_rag_paths(config: AppConfig) -> RagPaths:
         raw_dir=raw_dir,
         cleaned_dir=cleaned_dir,
         chunks_dir=chunks_dir,
-        checkpoints_dir=checkpoints_dir,
         embeddings_dir=embeddings_dir,
     )
