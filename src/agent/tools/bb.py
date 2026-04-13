@@ -6,9 +6,11 @@ import aiohttp
 from langchain.tools import tool
 
 from agent.tools.calendar_time import local_ymdhms_to_bb_ms
-from agent.tools.school_env import missing_cas_message, resolve_bb_credentials
+from agent.tools.school_credentials import missing_cas_message, resolve_bb_credentials
 
 warnings.filterwarnings("ignore")
+
+_REQUEST_TIMEOUT_S = 15
 
 HEADERS = {
     "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Safari/605.1.15",
@@ -18,12 +20,13 @@ HEADERS = {
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
 _ssl_ctx.verify_mode = ssl.CERT_NONE
+_client_timeout = aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT_S)
 
 
 async def cas_login(user_name: str, pwd: str) -> dict:
     login_url = "https://cas.sustech.edu.cn/cas/login?service=https://bb.sustech.edu.cn/webapps/bb-sso-BBLEARN/index.jsp"
     jar = aiohttp.CookieJar(unsafe=True)
-    session = aiohttp.ClientSession(headers=HEADERS, cookie_jar=jar)
+    session = aiohttp.ClientSession(headers=HEADERS, cookie_jar=jar, timeout=_client_timeout)
     try:
         async with session.get(login_url, ssl=_ssl_ctx) as resp:
             if resp.status != 200:
@@ -91,7 +94,9 @@ async def get_calendar_events(
     Use **calendar date** and optional **time-of-day**; milliseconds are derived server-side with the same
     ``standardize_time`` rules as repo-root ``bb.py`` — do not pass Unix timestamps.
 
-    Credentials are optional: use Global Settings (``PUT /api/settings/bb/credentials``), or ``BB_*`` / ``SUSTECH_*`` env vars.
+    Credentials are optional: use shared CAS in Global Settings
+    (``PUT /api/settings/bb/credentials``),
+    or ``SUSTECH_STUDENT_ID`` / ``SUSTECH_CAS_PASSWORD``.
     """
     if not (
         start_year is not None

@@ -33,6 +33,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agent.api.env_vars import read_env_values
 
 log = logging.getLogger("task_executor")
 
@@ -177,12 +178,7 @@ def delete_run_json_files_for_task(task_id: str) -> None:
 
 
 def read_env_vars() -> dict[str, str]:
-    if not ENV_VARS_FILE.is_file():
-        return {}
-    try:
-        return json.loads(ENV_VARS_FILE.read_text("utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
+    return read_env_values()
 
 
 def _build_env(task: dict) -> dict[str, str]:

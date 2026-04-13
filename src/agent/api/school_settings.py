@@ -1,7 +1,7 @@
-"""HTTP API for school CAS credentials in Global Settings.
+"""HTTP API for shared school CAS credentials in Global Settings.
 
-``PUT`` calls ``school_env.set_tis_runtime_credentials`` and syncs project-root ``.env``
-``SUSTECH_*`` / ``BB_*`` / ``TIS_*`` student id and password, plus the current process environment.
+``PUT`` calls ``school_credentials.set_school_cas_credentials`` and stores a shared CAS
+username/password pair in the global env-var vault for both BB and TIS.
 
 ``/settings/bb/credentials`` and ``/settings/tis/credentials`` behave the same.
 """
@@ -10,7 +10,7 @@ import os
 import pydantic
 from fastapi import APIRouter, Header, HTTPException
 
-from agent.tools import school_env
+from agent.tools import school_credentials
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -31,7 +31,7 @@ class TisCredentialsBody(pydantic.BaseModel):
 class TisCredentialsPutResponse(pydantic.BaseModel):
     ok: bool = True
     student_id: str
-    message: str = "TIS runtime credentials updated (in-memory until server restart)."
+    message: str = "Shared CAS credentials updated in the env-var vault."
 
 
 class TisCredentialsGetResponse(pydantic.BaseModel):
@@ -42,16 +42,16 @@ class TisCredentialsGetResponse(pydantic.BaseModel):
 
 class TisCredentialsDeleteResponse(pydantic.BaseModel):
     ok: bool = True
-    message: str = "TIS runtime credentials cleared."
+    message: str = "Shared CAS credentials cleared."
 
 
 @router.get("/tis/credentials", response_model=TisCredentialsGetResponse)
 async def get_tis_credentials_status(
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    """Return whether runtime TIS credentials are set (password is never returned)."""
+    """Return whether shared CAS credentials are set (password is never returned)."""
     _require_secret(x_school_settings_secret)
-    data = school_env.get_tis_credentials_status()
+    data = school_credentials.get_school_cas_credentials_status()
     return TisCredentialsGetResponse(**data)
 
 
@@ -60,9 +60,9 @@ async def put_tis_credentials(
     body: TisCredentialsBody,
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    """Store TIS student ID and CAS password in process memory for tool resolution."""
+    """Store shared CAS in the env-var vault for BB/TIS tool resolution."""
     _require_secret(x_school_settings_secret)
-    school_env.set_tis_runtime_credentials(body.student_id, body.password)
+    school_credentials.set_school_cas_credentials(body.student_id, body.password)
     return TisCredentialsPutResponse(student_id=body.student_id.strip())
 
 
@@ -70,20 +70,20 @@ async def put_tis_credentials(
 async def delete_tis_credentials(
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    """Clear runtime TIS overrides; tools fall back to .env only."""
+    """Clear shared CAS from the env-var vault; tools fall back to process env only."""
     _require_secret(x_school_settings_secret)
-    school_env.clear_tis_runtime_credentials()
+    school_credentials.clear_school_cas_credentials()
     return TisCredentialsDeleteResponse()
 
 
-# --- BB: shares ``set_tis_runtime_credentials`` with TIS so the UI can save BB-only CAS ---
+# --- BB: shares ``set_school_cas_credentials`` with TIS so the UI can save BB-only CAS ---
 
 
 class BbCredentialsPutResponse(pydantic.BaseModel):
     ok: bool = True
     student_id: str
     message: str = (
-        "BB global account saved in process memory (shared SUSTech CAS with TIS; re-save after restart)."
+        "Shared SUSTech CAS saved in the env-var vault for both BB and TIS."
     )
 
 
@@ -91,9 +91,9 @@ class BbCredentialsPutResponse(pydantic.BaseModel):
 async def get_bb_credentials_status(
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    """Same as ``GET /settings/tis/credentials``: whether runtime CAS is configured (password never returned)."""
+    """Same as ``GET /settings/tis/credentials``: shared CAS status (password never returned)."""
     _require_secret(x_school_settings_secret)
-    data = school_env.get_tis_credentials_status()
+    data = school_credentials.get_school_cas_credentials_status()
     return TisCredentialsGetResponse(**data)
 
 
@@ -102,9 +102,9 @@ async def put_bb_credentials(
     body: TisCredentialsBody,
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    """Save SUSTech CAS for BB in Global Settings; tools such as ``get_calendar_events`` read from here."""
+    """Save shared SUSTech CAS in Global Settings; BB and TIS tools read the same pair."""
     _require_secret(x_school_settings_secret)
-    school_env.set_tis_runtime_credentials(body.student_id, body.password)
+    school_credentials.set_school_cas_credentials(body.student_id, body.password)
     return BbCredentialsPutResponse(student_id=body.student_id.strip())
 
 
@@ -112,7 +112,7 @@ async def put_bb_credentials(
 async def delete_bb_credentials(
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    """Clear runtime credentials (same as ``DELETE .../tis/credentials``)."""
+    """Clear shared CAS credentials (same as ``DELETE .../tis/credentials``)."""
     _require_secret(x_school_settings_secret)
-    school_env.clear_tis_runtime_credentials()
+    school_credentials.clear_school_cas_credentials()
     return TisCredentialsDeleteResponse()
