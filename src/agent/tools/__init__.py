@@ -25,10 +25,8 @@ from .task_tools import (
     run_scheduled_task,
     update_scheduled_task,
 )
-
-from .core_memory import core_memory_insert
 from .web_tools import webfetch, websearch
-from .code_interpreter import python_interpreter
+from .quiz_card import quiz_card
 from .retrieve import retrieve_from_rag_db
 
 tools = [
@@ -47,6 +45,7 @@ tools = [
     delete_scheduled_task,
     core_memory_insert,
     python_interpreter,
+    quiz_card,
     webfetch,
     websearch,
     retrieve_from_rag_db
