@@ -61,27 +61,27 @@ export interface ToolCallMessage {
 
 export type QuizType = 'single' | 'multiple'
 
-export interface QuizOption {
-  id: string
-  content: string
-}
-
 export interface QuizCardData {
   quiz_id?: string
   title: string
   description?: string
   type: QuizType
-  options: QuizOption[]
-  answers: string[]
+  choices: string[]
+  correct_choice_indexes: number[]
   explanation: string
 }
 
-export interface QuizCardPayload {
+export interface QuizToolCard {
+  card_id: string
   quizzes: QuizCardData[]
 }
 
-export interface QuizToolCard extends QuizCardPayload {
-  card_id: string
+interface QuizQuestionRaw {
+  title: string
+  type: QuizType
+  choices: string[]
+  correct_choice_indexes: number[]
+  explanation: string
 }
 
 export interface QuizCardToolArgument extends ToolArgument {
@@ -97,30 +97,233 @@ export interface QuizCardToolMessage extends Omit<ToolCallMessage, 'tool_name' |
 export const isQuizCardToolMessage = (tool?: ToolCallMessage | null): tool is QuizCardToolMessage =>
   tool?.tool_name === 'quiz_card'
 
-const isQuizCardPayload = (value: unknown): value is QuizCardPayload => {
+const isQuizQuestionRaw = (value: unknown): value is QuizQuestionRaw => {
   if (!value || typeof value !== 'object') return false
-  return Array.isArray((value as QuizCardPayload).quizzes)
+
+  const question = value as QuizQuestionRaw
+  return typeof question.title === 'string'
+    && (question.type === 'single' || question.type === 'multiple')
+    && Array.isArray(question.choices)
+    && Array.isArray(question.correct_choice_indexes)
+    && typeof question.explanation === 'string'
 }
 
-export const parseQuizCardPayload = (raw: string): QuizCardPayload | null => {
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    return isQuizCardPayload(parsed) ? parsed : null
-  } catch {
-    return null
+const parseQuizQuestionsArgument = (raw: string): unknown => {
+  let index = 0
+
+  const isWhitespace = (char: string | undefined) => char === ' ' || char === '\n' || char === '\r' || char === '\t'
+
+  const skipWhitespace = () => {
+    while (isWhitespace(raw[index])) index += 1
   }
+
+  const parseString = (): string => {
+    const quote = raw[index]
+    if (quote !== '\'' && quote !== '"') {
+      throw new Error('Expected string')
+    }
+
+    index += 1
+    let result = ''
+
+    while (index < raw.length) {
+      const char = raw[index]
+
+      if (char === '\\') {
+        const next = raw[index + 1]
+        if (next === undefined) throw new Error('Invalid escape sequence')
+
+        if (next === 'u') {
+          const code = raw.slice(index + 2, index + 6)
+          if (code.length !== 4 || /[^0-9a-fA-F]/.test(code)) throw new Error('Invalid unicode escape')
+          result += String.fromCharCode(parseInt(code, 16))
+          index += 6
+          continue
+        }
+
+        const escapedMap: Record<string, string> = {
+          '\'': '\'',
+          '"': '"',
+          '\\': '\\',
+          '/': '/',
+          b: '\b',
+          f: '\f',
+          n: '\n',
+          r: '\r',
+          t: '\t',
+        }
+
+        result += escapedMap[next] ?? next
+        index += 2
+        continue
+      }
+
+      if (char === quote) {
+        index += 1
+        return result
+      }
+
+      result += char
+      index += 1
+    }
+
+    throw new Error('Unterminated string')
+  }
+
+  const parseNumber = (): number => {
+    const start = index
+    if (raw[index] === '-') index += 1
+
+    while (/[0-9]/.test(raw[index] ?? '')) index += 1
+
+    if (raw[index] === '.') {
+      index += 1
+      while (/[0-9]/.test(raw[index] ?? '')) index += 1
+    }
+
+    const numberText = raw.slice(start, index)
+    const number = Number(numberText)
+    if (Number.isNaN(number)) throw new Error('Invalid number')
+    return number
+  }
+
+  const parseLiteral = (literal: string, value: unknown): unknown => {
+    if (raw.slice(index, index + literal.length) !== literal) {
+      throw new Error(`Expected ${literal}`)
+    }
+    index += literal.length
+    return value
+  }
+
+  const parseArray = (): unknown[] => {
+    index += 1
+    const result: unknown[] = []
+    skipWhitespace()
+
+    if (raw[index] === ']') {
+      index += 1
+      return result
+    }
+
+    while (index < raw.length) {
+      result.push(parseValue())
+      skipWhitespace()
+
+      if (raw[index] === ',') {
+        index += 1
+        skipWhitespace()
+        continue
+      }
+
+      if (raw[index] === ']') {
+        index += 1
+        return result
+      }
+
+      throw new Error('Expected , or ]')
+    }
+
+    throw new Error('Unterminated array')
+  }
+
+  const parseObject = (): Record<string, unknown> => {
+    index += 1
+    const result: Record<string, unknown> = {}
+    skipWhitespace()
+
+    if (raw[index] === '}') {
+      index += 1
+      return result
+    }
+
+    while (index < raw.length) {
+      skipWhitespace()
+      const key = parseString()
+      skipWhitespace()
+
+      if (raw[index] !== ':') {
+        throw new Error('Expected :')
+      }
+
+      index += 1
+      skipWhitespace()
+      result[key] = parseValue()
+      skipWhitespace()
+
+      if (raw[index] === ',') {
+        index += 1
+        skipWhitespace()
+        continue
+      }
+
+      if (raw[index] === '}') {
+        index += 1
+        return result
+      }
+
+      throw new Error('Expected , or }')
+    }
+
+    throw new Error('Unterminated object')
+  }
+
+  const parseValue = (): unknown => {
+    skipWhitespace()
+    const char = raw[index]
+
+    if (char === '[') return parseArray()
+    if (char === '{') return parseObject()
+    if (char === '\'' || char === '"') return parseString()
+    if (char === '-' || /[0-9]/.test(char ?? '')) return parseNumber()
+    if (char === 't') return parseLiteral('true', true)
+    if (char === 'f') return parseLiteral('false', false)
+    if (char === 'n') return parseLiteral('null', null)
+
+    throw new Error(`Unexpected token ${char ?? 'EOF'}`)
+  }
+
+  const value = parseValue()
+  skipWhitespace()
+
+  if (index !== raw.length) {
+    throw new Error('Unexpected trailing content')
+  }
+
+  return value
 }
 
 export const extractQuizCardsFromToolCall = (tool?: ToolCallMessage | null): QuizToolCard[] => {
   if (!isQuizCardToolMessage(tool)) return []
 
   return tool.tool_arguments.flatMap((item) => {
-    const payload = parseQuizCardPayload(item.argument)
-    if (!payload) return []
+    if (item.argument_name !== 'questions') return []
+
+    let questions: unknown
+    try {
+      questions = parseQuizQuestionsArgument(item.argument)
+    } catch {
+      return []
+    }
+
+    if (!Array.isArray(questions)) return []
+
+    const quizzes = questions
+      .filter(isQuizQuestionRaw)
+      .map((question, index) => ({
+        quiz_id: `quiz_${index + 1}`,
+        title: question.title,
+        type: question.type,
+        choices: question.choices,
+        correct_choice_indexes: question.correct_choice_indexes
+          .filter(choiceIndex => Number.isInteger(choiceIndex) && choiceIndex >= 0 && choiceIndex < question.choices.length),
+        explanation: question.explanation,
+      }))
+
+    if (quizzes.length === 0) return []
 
     return [{
-      card_id: item.argument_name,
-      quizzes: payload.quizzes,
+      card_id: `${tool.tool_name}_${item.argument_name}`,
+      quizzes,
     }]
   })
 }

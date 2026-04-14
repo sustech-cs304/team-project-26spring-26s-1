@@ -25,11 +25,11 @@
 
                 <v-radio-group v-if="quiz.type === 'single'" v-model="singleAnswer" :disabled="submitted"
                     color="primary" hide-details class="mb-2" density="compact">
-                    <v-radio v-for="option in quiz.options" :key="`single-${index}-${option.id}`" :value="option.id"
+                    <v-radio v-for="(choice, choiceIndex) in quiz.choices" :key="`single-${index}-${choiceIndex}`" :value="choiceIndex"
                         density="compact" class="mb-1">
                         <template #label>
-                            <v-sheet rounded="lg" class="pa-1 ml-1" :color="optionTone(option.id)">
-                                <MarkdownRenderer :content="`**${option.id}.** ${option.content}`" />
+                            <v-sheet rounded="lg" class="pa-1 ml-1" :color="optionTone(choiceIndex)">
+                                <MarkdownRenderer :content="`**${choiceLabel(choiceIndex)}.** ${choice}`" />
                             </v-sheet>
                         </template>
                     </v-radio>
@@ -37,11 +37,11 @@
 
                 <v-selection-control-group v-else v-model="multipleAnswers" multiple color="primary" hide-details
                     density="compact">
-                    <v-checkbox v-for="option in quiz.options" :key="`multiple-${index}-${option.id}`"
-                        :value="option.id" :disabled="submitted" density="compact" hide-details class="mb-1">
+                    <v-checkbox v-for="(choice, choiceIndex) in quiz.choices" :key="`multiple-${index}-${choiceIndex}`"
+                        :value="choiceIndex" :disabled="submitted" density="compact" hide-details class="mb-1">
                         <template #label>
-                            <v-sheet rounded="lg" class="pa-1 ml-1" :color="optionTone(option.id)">
-                                <MarkdownRenderer :content="`**${option.id}.** ${option.content}`" />
+                            <v-sheet rounded="lg" class="pa-1 ml-1" :color="optionTone(choiceIndex)">
+                                <MarkdownRenderer :content="`**${choiceLabel(choiceIndex)}.** ${choice}`" />
                             </v-sheet>
                         </template>
                     </v-checkbox>
@@ -68,7 +68,7 @@
                         <v-sheet color="transparent" class="mb-2 d-flex align-center flex-wrap ga-1">
                             <v-sheet color="transparent"
                                 class="text-body-medium font-weight-medium mr-1">正确答案：</v-sheet>
-                            <v-chip v-for="answer in normalizedAnswers" :key="`${index}-${answer}`" size="x-small"
+                            <v-chip v-for="answer in normalizedAnswerLabels" :key="`${index}-${answer}`" size="x-small"
                                 color="success" variant="flat">
                                 {{ answer }}
                             </v-chip>
@@ -93,8 +93,8 @@
     import type { QuizCardData } from '@/types/conversation'
 
     interface QuizState {
-        single: string
-        multiple: string[]
+        single: number | null
+        multiple: number[]
         submitted: boolean
         isCorrect: boolean
     }
@@ -114,7 +114,7 @@
     const states = ref<QuizState[]>([])
 
     const createState = (): QuizState => ({
-        single: '',
+        single: null,
         multiple: [],
         submitted: false,
         isCorrect: false,
@@ -136,7 +136,7 @@
 
     const singleAnswer = computed({
         get: () => currentState.value.single,
-        set: (value: string) => {
+        set: (value: number | null) => {
             if (currentState.value.submitted) return
             currentState.value.single = value
         },
@@ -144,18 +144,21 @@
 
     const multipleAnswers = computed({
         get: () => currentState.value.multiple,
-        set: (value: string[]) => {
+        set: (value: number[]) => {
             if (currentState.value.submitted) return
             currentState.value.multiple = [...value]
         },
     })
 
-    const normalizedAnswers = computed(() => [...(currentQuiz.value?.answers ?? [])].sort())
+    const normalizedAnswers = computed(() =>
+        [...(currentQuiz.value?.correct_choice_indexes ?? [])].sort((a, b) => a - b)
+    )
+    const normalizedAnswerLabels = computed(() => normalizedAnswers.value.map(choiceLabel))
     const currentAnswers = computed(() => {
         if (isSingle.value) {
-            return singleAnswer.value ? [singleAnswer.value] : []
+            return singleAnswer.value === null ? [] : [singleAnswer.value]
         }
-        return [...multipleAnswers.value].sort()
+        return [...multipleAnswers.value].sort((a, b) => a - b)
     })
 
     const submitted = computed(() => currentState.value.submitted)
@@ -165,23 +168,24 @@
     const submitAnswer = () => {
         if (!canSubmit.value) return
         currentState.value.submitted = true
-        const answers = [...currentAnswers.value].sort()
-        currentState.value.isCorrect = JSON.stringify(answers) === JSON.stringify(normalizedAnswers.value)
+        currentState.value.isCorrect = JSON.stringify(currentAnswers.value) === JSON.stringify(normalizedAnswers.value)
     }
 
     const resetCurrent = () => {
-        currentState.value.single = ''
+        currentState.value.single = null
         currentState.value.multiple = []
         currentState.value.submitted = false
         currentState.value.isCorrect = false
     }
 
-    const optionTone = (optionId: string) => {
+    const choiceLabel = (choiceIndex: number) => String.fromCharCode(65 + choiceIndex)
+
+    const optionTone = (choiceIndex: number) => {
         if (!submitted.value) return undefined
         const answerSet = new Set(normalizedAnswers.value)
         const chosenSet = new Set(currentAnswers.value)
-        if (answerSet.has(optionId)) return 'success'
-        if (chosenSet.has(optionId) && !answerSet.has(optionId)) return 'error'
+        if (answerSet.has(choiceIndex)) return 'success'
+        if (chosenSet.has(choiceIndex) && !answerSet.has(choiceIndex)) return 'error'
         return undefined
     }
 </script>
