@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 import agent.db.models as db_models
 import agent.db.utils as db_utils
 from agent.api.conversation_models import (
+    CompletionResponseError,
     CompletionResponseHistory,
     CompletionUserMessage,
 )
@@ -31,6 +32,7 @@ from agent.file_utils.utils import (
     load_attachment_content,
 )
 from agent.parser import AnthropicEventParser
+from agent.utils.exception import is_langchain_network_failure
 
 message_type_adapter = TypeAdapter(AnyMessage)
 TITLE_GENERATION_TIMEOUT_SECONDS = 60
@@ -258,6 +260,40 @@ class ConversationRunner:
                 version="v2",
                 stream_mode=["messages","checkpoints","updates", "values"]
             )
+
+            async def _persist_partial_ai_message(current_message: AnyMessage | None):
+                if not isinstance(current_message, AIMessage):
+                    return
+
+                try:
+                    message_row = await db_utils.db_get_message_by_langchain_id(
+                        self.session_factory,
+                        conversation_id=conversation_id,
+                        langchain_id=current_message.id
+                    )
+                    if message_row and message_row.checkpoint_id:
+                        return
+
+                    new_config = await self.graph.aupdate_state(
+                        config,
+                        {"messages": [current_message]}
+                    )
+                    checkpoint = new_config["configurable"]["checkpoint_id"]
+                    await db_utils.db_update_message(
+                        self.session_factory,
+                        conversation_id=conversation_id,
+                        message_id=None,
+                        langchain_id=current_message.id,
+                        content=current_message.model_dump_json(),
+                        attachments=[],
+                        checkpoint_id=checkpoint
+                    )
+                except Exception as exc:
+                    print(
+                        f"Failed to persist partial assistant message: "
+                        f"conversation_id={conversation_id}, error={exc}"
+                    )
+
         except Exception:
             self._conversation_jobs.pop(conversation_id, None)
             raise
@@ -418,32 +454,23 @@ class ConversationRunner:
                             job.cond.notify_all()
                 
             except asyncio.CancelledError:
-                # handling cancellation and partial message
-                if current_message and isinstance(current_message, AIMessage):
-                    # see if we have already stored a message
-                    message_row = await db_utils.db_get_message_by_langchain_id(
-                        self.session_factory,
-                        conversation_id=conversation_id,
-                        langchain_id=current_message.id
+                await _persist_partial_ai_message(current_message)
+            except Exception as exc:
+                if not is_langchain_network_failure(exc):
+                    raise
+
+                print(
+                    f"Network failure while streaming conversation: "
+                    f"conversation_id={conversation_id}, error={exc}"
+                )
+                await _persist_partial_ai_message(current_message)
+                async with job.cond:
+                    job.history.append(
+                        CompletionResponseError(
+                            error_message=str(exc) or "Network failure while streaming the model response."
+                        )
                     )
-                    if not message_row or not message_row.checkpoint_id:
-                        # no checkpoint, mutate graph with the partial message and get a checkpoint
-                        new_config = await self.graph.aupdate_state(
-                            config,
-                            { "messages": [current_message] }
-                        )
-                        checkpoint = new_config["configurable"]["checkpoint_id"]
-                        # store the partial message with checkpoint
-                        await db_utils.db_update_message(
-                            self.session_factory,
-                            conversation_id=conversation_id,
-                            message_id = None,
-                            langchain_id = current_message.id,
-                            content = current_message.model_dump_json(),
-                            attachments = [],
-                            checkpoint_id = checkpoint
-                        )
-                        
+                    job.cond.notify_all()
             finally:
                 async with job.cond:
                     job.cond.notify_all()
@@ -499,7 +526,10 @@ class ConversationRunner:
                     finalized_messages.add(message.id)
                 
                 print(f"Last message seq in history: {history_messages[-1].seq if history_messages else 'No history messages'}")
-                while idx < len(active_job.history) and active_job.history[idx].message_id in finalized_messages:
+                while idx < len(active_job.history):
+                    message_id = getattr(active_job.history[idx], "message_id", None)
+                    if message_id is None or message_id not in finalized_messages:
+                        break
                     idx += 1
                 
             print(f"Starting stream from idx {idx}")
