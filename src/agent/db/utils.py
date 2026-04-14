@@ -1,8 +1,11 @@
-from . import models as db_models
+import datetime as dt
+from collections.abc import Iterable
+from uuid import uuid4
+
 from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from uuid import uuid4
-import datetime as dt
+
+from . import models as db_models
     
 async def db_get_message_by_langchain_id(session_factory: async_sessionmaker, conversation_id: str, langchain_id: str) -> db_models.Message | None:
     async with session_factory() as session:
@@ -33,7 +36,8 @@ async def db_update_conversation_title(session_factory: async_sessionmaker, conv
         )
         await session.commit()
         return result.rowcount > 0
-    
+
+
 async def db_update_message(session_factory: async_sessionmaker, conversation_id: str, content: str, message_id: str | None = None, langchain_id: str | None = None, attachments: list[str] = [], checkpoint_id: str | None = None) -> str:
     async with session_factory() as session:
         session: AsyncSession
@@ -42,12 +46,12 @@ async def db_update_message(session_factory: async_sessionmaker, conversation_id
         
         updates["content"] = content
         updates["finished_at"] = dt.datetime.now(dt.timezone.utc)
-        
-        if checkpoint_id:
+
+        if checkpoint_id is not None:
             updates["checkpoint_id"] = checkpoint_id
-            
+
         # updates["attachments"] = attachments
-        if langchain_id:
+        if langchain_id is not None:
             updates["langchain_id"] = langchain_id
 
         async def get_last_seq():
@@ -106,6 +110,54 @@ async def db_update_message(session_factory: async_sessionmaker, conversation_id
                     .where(db_models.Message.id == message_id)
                     .values(updates)
             )
-            
+
         await session.commit()
         return message_id
+
+
+async def db_get_pending_messages_by_langchain_ids(
+    session_factory: async_sessionmaker,
+    conversation_id: str,
+    langchain_ids: Iterable[str],
+) -> dict[str, db_models.Message]:
+    normalized_ids = [langchain_id for langchain_id in dict.fromkeys(langchain_ids) if langchain_id]
+    if not normalized_ids:
+        return {}
+
+    async with session_factory() as session:
+        session: AsyncSession
+        result = await session.execute(
+            select(db_models.Message)
+                .where(db_models.Message.conversation_id == conversation_id)
+                .where(db_models.Message.checkpoint_id.is_(None))
+                .where(db_models.Message.langchain_id.in_(normalized_ids))
+                .order_by(db_models.Message.seq.desc())
+        )
+        messages = result.scalars().all()
+
+    pending_messages: dict[str, db_models.Message] = {}
+    for message in messages:
+        if message.langchain_id and message.langchain_id not in pending_messages:
+            pending_messages[message.langchain_id] = message
+    return pending_messages
+
+
+async def db_set_message_checkpoints(
+    session_factory: async_sessionmaker,
+    message_ids: Iterable[str],
+    checkpoint_id: str,
+) -> int:
+    normalized_ids = [message_id for message_id in dict.fromkeys(message_ids) if message_id]
+    if not normalized_ids:
+        return 0
+
+    async with session_factory() as session:
+        session: AsyncSession
+        result = await session.execute(
+            update(db_models.Message)
+                .where(db_models.Message.id.in_(normalized_ids))
+                .where(db_models.Message.checkpoint_id.is_(None))
+                .values(checkpoint_id=checkpoint_id)
+        )
+        await session.commit()
+        return result.rowcount or 0
