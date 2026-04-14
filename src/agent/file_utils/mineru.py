@@ -11,6 +11,17 @@ import requests
 class MineruError(RuntimeError):
     """Raised when MinerU conversion fails."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        err_code: int | None = None,
+        err_msg: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.err_code = err_code
+        self.err_msg = err_msg
+
 
 def _make_headers(api_key: str) -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
@@ -24,13 +35,20 @@ async def _submit_task(
     base_url: str,
     source_file: Path,
     language: str = "ch",
+    page_range: str | None = None,
 ) -> tuple[str, str]:
     payload = {"file_name": source_file.name, "language": language}
+    if page_range:
+        payload["page_range"] = page_range
     async with session.post(f"{base_url}/parse/file", json=payload) as resp:
         result = await resp.json()
 
     if result.get("code") != 0:
-        raise MineruError(f"MinerU submit failed: {result.get('msg', 'unknown error')}")
+        msg = str(result.get("msg", "unknown error"))
+        raise MineruError(
+            f"MinerU submit failed: {msg}",
+            err_msg=msg,
+        )
 
     data = result.get("data") or {}
     task_id = data.get("task_id")
@@ -76,8 +94,16 @@ async def _poll_markdown_url(
             return str(markdown_url)
 
         if state == "failed":
-            err_msg = data.get("err_msg", "unknown error")
-            raise MineruError(f"MinerU task failed: {err_msg}")
+            err_msg_raw = data.get("err_msg", "unknown error")
+            err_msg = str(err_msg_raw)
+            err_code_raw = data.get("err_code")
+            err_code = err_code_raw if isinstance(err_code_raw, int) else None
+            code_text = f" ({err_code})" if err_code is not None else ""
+            raise MineruError(
+                f"MinerU task failed{code_text}: {err_msg}",
+                err_code=err_code,
+                err_msg=err_msg,
+            )
 
         await asyncio.sleep(poll_interval)
 
