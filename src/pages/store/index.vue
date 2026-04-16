@@ -1,279 +1,757 @@
-﻿<template>
-    <v-container fluid class="d-flex flex-column h-100 pa-0">
-
-        <!-- 头部 -->
-        <v-sheet class="px-6 py-3 border-b flex-shrink-0" color="transparent">
-            <div class="d-flex align-center justify-space-between ga-3">
-                <div class="d-flex align-center ga-2">
-                    <v-icon size="18" color="primary">mdi-puzzle-outline</v-icon>
-                    <span class="text-subtitle-2 font-weight-bold">Skills</span>
-                    <span class="text-caption text-disabled">({{ filteredSkills.length }})</span>
+<template>
+    <v-container fluid class="bg-background px-6 px-md-10 pt-10 pb-12" style="min-height: 100vh;">
+        <v-sheet class="mb-6 border-b" color="transparent">
+            <div class="d-flex flex-wrap align-end justify-space-between ga-6">
+                <div>
+                    <div class="d-flex align-center ga-4">
+                        <h1 class="text-h3 font-weight-black">Store</h1>
+                    </div>
+                    <p class="text-body-2 mt-3 mb-0 text-medium-emphasis" style="max-width: 420px; line-height: 1.65">
+                        探索适合你的 OpenCrab Skill
+                    </p>
                 </div>
-                <v-text-field v-model="search" density="compact" variant="outlined" placeholder="Search skills..."
-                    hide-details prepend-inner-icon="mdi-magnify" style="max-width:240px;font-size:12px;" />
+
+                <v-sheet rounded="xl" class="px-5 py-4 text-right" style="min-width: 172px; background: transparent">
+                    <div class="text-primary font-weight-bold mb-2" style="font-size: clamp(2.1rem, 4.6vw, 3.3rem); line-height: 0.95">
+                        {{ currentStatCount }}
+                    </div>
+                    <div class="text-caption font-weight-bold text-medium-emphasis text-uppercase" style="letter-spacing: 0.14em">
+                        {{ currentStatLabel }}
+                    </div>
+                </v-sheet>
             </div>
-            <!-- 分类筛选 -->
-            <div class="d-flex flex-wrap ga-1 mt-2">
-                <v-chip v-for="cat in categories" :key="cat.value" size="small"
-                    :variant="activeCategory === cat.value ? 'tonal' : 'text'"
-                    :color="activeCategory === cat.value ? 'primary' : undefined" @click="activeCategory = cat.value">
-                    {{ cat.label }}
-                    <v-badge v-if="cat.value === 'installed'" :content="installedCount" inline color="primary"
-                        class="ml-1" />
+        </v-sheet>
+
+        <v-sheet rounded="xl" class="mb-4 px-4 py-3" style="background: transparent">
+            <div class="d-flex flex-wrap align-center ga-3">
+                <v-tabs v-model="currentTab" color="primary" class="flex-grow-0">
+                    <v-tab value="store">技能商店</v-tab>
+                    <v-tab value="mySubmissions">我的投稿</v-tab>
+                </v-tabs>
+
+                <v-spacer />
+
+                <v-text-field
+                    v-model="search"
+                    placeholder="Search skills..."
+                    density="comfortable"
+                    hide-details
+                    variant="outlined"
+                    prepend-inner-icon="mdi-magnify"
+                    rounded="lg"
+                    style="min-width: min(100%, 320px); max-width: 420px; flex: 0 1 420px"
+                />
+
+                <div class="d-flex align-center ga-3">
+                    <v-btn
+                        color="primary"
+                        variant="flat"
+                        rounded="lg"
+                        prepend-icon="mdi-upload"
+                        @click="openUploadDialog"
+                    >
+                        上传技能
+                    </v-btn>
+
+                    <v-btn
+                        variant="outlined"
+                        rounded="lg"
+                        prepend-icon="mdi-refresh"
+                        :loading="loading"
+                        @click="loadCurrentTabData"
+                    >
+                        刷新
+                    </v-btn>
+                </div>
+            </div>
+        </v-sheet>
+
+        <v-sheet
+            v-if="currentTab === 'store'"
+            rounded="xl"
+            class="mb-6 px-4 py-4"
+            style="background: transparent"
+        >
+            <div class="d-flex flex-wrap ga-3">
+                <v-chip
+                    v-for="tag in categoryOptions"
+                    :key="tag.value ?? 'all'"
+                    :color="activeTagId === tag.value ? 'primary' : ''"
+                    :variant="activeTagId === tag.value ? 'tonal' : 'outlined'"
+                    class="font-weight-bold px-4 py-2"
+                    style="letter-spacing: 0.05em; font-size: 0.78rem"
+                    link
+                    @click="activeTagId = tag.value"
+                >
+                    {{ tag.label }}
                 </v-chip>
             </div>
         </v-sheet>
 
-        <!-- 技能网格 -->
-        <v-sheet color="transparent" class="flex-grow-1 overflow-y-auto">
-            <div class="pa-4">
-                <div v-if="filteredSkills.length === 0" class="d-flex flex-column align-center justify-center py-16">
-                    <v-icon size="32" style="opacity:.35;" class="text-medium-emphasis mb-1">mdi-puzzle-outline</v-icon>
-                    <span class="text-body-2 text-medium-emphasis mt-1">No skills found</span>
-                </div>
-                <v-row v-else dense>
-                    <v-col v-for="skill in filteredSkills" :key="skill.id" cols="12" sm="6" lg="4">
-                        <v-card variant="outlined" rounded="lg" class="pa-3"
-                            :color="skill.installed ? 'success' : undefined"
-                            :style="skill.installed ? { borderColor: 'rgba(var(--v-theme-success), 0.35)', background: 'rgba(var(--v-theme-success), 0.025)' } : {}"
-                            style="cursor:pointer;" @click="openDetail(skill)">
-                            <div class="d-flex align-start ga-3">
-                                <v-avatar :color="skill.color" rounded="md" size="36">
-                                    <v-icon :size="18" color="white">{{ skill.icon }}</v-icon>
-                                </v-avatar>
-                                <div class="flex-grow-1 min-width-0">
-                                    <div class="d-flex align-center ga-1 flex-wrap">
-                                        <span class="text-body-2 font-weight-bold text-truncate">{{ skill.name }}</span>
-                                        <v-chip v-if="skill.installed" size="x-small" color="success" variant="tonal"
-                                            style="font-size:9px;height:16px;"> Installed</v-chip>
-                                    </div>
-                                    <div class="text-caption text-disabled" style="font-size:10px;">
-                                        {{ skill.author }} v{{ skill.version }}
-                                    </div>
-                                </div>
-                                <v-btn icon size="x-small" variant="tonal"
-                                    :color="skill.installed ? 'error' : 'primary'" @click.stop="toggleInstall(skill)">
-                                    <v-icon size="13">{{ skill.installed ? 'mdi-delete-outline' : 'mdi-download'
-                                    }}</v-icon>
-                                    <v-tooltip activator="parent" location="top">{{ skill.installed ? 'Uninstall' :
-                                        'Install' }}</v-tooltip>
+        <v-sheet color="transparent">
+            <v-alert
+                v-if="apiMessage"
+                class="mb-4"
+                :type="apiMessageType"
+                variant="tonal"
+                density="comfortable"
+            >
+                {{ apiMessage }}
+            </v-alert>
+
+            <v-progress-linear
+                v-if="loading"
+                class="mb-4"
+                color="primary"
+                indeterminate
+            />
+
+            <template v-if="currentTab === 'store'">
+                <v-row v-if="skills.length">
+                    <v-col v-for="skill in skills" :key="skill.id" cols="12" sm="6" lg="4" xl="3">
+                        <SkillCard
+                            :title="skill.name"
+                            :description="skill.description"
+                            :tags="skill.tagNames"
+                            :downloads="skill.download_count"
+                            @click="openDetail(skill)"
+                        >
+                            <template #top-right>
+                                <v-chip
+                                    size="small"
+                                    rounded="lg"
+                                    :color="skill.install ? 'success' : 'default'"
+                                    :variant="skill.install ? 'tonal' : 'outlined'"
+                                >
+                                    {{ getInstallStatusText(skill.install) }}
+                                </v-chip>
+                            </template>
+
+                            <template #bottom-right>
+                                <v-btn
+                                    size="small"
+                                    :color="skill.install ? 'error' : 'primary'"
+                                    :variant="skill.install ? 'outlined' : 'flat'"
+                                    rounded="lg"
+                                    :loading="actionSkillId === skill.id && actionMode === getSkillActionMode(skill)"
+                                    @click.stop="handleSkillAction(skill)"
+                                >
+                                    {{ skill.install ? '卸载' : '下载' }}
                                 </v-btn>
-                            </div>
-                            <div class="text-caption text-medium-emphasis mt-2 skill-desc"
-                                style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.5;">
-                                {{ skill.description }}</div>
-                            <div class="d-flex align-center justify-space-between mt-2">
-                                <div class="d-flex ga-1 flex-wrap">
-                                    <v-chip v-for="tag in skill.tags.slice(0, 2)" :key="tag" size="x-small"
-                                        variant="outlined" density="compact" style="font-size:9px;height:16px;">{{ tag
-                                        }}</v-chip>
-                                </div>
-                                <div class="d-flex align-center ga-1">
-                                    <v-icon size="11" color="warning">mdi-star</v-icon>
-                                    <span class="text-caption" style="font-size:10px;">{{ skill.rating.toFixed(1)
-                                    }}</span>
-                                    <span class="text-caption text-disabled" style="font-size:10px;"> {{
-                                        fmtNum(skill.downloads) }}</span>
-                                </div>
-                            </div>
-                        </v-card>
+                            </template>
+                        </SkillCard>
                     </v-col>
                 </v-row>
-            </div>
+
+                <v-sheet
+                    v-else-if="!loading"
+                    rounded="xl"
+                    class="pa-8 text-center text-medium-emphasis"
+                    style="background: rgba(var(--v-theme-surface), 0.55);"
+                >
+                    暂无符合条件的技能
+                </v-sheet>
+
+                <div class="d-flex justify-center mt-8">
+                    <v-pagination
+                        v-model="page"
+                        :length="totalPages"
+                        rounded="lg"
+                        density="comfortable"
+                        total-visible="7"
+                    />
+                </div>
+            </template>
+
+            <template v-else-if="currentTab === 'mySubmissions'">
+                <v-row v-if="filteredMySkills.length">
+                    <v-col v-for="skill in filteredMySkills" :key="skill.id" cols="12" sm="6" lg="4" xl="3">
+                        <SkillCard
+                            :title="skill.name"
+                            :description="skill.description"
+                            :tags="skill.tags.map(t => t.name)"
+                            :downloads="skill.download_count"
+                            @click="openMySubmissionDetail(skill)"
+                        >
+                            <template #top-right>
+                                <v-chip
+                                    size="small"
+                                    rounded="lg"
+                                    :color="getMySkillStatusColor(skill.status)"
+                                    variant="tonal"
+                                >
+                                    {{ getMySkillStatusText(skill.status) }}
+                                </v-chip>
+                            </template>
+
+                            <template #bottom-right>
+                                <v-btn
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    rounded="lg"
+                                    :loading="deletingSubmissionId === skill.id"
+                                    @click.stop="promptDeleteSubmission(skill)"
+                                >
+                                    删除投稿
+                                </v-btn>
+                            </template>
+                        </SkillCard>
+                    </v-col>
+                </v-row>
+
+                <v-sheet
+                    v-else-if="!loading"
+                    rounded="xl"
+                    class="pa-8 text-center text-medium-emphasis"
+                    style="background: rgba(var(--v-theme-surface), 0.55);"
+                >
+                    暂无投稿记录
+                </v-sheet>
+            </template>
         </v-sheet>
 
-        <!-- 详情弹窗 -->
-        <!-- Dialog removed for now -->
+        <SkillDetailDialog
+            v-model="detailOpen"
+            :skill="selectedSkill"
+            :loading="detailLoading"
+            :action-loading="detailActionLoading"
+            @install="installSkill"
+            @remove="removeSkill"
+        />
 
+        <MySubmissionDetailDialog
+            v-model="mySubmissionDetailOpen"
+            :skill="selectedMySubmission"
+        />
+
+        <UploadSkillDialog
+            v-model="uploadDialogOpen"
+            :loading="uploading"
+            :tags="availableTags"
+            @submit="handleUploadSkill"
+        />
+
+        <v-dialog v-model="deleteDialogOpen" max-width="420">
+            <v-card rounded="xl">
+                <v-card-title class="text-h6 font-weight-bold px-6 pt-6 pb-2">
+                    删除投稿
+                </v-card-title>
+                <v-card-text class="px-6 py-4">
+                    确认删除投稿" {{ pendingDeleteSkill?.name ?? '' }}" 吗？
+                    这将下架该 Skill 且操作无法恢复。
+                </v-card-text>
+                <v-card-actions class="px-6 pb-6 pt-2">
+                    <v-spacer />
+                    <v-btn variant="text" :disabled="deletingSubmissionId !== null" @click="closeDeleteDialog">
+                        取消
+                    </v-btn>
+                    <v-btn
+                        size="small"
+                        color="error"
+                        variant="flat"
+                        :loading="pendingDeleteSkill !== null && deletingSubmissionId === pendingDeleteSkill.id"
+                        @click="confirmDeleteSubmission"
+                    >
+                        删除
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <v-dialog v-model="downloadErrorDialogOpen" max-width="480">
+            <v-card rounded="xl">
+                <v-card-title class="text-h6 font-weight-bold px-6 pt-6 pb-2">
+                    下载失败
+                </v-card-title>
+                <v-card-text class="px-6 py-4">
+                    {{ downloadErrorMessage }}
+                </v-card-text>
+                <v-card-actions class="px-6 pb-6 pt-2">
+                    <v-spacer />
+                    <v-btn color="primary" variant="flat" @click="downloadErrorDialogOpen = false">
+                        我知道了
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <v-dialog v-model="actionSuccessDialogOpen" max-width="480">
+            <v-card rounded="xl">
+                <v-card-text class="px-6 py-4">
+                    {{ actionSuccessMessage }}
+                </v-card-text>
+                <v-card-actions class="px-6 pb-6 pt-2">
+                    <v-spacer />
+                    <v-btn color="primary" variant="flat" @click="actionSuccessDialogOpen = false">
+                        我知道了
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </v-container>
 </template>
 
 <script setup lang="ts">
-    import { ref, computed } from 'vue'
+    import { computed, onMounted, ref, watch } from 'vue'
+    import type { AxiosError } from 'axios'
+    import MySubmissionDetailDialog from '@/components/store/MySubmissionDetailDialog.vue'
+    import SkillCard from '@/components/store/SkillCard.vue'
+    import SkillDetailDialog from '@/components/store/SkillDetailDialog.vue'
+    import UploadSkillDialog from '@/components/store/UploadSkillDialog.vue'
+    import {
+        deleteMySkill,
+        getMySkills,
+        getSkillDetail,
+        getSkills,
+        getTags,
+        triggerSkillDownload,
+        triggerSkillUninstall,
+        uploadSkill,
+    } from '@/api/store'
+    import type { StoreMySkill, StoreSkillDetail, StoreSkillSummary, StoreTag } from '@/types/store'
 
-    interface Skill {
-        id: number
-        name: string
-        icon: string
-        color: string
-        category: string
-        author: string
-        version: string
-        rating: number
-        downloads: number
-        installed: boolean
-        description: string
-        longDescription?: string
-        tags: string[]
-        permissions?: { name: string; description: string; level: string }[]
-        changelog?: { version: string; date: string; items: string[] }[]
+    type StoreSkillCard = StoreSkillSummary & {
+        tagNames: string[]
     }
 
-    //  Mock Data 
-    const skills = ref<Skill[]>([
-        {
-            id: 1, name: 'Course Schedule Sync', icon: 'mdi-calendar-sync', color: '#1976D2',
-            category: 'Academic', author: 'SUSTech Labs', version: '2.1.0',
-            rating: 4.8, downloads: 12400, installed: true,
-            description: 'Sync your SUSTech course schedule to the calendar automatically.',
-            longDescription: 'Automatically fetches your course schedule from SUSTech portal and syncs it to the built-in calendar. Supports semester switching, custom reminders, and conflict detection.',
-            tags: ['schedule', 'sync', 'calendar'],
-            permissions: [
-                { name: 'Calendar Write', description: 'Create and update calendar events', level: 'medium' },
-                { name: 'Network Access', description: 'Access SUSTech portal APIs', level: 'low' },
-            ],
-            changelog: [
-                { version: '2.1.0', date: '2026-02-01', items: ['Add semester switch support', 'Fix timezone issues'] },
-                { version: '2.0.0', date: '2026-01-01', items: ['Complete rewrite with new API', 'Dark mode support'] },
-            ],
-        },
-        {
-            id: 2, name: 'Assignment Tracker', icon: 'mdi-clipboard-check-outline', color: '#388E3C',
-            category: 'Academic', author: 'EdTech Community', version: '1.5.2',
-            rating: 4.5, downloads: 8900, installed: true,
-            description: 'Track all your assignments, deadlines and submission status in one place.',
-            longDescription: 'A comprehensive assignment management tool that integrates with common learning management systems. Set reminders, track progress, and never miss a deadline again.',
-            tags: ['assignments', 'deadline', 'tracker'],
-            permissions: [
-                { name: 'Task Create', description: 'Create tasks in the task manager', level: 'low' },
-                { name: 'Notification Send', description: 'Send desktop notifications', level: 'low' },
-            ],
-            changelog: [
-                { version: '1.5.2', date: '2026-01-15', items: ['Fix LMS integration bug', 'Improve reminder accuracy'] },
-                { version: '1.5.0', date: '2025-12-01', items: ['Add Blackboard integration', 'Batch import assignments'] },
-            ],
-        },
-        {
-            id: 3, name: 'Research Paper Assistant', icon: 'mdi-file-document-edit-outline', color: '#7B1FA2',
-            category: 'Research', author: 'AI Research Group', version: '3.0.1',
-            rating: 4.9, downloads: 22000, installed: false,
-            description: 'AI-powered tool to summarize papers, extract key insights and manage citations.',
-            longDescription: 'Leverages large language models to help you read, summarize, and organize academic papers. Supports BibTeX export, citation network visualization, and cross-paper comparison.',
-            tags: ['research', 'papers', 'AI', 'citations'],
-            permissions: [
-                { name: 'File System Read', description: 'Read PDF files from your computer', level: 'medium' },
-                { name: 'AI Model Access', description: 'Use the configured LLM for summarization', level: 'high' },
-                { name: 'Network Access', description: 'Access Arxiv and Semantic Scholar APIs', level: 'low' },
-            ],
-            changelog: [
-                { version: '3.0.1', date: '2026-02-20', items: ['Fix PDF parsing for scanned papers', 'Add GPT-4 support'] },
-                { version: '3.0.0', date: '2026-01-10', items: ['Redesigned UI', 'Citation graph feature', 'BibTeX export'] },
-            ],
-        },
-        {
-            id: 4, name: 'Smart Meeting Notes', icon: 'mdi-microphone-outline', color: '#F57C00',
-            category: 'Productivity', author: 'MeetingAI', version: '1.2.0',
-            rating: 4.3, downloads: 5600, installed: false,
-            description: 'Record, transcribe and summarize meeting notes with AI assistance.',
-            longDescription: 'Records audio during meetings, transcribes speech to text in real-time, and uses AI to generate concise summaries with action items automatically extracted.',
-            tags: ['meeting', 'transcription', 'notes'],
-            permissions: [
-                { name: 'Microphone Access', description: 'Record audio from microphone', level: 'high' },
-                { name: 'File System Write', description: 'Save transcripts and notes', level: 'medium' },
-                { name: 'AI Model Access', description: 'Use LLM for summarization', level: 'high' },
-            ],
-            changelog: [
-                { version: '1.2.0', date: '2026-02-10', items: ['Real-time transcription', 'Action item extraction'] },
-                { version: '1.0.0', date: '2025-11-01', items: ['Initial release'] },
-            ],
-        },
-        {
-            id: 5, name: 'Campus Navigator', icon: 'mdi-map-marker-outline', color: '#00796B',
-            category: 'Campus Life', author: 'SUSTech Open Source', version: '1.0.5',
-            rating: 4.1, downloads: 3200, installed: false,
-            description: 'Navigate SUSTech campus with indoor maps, building info and shuttle schedules.',
-            longDescription: 'Features indoor floor plans for all major buildings, real-time shuttle bus schedules, canteen menus, and points of interest on campus.',
-            tags: ['campus', 'map', 'navigation'],
-            permissions: [
-                { name: 'Location Access', description: 'Access device location for navigation', level: 'medium' },
-                { name: 'Network Access', description: 'Fetch real-time shuttle data', level: 'low' },
-            ],
-            changelog: [
-                { version: '1.0.5', date: '2026-01-20', items: ['Updated shuttle schedule API', 'Add new canteen'] },
-            ],
-        },
-        {
-            id: 6, name: 'Study Group Finder', icon: 'mdi-account-group-outline', color: '#C62828',
-            category: 'Communication', author: 'Social Learning Lab', version: '2.3.0',
-            rating: 4.6, downloads: 7100, installed: false,
-            description: 'Find and create study groups for your courses, schedule sessions and collaborate.',
-            longDescription: 'Connects students taking the same courses to form study groups. Features session scheduling, shared notes, and integrated video calling.',
-            tags: ['study group', 'collaboration', 'social'],
-            permissions: [
-                { name: 'Profile Access', description: 'Access your academic profile', level: 'medium' },
-                { name: 'Network Access', description: 'Connect to study group server', level: 'low' },
-            ],
-            changelog: [
-                { version: '2.3.0', date: '2026-02-15', items: ['Add video call integration', 'Shared whiteboard'] },
-            ],
-        },
-        {
-            id: 7, name: 'Grade Calculator', icon: 'mdi-calculator-variant-outline', color: '#1565C0',
-            category: 'Academic', author: 'AcadTools', version: '1.1.0',
-            rating: 4.4, downloads: 9800, installed: false,
-            description: 'Calculate GPA, predict final grades, and plan your academic performance.',
-            longDescription: 'Input your current grades and course weights to predict your semester GPA. Simulate different score scenarios to understand what you need to achieve your target.',
-            tags: ['GPA', 'grades', 'calculator'],
-            permissions: [
-                { name: 'Storage', description: 'Store grade data locally', level: 'low' },
-            ],
-            changelog: [
-                { version: '1.1.0', date: '2026-01-05', items: ['Add weighted GPA mode', 'Export to CSV'] },
-            ],
-        },
-        {
-            id: 8, name: 'Focus Timer', icon: 'mdi-timer-outline', color: '#558B2F',
-            category: 'Productivity', author: 'DeepWork Studio', version: '1.4.0',
-            rating: 4.7, downloads: 15000, installed: true,
-            description: 'Pomodoro-based focus timer with distraction blocking and session analytics.',
-            longDescription: 'Implements the Pomodoro technique with customizable work/break intervals. Blocks distracting websites during focus sessions and provides detailed productivity analytics.',
-            tags: ['focus', 'pomodoro', 'productivity'],
-            permissions: [
-                { name: 'Notification Send', description: 'Timer alerts and break reminders', level: 'low' },
-                { name: 'System Integration', description: 'Website blocking during focus sessions', level: 'high' },
-            ],
-            changelog: [
-                { version: '1.4.0', date: '2026-02-01', items: ['Analytics dashboard', 'Custom sound themes'] },
-            ],
-        },
+    type StoreActionSkill = StoreSkillCard | StoreSkillDetail
+
+    const MAX_MY_SUBMISSIONS = 5
+    const pageSize = 20
+    const search = ref('')
+    const activeTagId = ref<number | null>(null)
+    const page = ref(1)
+    const loading = ref(false)
+    const detailLoading = ref(false)
+    const detailOpen = ref(false)
+    const mySubmissionDetailOpen = ref(false)
+    const apiMessage = ref('')
+    const apiMessageType = ref<'info' | 'success' | 'warning' | 'error'>('info')
+    const currentTab = ref<'store' | 'mySubmissions'>('store')
+    const skills = ref<StoreSkillCard[]>([])
+    const skillsTotal = ref(0)
+    const mySkills = ref<StoreMySkill[]>([])
+    const uploadDialogOpen = ref(false)
+    const uploading = ref(false)
+    const deleteDialogOpen = ref(false)
+    const downloadErrorDialogOpen = ref(false)
+    const downloadErrorMessage = ref('')
+    const actionSuccessDialogOpen = ref(false)
+    const actionSuccessMessage = ref('')
+    const availableTags = ref<StoreTag[]>([])
+    const selectedSkill = ref<StoreSkillDetail | null>(null)
+    const selectedMySubmission = ref<StoreMySkill | null>(null)
+    const pendingDeleteSkill = ref<StoreMySkill | null>(null)
+    const actionSkillId = ref<number | null>(null)
+    const actionMode = ref<'install' | 'remove' | null>(null)
+    const deletingSubmissionId = ref<number | null>(null)
+
+    const detailActionLoading = computed(() =>
+        selectedSkill.value !== null && actionSkillId.value === selectedSkill.value.id,
+    )
+
+    const filteredMySkills = computed(() => {
+        const visibleSkills = mySkills.value.filter(skill => skill.status !== 'archived')
+        const keyword = search.value.trim().toLowerCase()
+        if (!keyword) return visibleSkills
+
+        return visibleSkills.filter((skill) => {
+            return skill.name.toLowerCase().includes(keyword)
+                || skill.description.toLowerCase().includes(keyword)
+                || skill.tags.some(tag => tag.name.toLowerCase().includes(keyword))
+        })
+    })
+
+    const currentStatCount = computed(() =>
+        currentTab.value === 'store' ? skillsTotal.value : filteredMySkills.value.length,
+    )
+
+    const currentStatLabel = computed(() =>
+        currentTab.value === 'store' ? 'SKILLS COUNT' : 'MY SUBMISSIONS',
+    )
+
+    const categoryOptions = computed(() => [
+        { label: 'ALL', value: null as number | null },
+        ...availableTags.value.map(tag => ({ label: tag.name, value: tag.id })),
     ])
 
-    const categories = [
-        { value: 'all', label: 'All' },
-        { value: 'Academic', label: 'Academic' },
-        { value: 'Productivity', label: 'Productivity' },
-        { value: 'Research', label: 'Research' },
-        { value: 'Communication', label: 'Communication' },
-        { value: 'Campus Life', label: 'Campus Life' },
-        { value: 'installed', label: ' Installed' },
-    ]
+    const totalPages = computed(() => Math.max(1, Math.ceil(skillsTotal.value / pageSize)))
 
-    const search = ref('')
-    const activeCategory = ref('all')
+    watch([search, activeTagId], () => {
+        if (currentTab.value !== 'store') return
 
-    const installedCount = computed(() => skills.value.filter(s => s.installed).length)
+        if (page.value !== 1) {
+            page.value = 1
+            return
+        }
 
-    const filteredSkills = computed(() => skills.value.filter(s => {
-        const q = search.value.toLowerCase()
-        const matchQ = !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || s.tags.some(t => t.includes(q))
-        const matchCat = activeCategory.value === 'all'
-            ? true
-            : activeCategory.value === 'installed'
-                ? s.installed
-                : s.category === activeCategory.value
-        return matchQ && matchCat
-    }))
+        void loadStoreSkills()
+    })
 
-    const detailOpen = ref(false)
-    const selectedSkill = ref<Skill | null>(null)
+    watch(page, () => {
+        if (currentTab.value === 'store') {
+            void loadStoreSkills()
+        }
+    })
 
-    const openDetail = (s: Skill) => { selectedSkill.value = s; detailOpen.value = true }
+    watch(totalPages, (value) => {
+        if (page.value > value) {
+            page.value = value
+        }
+    })
 
-    const toggleInstall = (s: Skill) => { s.installed = !s.installed }
+    watch(currentTab, async (tab) => {
+        apiMessage.value = ''
 
-    const fmtNum = (n: number) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)
+        if (tab === 'store') {
+            if (page.value !== 1) {
+                page.value = 1
+                return
+            }
+
+            await loadStoreSkills()
+        } else {
+            page.value = 1
+            await loadMySubmissionSkills()
+        }
+    })
+
+    function getMySkillStatusText(status: string) {
+        switch (status) {
+            case 'pending': return '审核中'
+            case 'approved': return '已上架'
+            case 'rejected': return '已拒绝'
+            case 'archived': return '已归档'
+            default: return status
+        }
+    }
+
+    function getMySkillStatusColor(status: string) {
+        switch (status) {
+            case 'pending': return 'warning'
+            case 'approved': return 'success'
+            case 'rejected': return 'error'
+            case 'archived': return 'grey'
+            default: return 'default'
+        }
+    }
+
+    function getInstallStatusText(install: boolean) {
+        return install ? '已安装' : '未安装'
+    }
+
+    function getSkillActionMode(skill: StoreActionSkill): 'install' | 'remove' {
+        return skill.install ? 'remove' : 'install'
+    }
+
+    async function handleSkillAction(skill: StoreActionSkill) {
+        if (skill.install) {
+            await removeSkill(skill)
+            return
+        }
+
+        await installSkill(skill)
+    }
+
+    function setApiMessage(message: string, type: typeof apiMessageType.value = 'info') {
+        apiMessage.value = message
+        apiMessageType.value = type
+    }
+
+    function showDownloadErrorDialog(message: string) {
+        downloadErrorMessage.value = message
+        downloadErrorDialogOpen.value = true
+    }
+
+    function showActionSuccessDialog(message: string) {
+        actionSuccessMessage.value = message
+        actionSuccessDialogOpen.value = true
+    }
+
+    function getErrorMessage(error: unknown, fallback = '请求失败') {
+        const axiosError = error as AxiosError<{ detail?: string, message?: string }>
+        return axiosError.response?.data?.detail
+            || axiosError.response?.data?.message
+            || (error instanceof Error ? error.message : fallback)
+    }
+
+    function isUnauthorizedError(error: unknown) {
+        const axiosError = error as AxiosError
+        return axiosError.response?.status === 401
+    }
+
+    function toCardSkill(skill: StoreSkillSummary): StoreSkillCard {
+        return {
+            ...skill,
+            tagNames: skill.tags.length ? skill.tags.map(tag => tag.name) : ['UNTAGGED'],
+        }
+    }
+
+    function updateSkillInstallState(skillId: number, install: boolean) {
+        skills.value = skills.value.map(skill => (
+            skill.id === skillId
+                ? { ...skill, install }
+                : skill
+        ))
+
+        if (selectedSkill.value?.id === skillId) {
+            selectedSkill.value = {
+                ...selectedSkill.value,
+                install,
+            }
+        }
+    }
+
+    function incrementDownloadCount(skillId: number) {
+        skills.value = skills.value.map(skill => (
+            skill.id === skillId
+                ? { ...skill, download_count: skill.download_count + 1 }
+                : skill
+        ))
+
+        if (selectedSkill.value?.id === skillId) {
+            selectedSkill.value = {
+                ...selectedSkill.value,
+                download_count: selectedSkill.value.download_count + 1,
+            }
+        }
+    }
+
+    async function loadTags() {
+        try {
+            availableTags.value = await getTags()
+        } catch (error) {
+            availableTags.value = []
+            setApiMessage(`加载标签失败：${getErrorMessage(error)}`, 'warning')
+        }
+    }
+
+    async function loadStoreSkills() {
+        loading.value = true
+        apiMessage.value = ''
+
+        try {
+            const keyword = search.value.trim()
+            const response = await getSkills({
+                page: page.value,
+                page_size: pageSize,
+                tag_id: activeTagId.value ?? undefined,
+                search: keyword || undefined,
+            })
+
+            skills.value = response.skills.map(toCardSkill)
+            skillsTotal.value = response.total
+        } catch (error) {
+            skills.value = []
+            skillsTotal.value = 0
+            setApiMessage(`加载技能列表失败：${getErrorMessage(error)}`, 'error')
+        } finally {
+            loading.value = false
+        }
+    }
+
+    async function loadMySubmissionSkills() {
+        loading.value = true
+        apiMessage.value = ''
+
+        try {
+            mySkills.value = await getMySkills()
+        } catch (error) {
+            mySkills.value = []
+            if (isUnauthorizedError(error)) {
+                setApiMessage('请先登录后查看投稿记录', 'warning')
+                return
+            }
+
+            setApiMessage(`加载投稿记录失败：${getErrorMessage(error)}`, 'error')
+        } finally {
+            loading.value = false
+        }
+    }
+
+    async function loadCurrentTabData() {
+        if (currentTab.value === 'store') {
+            await loadStoreSkills()
+        } else {
+            await loadMySubmissionSkills()
+        }
+    }
+
+    async function checkSubmissionLimit() {
+        if (!localStorage.getItem('accessToken')) {
+            setApiMessage('请先登录后再上传技能', 'warning')
+            return false
+        }
+
+        try {
+            mySkills.value = await getMySkills()
+        } catch (error) {
+            if (isUnauthorizedError(error)) {
+                setApiMessage('请先登录后再上传技能', 'warning')
+                return false
+            }
+
+            setApiMessage(`校验投稿数量失败：${getErrorMessage(error)}`, 'error')
+            return false
+        }
+
+        const activeSubmissionCount = mySkills.value.filter((skill) => skill.status !== 'archived').length
+
+        if (activeSubmissionCount >= MAX_MY_SUBMISSIONS) {
+            setApiMessage(`个人投稿最多 ${MAX_MY_SUBMISSIONS} 个技能，请先删除后再上传`, 'warning')
+            return false
+        }
+
+        return true
+    }
+
+    async function openUploadDialog() {
+        const canUpload = await checkSubmissionLimit()
+        if (!canUpload) {
+            uploadDialogOpen.value = false
+            return
+        }
+
+        uploadDialogOpen.value = true
+    }
+
+    async function handleUploadSkill(payload: { file: File, tagIds: number[] }) {
+        uploading.value = true
+
+        try {
+            const canUpload = await checkSubmissionLimit()
+            if (!canUpload) {
+                uploadDialogOpen.value = false
+                return
+            }
+
+            await uploadSkill(payload.file, payload.tagIds)
+            setApiMessage('上传成功，等待审核', 'success')
+            uploadDialogOpen.value = false
+
+            if (currentTab.value === 'mySubmissions') {
+                await loadMySubmissionSkills()
+            } else {
+                currentTab.value = 'mySubmissions'
+            }
+        } catch (error) {
+            setApiMessage(`上传失败：${getErrorMessage(error)}`, 'error')
+        } finally {
+            uploading.value = false
+        }
+    }
+
+    async function openDetail(skill: StoreActionSkill) {
+        detailOpen.value = true
+        detailLoading.value = true
+        selectedSkill.value = null
+
+        try {
+            selectedSkill.value = await getSkillDetail(skill.id)
+        } catch (error) {
+            setApiMessage(`加载技能详情失败：${getErrorMessage(error)}`, 'error')
+        } finally {
+            detailLoading.value = false
+        }
+    }
+
+    function openMySubmissionDetail(skill: StoreMySkill) {
+        selectedMySubmission.value = skill
+        mySubmissionDetailOpen.value = true
+    }
+
+    function promptDeleteSubmission(skill: StoreMySkill) {
+        pendingDeleteSkill.value = skill
+        deleteDialogOpen.value = true
+    }
+
+    function closeDeleteDialog() {
+        if (deletingSubmissionId.value !== null) return
+
+        deleteDialogOpen.value = false
+        pendingDeleteSkill.value = null
+    }
+
+    async function confirmDeleteSubmission() {
+        const skill = pendingDeleteSkill.value
+        if (!skill) return
+
+        deletingSubmissionId.value = skill.id
+
+        try {
+            const response = await deleteMySkill(skill.id)
+            deleteDialogOpen.value = false
+            pendingDeleteSkill.value = null
+
+            if (selectedMySubmission.value?.id === skill.id) {
+                selectedMySubmission.value = null
+                mySubmissionDetailOpen.value = false
+            }
+
+            await loadMySubmissionSkills()
+            setApiMessage(response.message || `已删除：${skill.name}`, 'success')
+        } catch (error) {
+            setApiMessage(`删除失败：${getErrorMessage(error)}`, 'error')
+        } finally {
+            deletingSubmissionId.value = null
+        }
+    }
+
+    async function installSkill(skill: StoreActionSkill | null) {
+        if (!skill) return
+
+        actionSkillId.value = skill.id
+        actionMode.value = 'install'
+
+        try {
+            const response = await triggerSkillDownload(skill.id)
+            updateSkillInstallState(response.skill_id, true)
+            showActionSuccessDialog(response.message || `已下载：${skill.name}`)
+            incrementDownloadCount(response.skill_id)
+        } catch (error) {
+            showDownloadErrorDialog(`下载失败：${getErrorMessage(error)}`)
+        } finally {
+            actionSkillId.value = null
+            actionMode.value = null
+        }
+    }
+
+    async function removeSkill(skill: StoreActionSkill | null) {
+        if (!skill) return
+
+        actionSkillId.value = skill.id
+        actionMode.value = 'remove'
+
+        try {
+            const response = await triggerSkillUninstall(skill.id)
+            updateSkillInstallState(response.skill_id, false)
+            showActionSuccessDialog(response.message || `已卸载：${skill.name}`)
+        } catch (error) {
+            setApiMessage(`卸载失败：${getErrorMessage(error)}`, 'error')
+        } finally {
+            actionSkillId.value = null
+            actionMode.value = null
+        }
+    }
+
+    onMounted(async () => {
+        await loadTags()
+        await loadStoreSkills()
+    })
 </script>
 
 <style scoped>
-    /* 无需自定义 CSS，所有样式已由 Vuetify 组件 props 实现 */
+    :deep(.v-pagination .v-btn) {
+        border-radius: 10px !important;
+        background: rgba(var(--v-theme-surface), 0.88);
+        color: rgb(var(--v-theme-on-surface));
+        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    :deep(.v-pagination .v-btn--active) {
+        background: rgba(var(--v-theme-primary), 0.13);
+        border-color: rgba(var(--v-theme-primary), 0.65);
+        color: rgb(var(--v-theme-primary));
+    }
 </style>

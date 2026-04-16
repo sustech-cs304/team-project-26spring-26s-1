@@ -12,12 +12,22 @@ export interface LoginRequest {
 export interface LoginResponse {
   message: string
   email: string
+  username: string
+  role: 'user' | 'admin'
   access_token: string
+}
+
+export interface MeResponse {
+  id: number
+  email: string
+  username: string
+  role: 'user' | 'admin'
 }
 
 /** 注册请求参数 */
 export interface RegisterRequest {
   email: string
+  username: string
   password: string
   verificationCode: string
 }
@@ -55,6 +65,14 @@ export interface ResetPasswordRequest {
  */
 export function login(payload: LoginRequest) {
   return http.post<LoginResponse>('/auth/login', payload)
+}
+
+/**
+ * 获取当前用户
+ * GET /auth/me
+ */
+export function getCurrentUser() {
+  return http.get<MeResponse>('/auth/me')
 }
 
 /**
