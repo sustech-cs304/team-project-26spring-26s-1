@@ -6,7 +6,7 @@ from langchain_qwq import ChatQwen
 from langgraph.runtime import Runtime
 from typing import Any
 
-from agent.config import ApiEndpointConfig, get_config, jinja_env
+from agent.config import LLMEndpointConfig, get_config, jinja_env
 from agent.core.state import AgentState
 from agent.tools.core_memory import core_memory_get
 
@@ -18,7 +18,7 @@ class ConfiguredModel:
         self._model: Any | None = None
         self._model_signature: tuple[str, str, str, str] | None = None
 
-    def _build_model(self, endpoint: ApiEndpointConfig):
+    def _build_model(self, endpoint: LLMEndpointConfig):
         if endpoint.type == "OpenAI":
             model = ChatOpenAI(
                 model=endpoint.model,
@@ -64,7 +64,11 @@ class ConfiguredModel:
         if store:
             core_memory_entries = await core_memory_get(store)
 
-        system_prompt = self._system_prompt_template.render(core_memory=core_memory_entries)
+        endpoint = get_config().api.agent
+        system_prompt = self._system_prompt_template.render(
+            core_memory=core_memory_entries,
+            token_limit=endpoint.max_token_count,
+        )
         system_prompt_message = SystemMessage(content=system_prompt)
 
         model = self._get_model()

@@ -12,8 +12,15 @@ jinja_env = Environment(
     autoescape=select_autoescape()
 )
 
-class ApiEndpointConfig(BaseModel):
+class LLMEndpointConfig(BaseModel):
     type: Literal["OpenAI", "Qwen", "Anthropic"]
+    base_url: str
+    api_key: str
+    model: str
+    max_token_count: int = Field(default=128000, ge=1)
+
+class RerankerEndpointConfig(BaseModel):
+    type: Literal["OpenAI"]
     base_url: str
     api_key: str
     model: str
@@ -31,10 +38,10 @@ class ASREndpointConfig(BaseModel):
     api_key: str
 
 class ApiConfig(BaseModel):
-    agent: ApiEndpointConfig
-    utility: ApiEndpointConfig
+    agent: LLMEndpointConfig
+    utility: LLMEndpointConfig
     embed: EmbedEndpointConfig
-    rerank: ApiEndpointConfig
+    rerank: RerankerEndpointConfig
     asr: ASREndpointConfig
 
 class MineruConfig(BaseModel):
@@ -70,6 +77,8 @@ class NotificationConfig(BaseModel):
     notification_limit: int | None = 8
     default_timeout_s: int = 10
     deeplink_scheme: str = "opencrab"
+
+
 class RagCloudConfig(BaseModel):
     base_url: str = ""
     manifest_path: str = "manifest.json"

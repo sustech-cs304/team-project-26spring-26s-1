@@ -5,7 +5,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwen
 
-from agent.config import ApiEndpointConfig, get_config
+from agent.config import LLMEndpointConfig, get_config
 
 DEFAULT_CONVERSATION_TITLE = "New Conversation"
 
@@ -22,7 +22,7 @@ class ConversationTitleGenerator:
             parts.append(f"User message:\n{normalized_user_message}")
         return "\n\n".join(parts)
 
-    def _build_model(self, endpoint: ApiEndpointConfig):
+    def _build_model(self, endpoint: LLMEndpointConfig):
         if endpoint.type == "OpenAI":
             default_headers = None
             if endpoint == get_config().api.utility:
@@ -78,7 +78,7 @@ class ConversationTitleGenerator:
             normalized = normalized[:60].rstrip(" ,.;:!?，。；：！？、")
         return normalized
 
-    async def _generate_with_endpoint(self, endpoint: ApiEndpointConfig, conversation_text: str) -> str | None:
+    async def _generate_with_endpoint(self, endpoint: LLMEndpointConfig, conversation_text: str) -> str | None:
         model = self._build_model(endpoint)
         response = await model.ainvoke([
             SystemMessage(

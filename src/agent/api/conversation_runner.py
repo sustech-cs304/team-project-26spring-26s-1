@@ -36,6 +36,9 @@ from agent.utils.exception import is_langchain_network_failure
 
 message_type_adapter = TypeAdapter(AnyMessage)
 TITLE_GENERATION_TIMEOUT_SECONDS = 60
+MAIN_MODEL_NODE_NAME = "chat"
+TOOL_NODE_NAME = "tool_node"
+USER_INPUT_NODE_NAME = "user_input"
 
 class _ConversationJobState:
     def __init__(self):
@@ -378,6 +381,7 @@ class ConversationRunner:
                 
         async def _run(job: _ConversationJobState):
             current_message: AnyMessage | None = None
+            current_message_node: str | None = None
                         
             try:
                 async for event in gen:
@@ -396,19 +400,29 @@ class ConversationRunner:
                     elif event["type"] == "messages":
                         message_data = cast(tuple[AnyMessage, dict[str, Any]], event["data"])
                         message_chunk, message_meta = message_data
+                        node_name = str(message_meta.get("langgraph_node", ""))
+                        if current_message_node != node_name:
+                            current_message = None
+                        current_message_node = node_name
                         current_message = current_message + message_chunk if current_message else message_chunk
 
-                        message_uuid = await _persist_stream_message(current_message)
-
                         if isinstance(current_message, HumanMessage):
+                            if node_name != USER_INPUT_NODE_NAME:
+                                continue
+                            await _persist_stream_message(current_message)
                             continue # persist raw user message, not the injected attachment content
 
                         if isinstance(current_message, AIMessage):
+                            if node_name != MAIN_MODEL_NODE_NAME:
+                                continue
+                            message_uuid = await _persist_stream_message(current_message)
                             if message_uuid is None:
                                 continue
                             deltas = self.parser.parse_event(event, message_uuid)
                         
                         if isinstance(current_message, ToolMessage):
+                            if node_name != TOOL_NODE_NAME:
+                                continue
                             tool_call_request_message = await db_utils.db_get_message_by_langchain_id(
                                 self.session_factory,
                                 conversation_id=conversation_id,
@@ -433,8 +447,9 @@ class ConversationRunner:
                         print(f"Received message chunk: {message_chunk}")
                     elif event["type"] == "updates":
                         current_message = None
+                        current_message_node = None
                         update_data = cast(dict[str, Any], event["data"])
-                        chat_update = cast(dict[str, Any] | None, update_data.get("chat"))
+                        chat_update = cast(dict[str, Any] | None, update_data.get(MAIN_MODEL_NODE_NAME))
                         if chat_update:
                             print(f"Received chat update: {chat_update}")
                             for msg in cast(list[AnyMessage], chat_update.get("messages", [])):
@@ -515,7 +530,8 @@ class ConversationRunner:
                             job.cond.notify_all()
                 
             except asyncio.CancelledError:
-                await _persist_partial_ai_message(current_message)
+                if current_message_node == MAIN_MODEL_NODE_NAME:
+                    await _persist_partial_ai_message(current_message)
             except Exception as exc:
                 if not is_langchain_network_failure(exc):
                     raise
@@ -524,7 +540,8 @@ class ConversationRunner:
                     f"Network failure while streaming conversation: "
                     f"conversation_id={conversation_id}, error={exc}"
                 )
-                await _persist_partial_ai_message(current_message)
+                if current_message_node == MAIN_MODEL_NODE_NAME:
+                    await _persist_partial_ai_message(current_message)
                 async with job.cond:
                     job.history.append(
                         CompletionResponseError(
