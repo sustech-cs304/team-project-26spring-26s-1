@@ -182,3 +182,21 @@ class RoutineEvent(Base):
     source: Mapped["RoutineSource | None"] = relationship(
         "RoutineSource", back_populates="events", lazy="joined"
     )
+
+
+class SchoolCredential(Base):
+    __tablename__ = "school_credentials"
+
+    scope: Mapped[str] = mapped_column(String(64), primary_key=True)
+    student_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
+    )
