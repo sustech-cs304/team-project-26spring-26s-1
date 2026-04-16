@@ -1,7 +1,7 @@
 """HTTP API for shared school CAS credentials in Global Settings.
 
 ``PUT`` calls ``school_credentials.set_school_cas_credentials`` and stores a shared CAS
-username/password pair in the global env-var vault for both BB and TIS.
+username/password pair in the local database for both BB and TIS.
 
 ``/settings/bb/credentials`` and ``/settings/tis/credentials`` behave the same.
 """
@@ -12,7 +12,7 @@ from fastapi import APIRouter, Header, HTTPException
 
 from agent.services import school_credentials
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
 def _require_secret(x_secret: str | None) -> None:
@@ -31,7 +31,7 @@ class TisCredentialsBody(pydantic.BaseModel):
 class TisCredentialsPutResponse(pydantic.BaseModel):
     ok: bool = True
     student_id: str
-    message: str = "Shared CAS credentials updated in the env-var vault."
+    message: str = "Shared CAS credentials updated in the database."
 
 
 class TisCredentialsGetResponse(pydantic.BaseModel):
@@ -45,7 +45,16 @@ class TisCredentialsDeleteResponse(pydantic.BaseModel):
     message: str = "Shared CAS credentials cleared."
 
 
-@router.get("/tis/credentials", response_model=TisCredentialsGetResponse)
+class CasConfigPatchRequest(pydantic.BaseModel):
+    id: str | None = None
+    password: str | None = None
+
+
+class MessageResponse(pydantic.BaseModel):
+    message: str
+
+
+@router.get("/settings/tis/credentials", response_model=TisCredentialsGetResponse)
 async def get_tis_credentials_status(
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
@@ -55,22 +64,40 @@ async def get_tis_credentials_status(
     return TisCredentialsGetResponse(**data)
 
 
-@router.put("/tis/credentials", response_model=TisCredentialsPutResponse)
+@router.patch("/patch_cas", response_model=MessageResponse)
+async def patch_cas(
+    body: CasConfigPatchRequest,
+    x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
+):
+    _require_secret(x_school_settings_secret)
+    try:
+        school_credentials.patch_school_cas_config(
+            student_id=body.id,
+            password=body.password,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except school_credentials.EnvVaultAccessError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return MessageResponse(message="CAS config updated successfully.")
+
+
+@router.put("/settings/tis/credentials", response_model=TisCredentialsPutResponse)
 async def put_tis_credentials(
     body: TisCredentialsBody,
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    """Store shared CAS in the env-var vault for BB/TIS tool resolution."""
+    """Store shared CAS in the database for BB/TIS tool resolution."""
     _require_secret(x_school_settings_secret)
     school_credentials.set_school_cas_credentials(body.student_id, body.password)
     return TisCredentialsPutResponse(student_id=body.student_id.strip())
 
 
-@router.delete("/tis/credentials", response_model=TisCredentialsDeleteResponse)
+@router.delete("/settings/tis/credentials", response_model=TisCredentialsDeleteResponse)
 async def delete_tis_credentials(
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    """Clear shared CAS from the env-var vault; tools fall back to process env only."""
+    """Clear shared CAS from the database; tools fall back to process env only."""
     _require_secret(x_school_settings_secret)
     school_credentials.clear_school_cas_credentials()
     return TisCredentialsDeleteResponse()
@@ -83,11 +110,11 @@ class BbCredentialsPutResponse(pydantic.BaseModel):
     ok: bool = True
     student_id: str
     message: str = (
-        "Shared SUSTech CAS saved in the env-var vault for both BB and TIS."
+        "Shared SUSTech CAS saved in the database for both BB and TIS."
     )
 
 
-@router.get("/bb/credentials", response_model=TisCredentialsGetResponse)
+@router.get("/settings/bb/credentials", response_model=TisCredentialsGetResponse)
 async def get_bb_credentials_status(
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
@@ -97,7 +124,7 @@ async def get_bb_credentials_status(
     return TisCredentialsGetResponse(**data)
 
 
-@router.put("/bb/credentials", response_model=BbCredentialsPutResponse)
+@router.put("/settings/bb/credentials", response_model=BbCredentialsPutResponse)
 async def put_bb_credentials(
     body: TisCredentialsBody,
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
@@ -108,7 +135,7 @@ async def put_bb_credentials(
     return BbCredentialsPutResponse(student_id=body.student_id.strip())
 
 
-@router.delete("/bb/credentials", response_model=TisCredentialsDeleteResponse)
+@router.delete("/settings/bb/credentials", response_model=TisCredentialsDeleteResponse)
 async def delete_bb_credentials(
     x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):

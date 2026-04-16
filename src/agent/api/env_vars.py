@@ -187,6 +187,33 @@ def _decrypt_payload_v2(payload: dict[str, Any]) -> str:
     return plaintext.decode("utf-8")
 
 
+def encrypt_secret_value(plaintext: str) -> str:
+    """Encrypt one secret value into a JSON payload string."""
+    return _encrypt_payload(plaintext)
+
+
+def decrypt_secret_value(payload_text: str) -> str:
+    """Decrypt a JSON payload string produced by ``encrypt_secret_value``."""
+    try:
+        parsed = json.loads(payload_text)
+    except json.JSONDecodeError as exc:
+        raise EnvVaultAccessError(f"Encrypted secret is not valid JSON: {exc}") from exc
+    if (
+        isinstance(parsed, dict)
+        and parsed.get("format") == _VAULT_FORMAT
+        and isinstance(parsed.get("nonce"), str)
+        and isinstance(parsed.get("ciphertext"), str)
+    ):
+        return _decrypt_payload_v2(parsed)
+    if (
+        isinstance(parsed, dict)
+        and parsed.get("format") == _VAULT_FORMAT_LEGACY
+        and isinstance(parsed.get("ciphertext"), str)
+    ):
+        return _decrypt_payload(parsed["ciphertext"])
+    raise EnvVaultAccessError("Encrypted secret payload format is unsupported")
+
+
 def _normalize_entry(raw: Any) -> dict[str, Any] | None:
     if isinstance(raw, str):
         return {"value": raw}
