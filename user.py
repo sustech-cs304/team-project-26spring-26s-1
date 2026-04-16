@@ -358,6 +358,9 @@ class SkillUpdateData(BaseModel):
 class RejectData(BaseModel):
     reason: str = ""
 
+
+ALLOWED_DELETE_STATUSES = {"pending", "rejected", "archived"}
+
 # ============== 认证 API ==============
 
 
@@ -466,7 +469,9 @@ async def get_skills(
     query = db.query(Skill).filter(Skill.status == "approved")
 
     if tag_id:
-        query = query.join(SkillTag).filter(SkillTag.tag_id == tag_id)
+        query = query.join(SkillTag, SkillTag.skill_id == Skill.id).filter(
+            SkillTag.tag_id == tag_id
+        )
 
     if search:
         search_pattern = f"%{search}%"
@@ -613,6 +618,51 @@ async def upload_skill(
         db.commit()
 
     return {"message": "上传成功", "skill_id": skill.id, "status": skill.status}
+
+
+def _delete_skill_submission(skill_id: int, user: User, db: Session) -> dict:
+    """删除技能提交，允许作者本人或管理员执行。"""
+    skill = db.query(Skill).filter(Skill.id == skill_id).first()
+    if not skill:
+        raise HTTPException(status_code=404, detail="技能不存在")
+
+    if user.role != "admin" and skill.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权限删除该技能")
+
+    if skill.status == "approved":
+        raise HTTPException(status_code=409, detail="技能状态为 approved，不允许删除")
+
+    if skill.status not in ALLOWED_DELETE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"技能状态为 {skill.status}，不允许删除"
+        )
+
+    db.query(SkillTag).filter(SkillTag.skill_id == skill_id).delete()
+    db.delete(skill)
+    db.commit()
+
+    return {"message": "删除成功", "skill_id": skill_id}
+
+
+@app.delete("/api/skills/{skill_id}")
+async def delete_skill_submission(
+    skill_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除技能提交（云端上游约定路径）。"""
+    return _delete_skill_submission(skill_id, user, db)
+
+
+@app.delete("/api/skill/{skill_id}/delete")
+async def delete_skill_submission_legacy(
+    skill_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """删除技能提交（本地后端兼容路径）。"""
+    return _delete_skill_submission(skill_id, user, db)
 
 
 # ============== 管理员 API ==============
@@ -832,32 +882,32 @@ async def root():
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html", {"request": request})
 
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
+    return templates.TemplateResponse(request, "register.html", {"request": request})
 
 
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request):
-    return templates.TemplateResponse("upload.html", {"request": request})
+    return templates.TemplateResponse(request, "upload.html", {"request": request})
 
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(request: Request):
-    return templates.TemplateResponse("admin.html", {"request": request})
+    return templates.TemplateResponse(request, "admin.html", {"request": request})
 
 
 @app.get("/admin/pending", response_class=HTMLResponse)
 async def admin_pending_page(request: Request):
-    return templates.TemplateResponse("admin_pending.html", {"request": request})
+    return templates.TemplateResponse(request, "admin_pending.html", {"request": request})
 
 
 @app.get("/admin/skills", response_class=HTMLResponse)
 async def admin_skills_page(request: Request):
-    return templates.TemplateResponse("admin_skills.html", {"request": request})
+    return templates.TemplateResponse(request, "admin_skills.html", {"request": request})
 
 # ============== 启动 ==============
 
