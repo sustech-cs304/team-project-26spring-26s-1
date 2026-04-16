@@ -198,6 +198,7 @@ class RoutineEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     time_: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_time_: Mapped[int] = mapped_column(Integer, nullable=False)
     event_name: Mapped[str] = mapped_column(String(1024), nullable=False)
     detail: Mapped[str] = mapped_column(Text, nullable=False)
     color: Mapped[str] = mapped_column(String(32), nullable=False, default="#3b82f6")

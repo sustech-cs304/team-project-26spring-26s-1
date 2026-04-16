@@ -22,7 +22,13 @@ from agent.api.task import router as task_router
 from agent.api.env_vars import router as env_vars_router
 from agent.api.config import router as config_router
 from agent.api.school_settings import router as school_settings_router
-from agent.api.routine_events import ensure_routine_calendar_schema, router as routine_events_router
+from agent.api.routine_events import (
+	BB_SOURCE_TITLE,
+	TIS_SOURCE_TITLE,
+	ensure_routine_calendar_schema,
+	router as routine_events_router,
+	sync_managed_source,
+)
 from agent.cron_watcher import CronWatcher
 from agent.rag.cloud_sync import RagCloudSyncService
 from agent.task_executor import ensure_task_run_sqlite_schema
@@ -41,6 +47,44 @@ log = logging.getLogger("main")
 engine = None
 async_session = None
 graph = None
+_CALENDAR_SYNC_INTERVAL_SECONDS = 15 * 60
+_CALENDAR_SYNC_SOURCES = (BB_SOURCE_TITLE, TIS_SOURCE_TITLE)
+
+
+async def _sync_calendar_source_once(source_id: str) -> None:
+	global async_session
+
+	if async_session is None:
+		return
+
+	async with async_session() as session:
+		try:
+			result = await sync_managed_source(source_id, session)
+			await session.commit()
+			log.info(
+				"Calendar source sync completed",
+				extra={"source_id": source_id, "event_count": len(result.get("ids", []))},
+			)
+		except asyncio.CancelledError:
+			await session.rollback()
+			raise
+		except Exception:
+			await session.rollback()
+			log.exception("Calendar source sync failed", extra={"source_id": source_id})
+
+
+async def _sync_calendar_sources_once() -> None:
+	await asyncio.gather(*(_sync_calendar_source_once(source_id) for source_id in _CALENDAR_SYNC_SOURCES))
+
+
+async def _run_periodic_calendar_sync() -> None:
+	try:
+		while True:
+			await asyncio.sleep(_CALENDAR_SYNC_INTERVAL_SECONDS)
+			await _sync_calendar_sources_once()
+	except asyncio.CancelledError:
+		log.info("Calendar sync background task stopped")
+		raise
 
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
@@ -89,6 +133,13 @@ async def lifespan(app: fastapi.FastAPI):
 
 	await asyncio.to_thread(ensure_task_run_sqlite_schema)
 
+	await _sync_calendar_sources_once()
+	calendar_sync_task = asyncio.create_task(
+		_run_periodic_calendar_sync(),
+		name="calendar-source-sync",
+	)
+	log.info("Calendar source sync task started")
+
 	watcher = CronWatcher(max_workers=4, timeout=300)
 	watcher_thread = threading.Thread(
 		target=watcher.run,
@@ -104,6 +155,11 @@ async def lifespan(app: fastapi.FastAPI):
   
 	finally:
 		configure_notification_service(None)
+		calendar_sync_task.cancel()
+		try:
+			await calendar_sync_task
+		except asyncio.CancelledError:
+			pass
 		watcher.stop()
 		watcher_thread.join(timeout=5)
 		if watcher_thread.is_alive():

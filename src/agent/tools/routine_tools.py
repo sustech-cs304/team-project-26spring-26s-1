@@ -180,6 +180,7 @@ def add_routine_event(
             src = _ensure_agent_source(session)
             ev = RoutineEvent(
                 time_=ts,
+                end_time_=ts,
                 event_name=title,
                 detail=(description or "").strip(),
                 color=DEFAULT_EVENT_COLOR,

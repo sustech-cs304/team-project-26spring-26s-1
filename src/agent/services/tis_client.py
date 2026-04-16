@@ -25,15 +25,23 @@ async def _post_json(
     return loads(text)
 
 
-async def get_schedule(session: aiohttp.ClientSession) -> dict:
+async def get_current_semester_info(session: aiohttp.ClientSession) -> dict:
     try:
         semester_info = await _post_json(
             session,
             TIS_SEMESTER_URL,
             {"mxpylx": 1},
         )
+        return {"success": True, "data": semester_info}
     except Exception as exc:
         return {"success": False, "message": "queryXkdqXnxq failed", "error": str(exc)}
+
+
+async def get_schedule_with_semester(session: aiohttp.ClientSession) -> dict:
+    semester_result = await get_current_semester_info(session)
+    if not semester_result["success"]:
+        return semester_result
+    semester_info = semester_result["data"]
 
     try:
         payload = await _post_json(
@@ -44,9 +52,16 @@ async def get_schedule(session: aiohttp.ClientSession) -> dict:
                 "xq": semester_info.get("p_xq", ""),
             },
         )
-        return {"success": True, "data": payload}
+        return {"success": True, "data": payload, "semester": semester_info}
     except Exception as exc:
         return {"success": False, "message": "queryxszykbzong failed", "error": str(exc)}
+
+
+async def get_schedule(session: aiohttp.ClientSession) -> dict:
+    result = await get_schedule_with_semester(session)
+    if not result["success"]:
+        return result
+    return {"success": True, "data": result["data"]}
 
 
 async def query_available_courses(
