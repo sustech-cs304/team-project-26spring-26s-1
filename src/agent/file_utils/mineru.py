@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 
 import aiohttp
 import requests
 
+log = logging.getLogger(__name__)
 
 class MineruError(RuntimeError):
     """Raised when MinerU conversion fails."""
@@ -135,7 +137,7 @@ async def convert_file_to_markdown(
 
     async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
         task_id, file_url = await _submit_task(session, base_url, source_file, language)
-        print(f"Submitted MinerU task {task_id}, uploading file to {file_url}...")
+        log.info("Submitted MinerU task %s, uploading file to %s", task_id, file_url)
         await _upload_file_to_signed_url(file_url, source_file)
         markdown_url = await _poll_markdown_url(
             session,

@@ -32,6 +32,9 @@ import aiosqlite
 from langgraph.store.sqlite import AsyncSqliteStore
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from sqlalchemy import event
+import os
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
 log = logging.getLogger("main")
 

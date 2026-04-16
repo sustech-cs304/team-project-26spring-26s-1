@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+import logging
 from typing import Any, Dict, cast
 from uuid import uuid4
 
@@ -34,8 +35,12 @@ from agent.file_utils.utils import (
 from agent.parser import AnthropicEventParser
 from agent.utils.exception import is_langchain_network_failure
 
+log = logging.getLogger(__name__)
 message_type_adapter = TypeAdapter(AnyMessage)
 TITLE_GENERATION_TIMEOUT_SECONDS = 60
+MAIN_MODEL_NODE_NAME = "chat"
+TOOL_NODE_NAME = "tool_node"
+USER_INPUT_NODE_NAME = "user_input"
 
 class _ConversationJobState:
     def __init__(self):
@@ -101,14 +106,16 @@ class TitleTaskManager:
                 title,
             )
         except asyncio.TimeoutError:
-            print(
-                f"Conversation title generation timed out after "
-                f"{TITLE_GENERATION_TIMEOUT_SECONDS}s: conversation_id={conversation_id}"
+            log.warning(
+                "Conversation title generation timed out after %ss: conversation_id=%s",
+                TITLE_GENERATION_TIMEOUT_SECONDS,
+                conversation_id,
             )
         except Exception as exc:
-            print(
-                f"Failed to update conversation title: "
-                f"conversation_id={conversation_id}, error={exc}"
+            log.exception(
+                "Failed to update conversation title: conversation_id=%s, error=%s",
+                conversation_id,
+                exc,
             )
         finally:
             self._cleanup_task(conversation_id)
@@ -127,7 +134,6 @@ class ConversationRunner:
     
     async def run(self, conversation_id : str, user_message : str, restart_message_id: str | None = None, attachments: list[str] = []): # remove need_history and related logic
         if not user_message and not attachments:
-            # print("No user message provided, skipping graph execution and only loading history if needed")
             return
         
         if conversation_id not in self._conversation_jobs:
@@ -293,9 +299,11 @@ class ConversationRunner:
                             checkpoint_id,
                         )
                 except Exception as exc:
-                    print(
-                        f"Failed to backfill message checkpoints: "
-                        f"conversation_id={conversation_id}, checkpoint_id={checkpoint_id}, error={exc}"
+                    log.exception(
+                        "Failed to backfill message checkpoints: conversation_id=%s, checkpoint_id=%s, error=%s",
+                        conversation_id,
+                        checkpoint_id,
+                        exc,
                     )
 
             await _persist_stream_message(human_message)
@@ -367,9 +375,10 @@ class ConversationRunner:
                         checkpoint_id=checkpoint
                     )
                 except Exception as exc:
-                    print(
-                        f"Failed to persist partial assistant message: "
-                        f"conversation_id={conversation_id}, error={exc}"
+                    log.exception(
+                        "Failed to persist partial assistant message: conversation_id=%s, error=%s",
+                        conversation_id,
+                        exc,
                     )
 
         except Exception:
@@ -378,13 +387,13 @@ class ConversationRunner:
                 
         async def _run(job: _ConversationJobState):
             current_message: AnyMessage | None = None
+            current_message_node: str | None = None
                         
             try:
                 async for event in gen:
                     event: StreamPart
-                    print(f"Received event: {event}")
+                    log.debug("Received stream event: %s", event)
                     deltas = []
-                    # print(f"Received event: {event}")
                     if event["type"] == "checkpoints":
                         checkpoint_payload = cast(dict[str, Any], event["data"])
                         checkpoint_config = cast(dict[str, Any], checkpoint_payload.get("config", {}))
@@ -396,19 +405,29 @@ class ConversationRunner:
                     elif event["type"] == "messages":
                         message_data = cast(tuple[AnyMessage, dict[str, Any]], event["data"])
                         message_chunk, message_meta = message_data
+                        node_name = str(message_meta.get("langgraph_node", ""))
+                        if current_message_node != node_name:
+                            current_message = None
+                        current_message_node = node_name
                         current_message = current_message + message_chunk if current_message else message_chunk
 
-                        message_uuid = await _persist_stream_message(current_message)
-
                         if isinstance(current_message, HumanMessage):
+                            if node_name != USER_INPUT_NODE_NAME:
+                                continue
+                            await _persist_stream_message(current_message)
                             continue # persist raw user message, not the injected attachment content
 
                         if isinstance(current_message, AIMessage):
+                            if node_name != MAIN_MODEL_NODE_NAME:
+                                continue
+                            message_uuid = await _persist_stream_message(current_message)
                             if message_uuid is None:
                                 continue
                             deltas = self.parser.parse_event(event, message_uuid)
                         
                         if isinstance(current_message, ToolMessage):
+                            if node_name != TOOL_NODE_NAME:
+                                continue
                             tool_call_request_message = await db_utils.db_get_message_by_langchain_id(
                                 self.session_factory,
                                 conversation_id=conversation_id,
@@ -430,13 +449,14 @@ class ConversationRunner:
                             )
                             deltas = self.parser.parse_message_delta(tool_call_response_message, message_uuid)
                         
-                        print(f"Received message chunk: {message_chunk}")
+                        log.debug("Received message chunk: %s", message_chunk)
                     elif event["type"] == "updates":
                         current_message = None
+                        current_message_node = None
                         update_data = cast(dict[str, Any], event["data"])
-                        chat_update = cast(dict[str, Any] | None, update_data.get("chat"))
+                        chat_update = cast(dict[str, Any] | None, update_data.get(MAIN_MODEL_NODE_NAME))
                         if chat_update:
-                            print(f"Received chat update: {chat_update}")
+                            log.debug("Received chat update: %s", chat_update)
                             for msg in cast(list[AnyMessage], chat_update.get("messages", [])):
                                 if not isinstance(msg, AIMessage):
                                     continue
@@ -515,16 +535,19 @@ class ConversationRunner:
                             job.cond.notify_all()
                 
             except asyncio.CancelledError:
-                await _persist_partial_ai_message(current_message)
+                if current_message_node == MAIN_MODEL_NODE_NAME:
+                    await _persist_partial_ai_message(current_message)
             except Exception as exc:
                 if not is_langchain_network_failure(exc):
                     raise
 
-                print(
-                    f"Network failure while streaming conversation: "
-                    f"conversation_id={conversation_id}, error={exc}"
+                log.warning(
+                    "Network failure while streaming conversation: conversation_id=%s, error=%s",
+                    conversation_id,
+                    exc,
                 )
-                await _persist_partial_ai_message(current_message)
+                if current_message_node == MAIN_MODEL_NODE_NAME:
+                    await _persist_partial_ai_message(current_message)
                 async with job.cond:
                     job.history.append(
                         CompletionResponseError(
@@ -586,14 +609,17 @@ class ConversationRunner:
                         )
                     finalized_messages.add(message.id)
                 
-                print(f"Last message seq in history: {history_messages[-1].seq if history_messages else 'No history messages'}")
+                log.debug(
+                    "Last message seq in history: %s",
+                    history_messages[-1].seq if history_messages else "No history messages",
+                )
                 while idx < len(active_job.history):
                     message_id = getattr(active_job.history[idx], "message_id", None)
                     if message_id is None or message_id not in finalized_messages:
                         break
                     idx += 1
                 
-            print(f"Starting stream from idx {idx}")
+            log.debug("Starting stream from idx %s", idx)
             while True:
                 async with active_job.cond:
                     while idx < len(active_job.history):

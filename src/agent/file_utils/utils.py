@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import mimetypes
 import uuid
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import agent.db.models as db_models
 
+log = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
 MAX_UPLOAD_FILENAME_LENGTH = 512
@@ -318,8 +320,11 @@ async def bind_pending_message_attachments(
 ) -> list[PendingMessageAttachmentRef]:
     normalized_message_id = validate_file_id(message_id)
     normalized_pending_ids = [validate_file_id(pending_id) for pending_id in pending_attachment_ids]
-    print(normalized_message_id)
-    print(normalized_pending_ids)
+    log.debug(
+        "Binding pending attachments: message_id=%s pending_attachment_ids=%s",
+        normalized_message_id,
+        normalized_pending_ids,
+    )
 
     if not normalized_pending_ids:
         return []
@@ -335,14 +340,19 @@ async def bind_pending_message_attachments(
             ).scalars().all()
 
             pending_by_id = {row.id: row for row in rows}
-            print(pending_by_id)
+            log.debug("Pending attachment lookup result: %s", pending_by_id)
             bound_attachments: list[PendingMessageAttachmentRef] = []
 
             for pending_id in normalized_pending_ids:
                 pending = pending_by_id.get(pending_id)
-                print(f"Processing pending attachment id {pending_id}: found={pending is not None}, message_id={pending.message_id if pending else 'N/A'}")
+                log.debug(
+                    "Processing pending attachment id %s: found=%s, message_id=%s",
+                    pending_id,
+                    pending is not None,
+                    pending.message_id if pending else "N/A",
+                )
                 if pending is None:
-                    print(f"Pending attachment not found for id {pending_id}")
+                    log.warning("Pending attachment not found for id %s", pending_id)
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail=f"Pending attachment not found: message_attachment_id={pending_id}",

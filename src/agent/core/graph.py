@@ -3,6 +3,7 @@ from typing import cast
 from langgraph.graph import START, StateGraph
 from langchain.messages import AIMessage, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallWithContext
+from agent.nodes.context_compacting import context_compacting_node
 from agent.nodes.model import ConfiguredModel
 from agent.nodes.user_input import user_input_node
 from agent.core.state import AgentState
@@ -52,13 +53,15 @@ async def create_graph(store : BaseStore, checkpointer: BaseCheckpointSaver):
                 if artifact.get("break_agent_loop", False):
                     return "user_input"
 
-        return "chat"
+        return "context_compacting"
     
     workflow.add_node("user_input", user_input_node)
+    workflow.add_node("context_compacting", context_compacting_node)
     workflow.add_node("chat", model.invoke_node)
     workflow.add_node("tool_node", tool_node)
     workflow.add_edge(START, "user_input")
-    workflow.add_edge("user_input", "chat")
+    workflow.add_edge("user_input", "context_compacting")
+    workflow.add_edge("context_compacting", "chat")
     workflow.add_conditional_edges("chat", tool_route)
     workflow.add_conditional_edges("tool_node", tool_result_route)
 

@@ -1,3 +1,4 @@
+import logging
 import re
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
@@ -5,8 +6,9 @@ from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwen
 
-from agent.config import ApiEndpointConfig, get_config
+from agent.config import LLMEndpointConfig, get_config
 
+log = logging.getLogger(__name__)
 DEFAULT_CONVERSATION_TITLE = "New Conversation"
 
 
@@ -22,7 +24,7 @@ class ConversationTitleGenerator:
             parts.append(f"User message:\n{normalized_user_message}")
         return "\n\n".join(parts)
 
-    def _build_model(self, endpoint: ApiEndpointConfig):
+    def _build_model(self, endpoint: LLMEndpointConfig):
         if endpoint.type == "OpenAI":
             default_headers = None
             if endpoint == get_config().api.utility:
@@ -78,7 +80,7 @@ class ConversationTitleGenerator:
             normalized = normalized[:60].rstrip(" ,.;:!?，。；：！？、")
         return normalized
 
-    async def _generate_with_endpoint(self, endpoint: ApiEndpointConfig, conversation_text: str) -> str | None:
+    async def _generate_with_endpoint(self, endpoint: LLMEndpointConfig, conversation_text: str) -> str | None:
         model = self._build_model(endpoint)
         response = await model.ainvoke([
             SystemMessage(
@@ -119,5 +121,10 @@ class ConversationTitleGenerator:
         try:
             return await self._generate_with_endpoint(endpoint, normalized_text)
         except Exception as exc:
-            print(f"Failed to generate conversation title with {endpoint.type}/{endpoint.model}: {exc}")
+            log.warning(
+                "Failed to generate conversation title with %s/%s: %s",
+                endpoint.type,
+                endpoint.model,
+                exc,
+            )
             return None
