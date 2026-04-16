@@ -36,6 +36,7 @@ class ConfiguredModel:
                 model=endpoint.model,
                 api_key=endpoint.api_key,
                 base_url=endpoint.base_url,
+                max_tokens_to_sample=100_000,
             )
         else:
             raise ValueError(f"Model type {endpoint.type} not supported")

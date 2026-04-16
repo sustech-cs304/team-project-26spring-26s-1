@@ -34,10 +34,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 log = logging.getLogger("task_executor")
 
 CRON_DIR = Path("./cron")

@@ -4,6 +4,7 @@ import asyncio
 import datetime as dt
 import hashlib
 import json
+import logging
 import uuid
 from importlib import import_module
 from pathlib import Path
@@ -27,6 +28,7 @@ from agent.file_utils.mineru import (
 )
 from agent.file_utils.utils import PARSE_REQUIRED_EXTENSIONS
 
+log = logging.getLogger(__name__)
 
 class FileProcessError(RuntimeError):
     """Raised when an uploaded file cannot be processed into a usable attachment."""
@@ -281,7 +283,10 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
         existing = await session.execute(select(Attachment).where(Attachment.hash == digest).limit(1))
         existing_attachment = existing.scalar_one_or_none()
         if existing_attachment:
-            print(f"Found existing attachment with id {existing_attachment.id}, reusing processing result.")
+            log.info(
+                "Found existing attachment with id %s, reusing processing result.",
+                existing_attachment.id,
+            )
             existing_path = Path(existing_attachment.path)
             normalized_path = _relative_storage_path(existing_path)
             if normalized_path != existing_path:
@@ -292,7 +297,7 @@ async def store_attachment(file: UploadFile, session_factory: async_sessionmaker
                 return existing_attachment.id, mime_type
         else:
             attachment_id = str(uuid.uuid4())
-            print(f"Creating new attachment for file: {file.filename}")
+            log.info("Creating new attachment for file: %s", file.filename)
             source_file = await _persist_uploaded_file(content, attachment_id, file.filename)
 
             attachment = Attachment(
@@ -380,7 +385,7 @@ async def extract_attachment(file_id: str, session_factory: async_sessionmaker):
         mineru_id = attachment.mineru_id
         source_file = Path(attachment.path)
 
-    print(f"Extracting attachment {file_id} with MinerU task {mineru_id}...")
+    log.info("Extracting attachment %s with MinerU task %s", file_id, mineru_id)
     markdown_file = source_file.with_suffix(".md")
     segmented_tasks = _parse_mineru_segment_tasks(mineru_id)
     file_config = get_config().file

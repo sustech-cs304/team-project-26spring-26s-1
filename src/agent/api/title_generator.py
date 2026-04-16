@@ -1,3 +1,4 @@
+import logging
 import re
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
@@ -7,6 +8,7 @@ from langchain_qwq import ChatQwen
 
 from agent.config import LLMEndpointConfig, get_config
 
+log = logging.getLogger(__name__)
 DEFAULT_CONVERSATION_TITLE = "New Conversation"
 
 
@@ -119,5 +121,10 @@ class ConversationTitleGenerator:
         try:
             return await self._generate_with_endpoint(endpoint, normalized_text)
         except Exception as exc:
-            print(f"Failed to generate conversation title with {endpoint.type}/{endpoint.model}: {exc}")
+            log.warning(
+                "Failed to generate conversation title with %s/%s: %s",
+                endpoint.type,
+                endpoint.model,
+                exc,
+            )
             return None

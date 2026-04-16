@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
@@ -26,6 +27,7 @@ from .message_utils import (
     trim_head,
 )
 
+log = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class OneBotChatTarget:
@@ -90,7 +92,12 @@ class OneBotHub:
         except WebSocketDisconnect:
             pass
         except Exception as exc:
-            print(f"OneBot connection {connection.self_id}/{connection.role} failed: {exc}")
+            log.warning(
+                "OneBot connection %s/%s failed: %s",
+                connection.self_id,
+                connection.role,
+                exc,
+            )
         finally:
             await self._unregister(connection)
 
@@ -129,7 +136,11 @@ class OneBotHub:
             with suppress(asyncio.CancelledError):
                 exception = done_task.exception()
                 if exception is not None:
-                    print(f"OneBot background task failed: {exception}")
+                    log.error(
+                        "OneBot background task failed: %s",
+                        exception,
+                        exc_info=(type(exception), exception, exception.__traceback__),
+                    )
 
         task.add_done_callback(_cleanup)
 
@@ -423,7 +434,7 @@ class OneBotHub:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            print(f"OneBot conversation failed for {conversation_id}: {exc}")
+            log.exception("OneBot conversation failed for %s: %s", conversation_id, exc)
             await self._send_text(target, f"Request failed: {exc}")
 
     async def _send_tool_message(self, target: OneBotChatTarget, tool_call: CompletionResponseToolCall):

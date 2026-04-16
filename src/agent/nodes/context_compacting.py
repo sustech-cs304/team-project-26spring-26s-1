@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -15,6 +16,7 @@ from agent.config import LLMEndpointConfig, get_config, jinja_env
 from agent.core.state import AgentState
 from agent.tools.core_memory import core_memory_get
 
+log = logging.getLogger(__name__)
 CHARS_PER_TOKEN = 4
 COMPACTION_METADATA_KEY = "context_compaction"
 COMPACTION_PROMPT = """Provide a detailed prompt for continuing our conversation above.
@@ -181,7 +183,7 @@ async def context_compacting_node(state: AgentState, runtime: Runtime[Any]) -> A
             HumanMessage(content=COMPACTION_PROMPT),
         ])
     except Exception as exc:
-        print(f"Failed to compact context: {exc}")
+        log.warning("Failed to compact context: %s", exc)
         return state
 
     if not isinstance(response, AIMessage):

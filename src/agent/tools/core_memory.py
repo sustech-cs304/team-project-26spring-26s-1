@@ -1,6 +1,9 @@
+import logging
+
 from langgraph.store.base import BaseStore
 from langchain.tools import tool, ToolRuntime
 
+log = logging.getLogger(__name__)
 NAMESPACE = "core_memory"
 
 ENTRY_LIMIT = 1000
@@ -15,5 +18,5 @@ async def core_memory_insert(runtime: ToolRuntime, key: str, value: str):
     store = runtime.store
     if store:
         await store.aput((NAMESPACE,), key=key, value={"data": value})
-        print(f"Inserted key '{key}' into core memory.")
+        log.info("Inserted key '%s' into core memory.", key)
         return f"Inserted key '{key}' into core memory."

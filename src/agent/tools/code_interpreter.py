@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from pathlib import Path
 import sys
 import tempfile
@@ -16,6 +17,7 @@ from agent.core.state import ResumePayload
 from agent.config import get_config
 from agent.tools import ToolArtifact
 
+log = logging.getLogger(__name__)
 REVIEW_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
     ("system", """
 You are a security expert. Review the following code for potential security vulnerabilities and provide a concise feedback.
@@ -120,7 +122,7 @@ async def feedback_node(state: CodeInterpreterGraph):
     else:
         normalized = str(user_input).strip().lower()
         
-    print(f"User feedback received: {normalized}")
+    log.info("User feedback received: %s", normalized)
 
     if normalized in {"approve", "approved", "accept", "yes", "y"}:
         feedback: Literal["approve", "skip", "reject"] = "approve"
