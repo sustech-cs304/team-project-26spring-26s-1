@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import http, { baseURL } from '@/utils/http'
 import type {
   AdminDashboardResponse,
@@ -47,14 +47,6 @@ const storeHttp: AxiosInstance | null = STORE_API_BASE_URL
   : null
 
 if (storeHttp) {
-  storeHttp.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('accessToken')
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  })
-
   storeHttp.interceptors.response.use((response: AxiosResponse) => response.data)
 }
 

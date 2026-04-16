@@ -79,7 +79,6 @@ export function chatCompletion (
     handlers: SseHandlers
 ): AbortController {
     const controller = new AbortController()
-    const token = localStorage.getItem('accessToken')
 
     const body = JSON.stringify({
         conversation_id: payload.conversation_id,
@@ -98,7 +97,6 @@ export function chatCompletion (
                     headers: {
                         'Content-Type': 'application/json',
                         Accept: 'text/event-stream',
-                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
                     },
                     credentials: 'include',
                     body,

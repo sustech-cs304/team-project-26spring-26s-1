@@ -109,11 +109,16 @@
 
 <script setup lang="ts">
     import { ref, reactive, computed } from 'vue'
-    import { useRouter } from 'vue-router'
+    import type { AxiosError } from 'axios'
+    import { useRoute, useRouter } from 'vue-router'
     import AuthTextField from '@/components/AuthTextField.vue'
     import { login, register, sendRegisterCode } from '@/api/auth'
+    import { useAuthStore } from '@/stores/auth'
+    import { normalizeReturnTo } from '@/utils/authSession'
 
+    const route = useRoute()
     const router = useRouter()
+    const authStore = useAuthStore()
     const isSignIn = ref(true)
     const signInFormRef = ref()
     const signUpFormRef = ref()
@@ -133,6 +138,14 @@
         password: '',
         confirmPassword: '',
         verificationCode: ''
+    })
+
+    const returnToPath = computed(() => {
+        const target = normalizeReturnTo(route.query.returnTo, '/')
+        if (target.startsWith('/auth')) {
+            return '/'
+        }
+        return target
     })
 
     // Validation rules
@@ -191,22 +204,26 @@
         signInLoading.value = true
 
         try {
-            const result = await login({
+            await login({
                 email: signInForm.email,
                 password: signInForm.password,
             })
 
-            localStorage.setItem('accessToken', result.access_token)
-            localStorage.setItem('user', JSON.stringify({
-                email: result.email,
-                username: result.username ?? result.email,
-                role: result.role ?? 'user',
-            }))
-            localStorage.removeItem('refreshToken')
-
-            router.push('/')
+            await authStore.refreshCurrentUser()
+            await router.replace(returnToPath.value || '/')
         } catch (error) {
-            signInError.value = error instanceof Error ? error.message : 'Login failed'
+            const axiosError = error as AxiosError<{ detail?: string, message?: string }>
+            const status = axiosError.response?.status
+
+            if (status === 400) {
+                signInError.value = '登录失败：邮箱或密码错误，请检查后重试。'
+            } else if (status === 500) {
+                signInError.value = '服务异常，请稍后重试。'
+            } else {
+                signInError.value = axiosError.response?.data?.detail
+                    || axiosError.response?.data?.message
+                    || (error instanceof Error ? error.message : 'Login failed')
+            }
         } finally {
             signInLoading.value = false
         }
