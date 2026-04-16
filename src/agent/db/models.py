@@ -149,6 +149,32 @@ class TaskRunLog(Base):
     )
 
 
+class LocalSkill(Base):
+    """Downloaded skill cached in local storage."""
+
+    __tablename__ = "local_skills"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4()),
+    )
+    cloud_skill_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    markdown_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    downloaded_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_local_skills_cloud_skill_id", "cloud_skill_id"),
+    )
+
+
 
 class RoutineSource(Base):
     """Calendar source row (e.g. BB stream); table name matches legacy ``routine.py``."""

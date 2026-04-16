@@ -41,3 +41,19 @@ You have access to memory tools. Use them actively and intelligently. When you w
 The following facts about the user are stored in your core memory. Treat them as ground truth and use them to personalise every response:
 {{ core_memory }}
 {% endif %}
+
+{% if installed_skills %}
+
+## Installed Skills
+The following skills are currently installed locally. Prefer reusing them when relevant:
+{% for skill in installed_skills %}
+- [{{ skill.cloud_skill_id }}] {{ skill.name }}: {{ skill.description }}
+{% endfor %}
+
+Important constraints for skill usage:
+- The list above only provides brief summaries and is NOT the full skill content.
+- Before applying any installed skill's rules, steps, style constraints, or output format, you MUST call `read_installed_skills` with `include_content=true` for the target skill.
+- Do not assume the complete behavior from the summary/description alone.
+- If a request clearly depends on a skill, prioritize reading that skill content first, then follow its full instructions.
+
+{% endif %}

@@ -7,12 +7,14 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 import fastapi
+from agent.config import get_config
 from agent.db.database import Base, create_session_factory, create_sqlite_engine
 from agent.api.conversation import router as conversation_router
 from agent.api.file import router as file_router
 from agent.api.notifications import router as notifications_router
 from agent.api.onebot import OneBotHub, router as onebot_router
 from agent.api.rag import router as rag_router
+from agent.api.skills import router as skills_router
 from agent.api.conversation_runner import ConversationRunner
 from agent.core.graph import create_graph
 from agent.notifications import configure_notification_service
@@ -24,7 +26,7 @@ from agent.api.routine_events import ensure_routine_calendar_schema, router as r
 from agent.cron_watcher import CronWatcher
 from agent.rag.cloud_sync import RagCloudSyncService
 from agent.task_executor import ensure_task_run_sqlite_schema
-from agent.services import NotificationService
+from agent.services import NotificationService, SkillsAuthState, SkillsHubClient, SkillsLocalStore
 
 import aiosqlite
 from langgraph.store.sqlite import AsyncSqliteStore
@@ -56,6 +58,12 @@ async def lifespan(app: fastapi.FastAPI):
  
 	graph = await create_graph(store=store, checkpointer=checkpointer)
 	notification_service = NotificationService(asyncio.get_running_loop())
+	skills_hub_client = SkillsHubClient()
+	skills_auth_state = SkillsAuthState()
+	skills_local_store = SkillsLocalStore(
+		async_session,
+		get_config().skills_cloud.local_store_path,
+	)
  
 	app.state.engine = engine
 	app.state.async_session = async_session
@@ -65,6 +73,9 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.NotificationService = notification_service
 	configure_notification_service(notification_service)
 	app.state.rag_cloud_sync_service = RagCloudSyncService()
+	app.state.skills_hub_client = skills_hub_client
+	app.state.skills_auth_state = skills_auth_state
+	app.state.skills_local_store = skills_local_store
 
 	async with engine.begin() as conn:
 		await conn.run_sync(Base.metadata.create_all)
@@ -125,3 +136,4 @@ app.include_router(school_settings_router, prefix="/api")
 app.include_router(routine_events_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
+app.include_router(skills_router, prefix="/api")
