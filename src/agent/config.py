@@ -85,6 +85,13 @@ class RagCloudConfig(BaseModel):
     timeout_ms: int = 30000
     api_key: str = ""
 
+
+class SkillsCloudConfig(BaseModel):
+    base_url: str = ""
+    timeout_ms: int = 30000
+    delete_submission_path: str = ""
+    local_store_path: str = "./workspace/skills"
+
 class AppConfig(BaseModel):
     api: ApiConfig
     file: FileConfig
@@ -92,6 +99,7 @@ class AppConfig(BaseModel):
     websearch: WebSearchConfig
     onebot: OneBotConfig = Field(default_factory=OneBotConfig)
     rag_cloud: RagCloudConfig = RagCloudConfig()
+    skills_cloud: SkillsCloudConfig = Field(default_factory=SkillsCloudConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
 
 

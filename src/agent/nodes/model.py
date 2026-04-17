@@ -9,6 +9,7 @@ from typing import Any
 from agent.config import LLMEndpointConfig, get_config, jinja_env
 from agent.core.state import AgentState
 from agent.tools.core_memory import core_memory_get
+from agent.tools.skills_tools import get_installed_skill_summaries
 
 
 class ConfiguredModel:
@@ -66,8 +67,11 @@ class ConfiguredModel:
             core_memory_entries = await core_memory_get(store)
 
         endpoint = get_config().api.agent
+        installed_skills = get_installed_skill_summaries()
+
         system_prompt = self._system_prompt_template.render(
             core_memory=core_memory_entries,
+            installed_skills=installed_skills,
             token_limit=endpoint.max_token_count,
         )
         system_prompt_message = SystemMessage(content=system_prompt)

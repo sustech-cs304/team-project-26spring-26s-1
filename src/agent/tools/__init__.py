@@ -28,6 +28,7 @@ from .task_tools import (
 from .web_tools import webfetch, websearch
 from .quiz_card import quiz_card
 from .retrieve import retrieve_from_rag_db
+from .skills_tools import read_installed_skills
 
 tools = [
     get_calendar_events,
@@ -48,7 +49,8 @@ tools = [
     quiz_card,
     webfetch,
     websearch,
-    retrieve_from_rag_db
+    retrieve_from_rag_db,
+    read_installed_skills,
 ]
 
 tool_node = ToolNode(tools=tools)
