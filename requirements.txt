@@ -18,3 +18,5 @@ PyJWT>=2.0.0
 
 # 邮件
 lark-oapi>=1.0.0
+
+python-multipart>=0.0.5

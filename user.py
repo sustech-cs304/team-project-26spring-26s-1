@@ -17,6 +17,7 @@ from pathlib import Path
 
 import jwt
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -321,6 +322,12 @@ def validate_markdown(content: str) -> tuple[bool, str, str, str]:
 
 # ============== FastAPI 应用 ==============
 app = FastAPI(title="Skills Hub", version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 静态文件和模板
 BASE_DIR = Path(__file__).parent
@@ -918,4 +925,4 @@ async def startup():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8010)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

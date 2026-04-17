@@ -1,0 +1,22 @@
+name: Production Deployment
+
+on:
+  push:
+    branches:
+      - skillshub-admin
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: build container
+        run: docker build -t skillshub:latest .
+
+      - name: kill existing container if exists
+        run: docker rm -f skillshub || true
+      
+      - name: run container
+        run: docker run -d --name skillshub -p 8002:8001 skillshub:latest
