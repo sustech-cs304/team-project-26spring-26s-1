@@ -1,3 +1,4 @@
+from datetime import date
 from json import loads
 
 import aiohttp
@@ -7,6 +8,7 @@ from agent.services.cas_client import CLIENT_TIMEOUT, HEADERS, SSL_CONTEXT, cas_
 TIS_LOGIN_URL = "https://cas.sustech.edu.cn/cas/login?service=https%3A%2F%2Ftis.sustech.edu.cn%2Fcas"
 TIS_SEMESTER_URL = "https://tis.sustech.edu.cn/Xsxk/queryXkdqXnxq"
 TIS_SCHEDULE_URL = "https://tis.sustech.edu.cn/xszykb/queryxszykbzong"
+TIS_CLASS_DAY_URL = "https://tis.sustech.edu.cn/component/querygrrclist"
 TIS_COURSE_URL = "https://tis.sustech.edu.cn/Xsxk/queryKxrw"
 
 
@@ -17,7 +19,7 @@ async def login_tis(user_name: str, pwd: str) -> dict:
 async def _post_json(
     session: aiohttp.ClientSession,
     url: str,
-    data: dict,
+    data: dict | None = None,
 ) -> dict:
     async with session.post(url, data=data, ssl=SSL_CONTEXT) as resp:
         resp.raise_for_status()
@@ -62,6 +64,18 @@ async def get_schedule(session: aiohttp.ClientSession) -> dict:
     if not result["success"]:
         return result
     return {"success": True, "data": result["data"]}
+
+
+async def get_class_days(session: aiohttp.ClientSession, query_month: date) -> dict:
+    try:
+        payload = await _post_json(
+            session,
+            TIS_CLASS_DAY_URL,
+            {"rcrq": f"{query_month.year}-{query_month.month}-01"},
+        )
+        return {"success": True, "data": payload}
+    except Exception as exc:
+        return {"success": False, "message": "querygrrclist failed", "error": str(exc)}
 
 
 async def query_available_courses(

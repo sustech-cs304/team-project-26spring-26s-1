@@ -30,6 +30,7 @@ from agent.services.school_credentials import (
     resolve_tis_credentials,
 )
 from agent.services.tis_client import (
+    get_class_days as fetch_tis_class_days,
     get_schedule_with_semester as fetch_tis_schedule_with_semester,
     login_tis,
 )
@@ -45,7 +46,6 @@ TIS_SOURCE_TITLE = "tis"
 BB_SOURCE_COLOR = "#2563eb"
 TIS_SOURCE_COLOR = "#10b981"
 _THREE_MONTH_DAYS = 92
-_TIS_SEMESTER_WEEKS = 16
 _MANAGED_SOURCE_COLORS = {
     BB_SOURCE_TITLE: BB_SOURCE_COLOR,
     TIS_SOURCE_TITLE: TIS_SOURCE_COLOR,
@@ -109,6 +109,16 @@ def _three_month_window() -> tuple[datetime, datetime]:
         microsecond=0,
     )
     return start, end
+
+
+def _month_start_window(center: date, months_before: int = 3, months_after: int = 3) -> list[date]:
+    months: list[date] = []
+    for offset in range(-months_before, months_after + 1):
+        month_index = (center.year * 12 + (center.month - 1)) + offset
+        year = month_index // 12
+        month = month_index % 12 + 1
+        months.append(date(year, month, 1))
+    return months
 
 
 def _window_contains(ts: int, start: datetime, end: datetime) -> bool:
@@ -873,28 +883,6 @@ def _parse_period_numbers(value: object) -> list[int]:
     return sorted(num for num in nums if num > 0)
 
 
-def _extract_tis_semester_start(semester_info: dict, items: list[dict]) -> date | None:
-    sample_rwh = ""
-    for item in items:
-        sample_rwh = str(item.get("RWH") or "").strip()
-        if sample_rwh:
-            break
-
-    years = [int(part) for part in re.findall(r"\d{4}", sample_rwh)]
-    term_match = re.search(r"\d{4}-\d{4}-(\d+)-", sample_rwh) if sample_rwh else None
-    term = term_match.group(1) if term_match is not None else str(semester_info.get("p_xq") or "").strip()
-
-    if years and term == "1":
-        anchor_year = years[0]
-    elif years:
-        anchor_year = years[-1] if len(years) > 1 else years[0]
-    else:
-        anchor_year = _local_now().year
-
-    feb22 = date(anchor_year, 2, 22)
-    return feb22 - timedelta(days=feb22.weekday())
-
-
 def _resolve_tis_period_window(item: dict) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     for key in ("kssj", "startTime", "sksj", "courseStartTime"):
         parsed = _parse_time_text(item.get(key))
@@ -949,24 +937,24 @@ def _tis_weekday_from_key(item: dict) -> int | None:
     return None
 
 
-def _parse_tis_week_bitmap(value: object) -> list[int]:
-    text = str(value or "").strip()
-    if not text:
-        return []
-    if re.fullmatch(r"[01]+", text):
-        weeks: list[int] = []
-        has_padding = len(text) > 1 and text[0] == "0"
-        for idx, char in enumerate(text):
-            if char != "1":
-                continue
-            if has_padding:
-                if idx == 0:
-                    continue
-                weeks.append(idx)
-            else:
-                weeks.append(idx + 1)
-        return weeks
-    return []
+def _parse_tis_class_day_payload(payload: object) -> dict[tuple[int, int], set[date]]:
+    items = _extract_list_payload(payload, "data", "items", "list", "rows", "records", "result")
+    if not items and isinstance(payload, list):
+        items = [item for item in payload if isinstance(item, dict)]
+
+    out: dict[tuple[int, int], set[date]] = {}
+    for item in items:
+        year_text = str(item.get("Y") or "").strip()
+        month_text = str(item.get("M") or "").strip()
+        day_text = str(item.get("D") or "").strip()
+        if not (year_text and month_text and day_text):
+            continue
+        try:
+            class_date = date(int(year_text), int(month_text), int(day_text))
+        except ValueError:
+            continue
+        out.setdefault((class_date.year, class_date.month), set()).add(class_date)
+    return out
 
 
 def _parse_tis_sksj_text(raw: object) -> dict[str, str]:
@@ -1029,11 +1017,22 @@ def _build_tis_detail(item: dict) -> str:
     return _join_detail_lines(parts)
 
 
+def _iter_tis_class_days(
+    class_days_by_month: dict[tuple[int, int], set[date]] | None,
+) -> list[date]:
+    if not class_days_by_month:
+        return []
+    dates: list[date] = []
+    for month_key in sorted(class_days_by_month):
+        dates.extend(sorted(class_days_by_month[month_key]))
+    return dates
+
+
 def _tis_item_to_events(
     item: dict,
-    semester_start: date,
     start: datetime,
     end: datetime,
+    class_days_by_month: dict[tuple[int, int], set[date]] | None = None,
 ) -> list[dict[str, object]]:
     parsed_text = _parse_tis_sksj_text(item.get("SKSJ") or item.get("SKSJ_EN"))
     title = (
@@ -1056,6 +1055,9 @@ def _tis_item_to_events(
 
     (start_hour, start_minute, start_second), (end_hour, end_minute, end_second) = _resolve_tis_period_window(item)
     if explicit_date is not None:
+        allowed_dates = (class_days_by_month or {}).get((explicit_date.year, explicit_date.month), set())
+        if explicit_date not in allowed_dates:
+            return []
         ts = local_ymdhms_to_unix_sec(
             explicit_date.year,
             explicit_date.month,
@@ -1085,14 +1087,14 @@ def _tis_item_to_events(
     weekday = _tis_weekday_from_key(item)
     if weekday is None:
         return []
-
-    weeks = _parse_tis_week_bitmap(item.get("ZC"))
-    if not weeks:
+    class_dates = _iter_tis_class_days(class_days_by_month)
+    if not class_dates:
         return []
 
     events: list[dict[str, object]] = []
-    for week in weeks:
-        class_date = semester_start + timedelta(days=(week - 1) * 7 + (weekday - 1))
+    for class_date in class_dates:
+        if class_date.isoweekday() != weekday:
+            continue
         ts = local_ymdhms_to_unix_sec(
             class_date.year,
             class_date.month,
@@ -1125,7 +1127,9 @@ def _tis_item_to_events(
 
 def _tis_payload_to_events(
     payload: object,
-    semester_info: dict,
+    start: datetime,
+    end: datetime,
+    class_days_by_month: dict[tuple[int, int], set[date]] | None = None,
 ) -> list[dict[str, object]]:
     items = _extract_list_payload(
         payload,
@@ -1138,14 +1142,9 @@ def _tis_payload_to_events(
         "records",
         "result",
     )
-    semester_start = _extract_tis_semester_start(semester_info, items)
-    if semester_start is None:
-        raise HTTPException(status_code=400, detail="Cannot determine TIS semester start date")
-    start = datetime.combine(semester_start, datetime.min.time())
-    end = start + timedelta(weeks=_TIS_SEMESTER_WEEKS, seconds=-1)
     events: list[dict[str, object]] = []
     for item in items:
-        events.extend(_tis_item_to_events(item, semester_start, start, end))
+        events.extend(_tis_item_to_events(item, start, end, class_days_by_month))
     return events
 
 
@@ -1185,15 +1184,28 @@ async def _replace_routines_from_tis(source: RoutineSource, db: AsyncSession) ->
     if not login_result["success"]:
         raise HTTPException(status_code=400, detail=login_result["message"])
 
+    start, end = _three_month_window()
+    class_days_by_month: dict[tuple[int, int], set[date]] = {}
     try:
         result = await fetch_tis_schedule_with_semester(login_result["session"])
+        for month_start in _month_start_window(_local_now().date()):
+            class_day_result = await fetch_tis_class_days(login_result["session"], month_start)
+            if not class_day_result["success"]:
+                continue
+            for month_key, days in _parse_tis_class_day_payload(class_day_result.get("data")).items():
+                class_days_by_month.setdefault(month_key, set()).update(days)
     finally:
         await login_result["session"].close()
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
 
-    events = _tis_payload_to_events(result.get("data"), result.get("semester") or {})
+    events = _tis_payload_to_events(
+        result.get("data"),
+        start,
+        end,
+        class_days_by_month or None,
+    )
     return await _replace_source_routines(source, events, db)
 
 
