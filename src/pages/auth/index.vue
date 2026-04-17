@@ -1,7 +1,7 @@
 <template>
     <v-container class="fill-height d-flex align-center justify-center ">
         <v-row justify="center">
-            <v-col cols="12" sm="10" md="8" lg="6" xl="4">
+            <v-col cols="12" sm="11" md="10" lg="8" xl="6">
                 <div class=" d-flex justify-center mb-6">
                     <v-avatar size="56">
                         <v-icon icon="mdi-account" size="52" />
@@ -70,9 +70,18 @@
                                 </v-btn>
                             </template>
                         </AuthTextField>
-                        <AuthTextField v-model="signUpForm.verificationCode" label="Verification Code"
-                            placeholder="Enter verification code" icon="mdi-shield-key-outline"
-                            :rules="requiredRules" />
+                        <v-row class="ma-0">
+                            <v-col cols="6" class="pa-0 pr-2">
+                                <AuthTextField v-model="signUpForm.username" label="Username" placeholder="Enter username"
+                                    icon="mdi-account-outline" :rules="usernameRules" />
+                            </v-col>
+                            <v-col cols="6" class="pa-0 pl-2">
+                                <AuthTextField v-model="signUpForm.verificationCode" label="Verification Code"
+                                    placeholder="Enter verification code" icon="mdi-shield-key-outline"
+                                    :rules="requiredRules" />
+                            </v-col>
+                        </v-row>
+                        
                         <AuthTextField v-model="signUpForm.password" label="Password"
                             placeholder="At least 6 characters" icon="mdi-lock-outline" isPassword
                             :rules="passwordRules" />
@@ -100,11 +109,16 @@
 
 <script setup lang="ts">
     import { ref, reactive, computed } from 'vue'
-    import { useRouter } from 'vue-router'
+    import type { AxiosError } from 'axios'
+    import { useRoute, useRouter } from 'vue-router'
     import AuthTextField from '@/components/AuthTextField.vue'
     import { login, register, sendRegisterCode } from '@/api/auth'
+    import { useAuthStore } from '@/stores/auth'
+    import { normalizeReturnTo } from '@/utils/authSession'
 
+    const route = useRoute()
     const router = useRouter()
+    const authStore = useAuthStore()
     const isSignIn = ref(true)
     const signInFormRef = ref()
     const signUpFormRef = ref()
@@ -120,9 +134,18 @@
 
     const signUpForm = reactive({
         email: '',
+        username: '',
         password: '',
         confirmPassword: '',
         verificationCode: ''
+    })
+
+    const returnToPath = computed(() => {
+        const target = normalizeReturnTo(route.query.returnTo, '/')
+        if (target.startsWith('/auth')) {
+            return '/'
+        }
+        return target
     })
 
     // Validation rules
@@ -133,6 +156,12 @@
     const emailRules = [
         (v: string) => !!v.trim() || 'Email is required',
         (v: string) => /.+@.+\..+/.test(v) || 'Please enter a valid email address'
+    ]
+
+    const usernameRules = [
+        (v: string) => !!v.trim() || 'Username is required',
+        (v: string) => v.trim().length < 20 || 'Username must be less than 10 characters',
+        (v: string) => /^[a-zA-Z0-9]+$/.test(v.trim()) || 'Username can only contain letters and numbers',
     ]
 
     const passwordRules = [
@@ -175,18 +204,26 @@
         signInLoading.value = true
 
         try {
-            const result = await login({
+            await login({
                 email: signInForm.email,
                 password: signInForm.password,
             })
 
-            localStorage.setItem('accessToken', result.access_token)
-            localStorage.setItem('user', JSON.stringify({ email: result.email }))
-            localStorage.removeItem('refreshToken')
-
-            router.push('/')
+            await authStore.refreshCurrentUser()
+            await router.replace(returnToPath.value || '/')
         } catch (error) {
-            signInError.value = error instanceof Error ? error.message : 'Login failed'
+            const axiosError = error as AxiosError<{ detail?: string, message?: string }>
+            const status = axiosError.response?.status
+
+            if (status === 400) {
+                signInError.value = '登录失败：邮箱或密码错误，请检查后重试。'
+            } else if (status === 500) {
+                signInError.value = '服务异常，请稍后重试。'
+            } else {
+                signInError.value = axiosError.response?.data?.detail
+                    || axiosError.response?.data?.message
+                    || (error instanceof Error ? error.message : 'Login failed')
+            }
         } finally {
             signInLoading.value = false
         }
@@ -204,6 +241,7 @@
         try {
             await register({
                 email: signUpForm.email,
+                username: signUpForm.username.trim(),
                 password: signUpForm.password,
                 verificationCode: signUpForm.verificationCode,
             })

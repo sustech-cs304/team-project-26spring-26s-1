@@ -44,9 +44,7 @@ export function uploadFile(file: File): Promise<UploadFileResponse> {
 }
 
 export async function getFileBlob(fileId: string): Promise<Blob> {
-  const token = localStorage.getItem('accessToken')
   const response = await fetch(`${baseURL}/file/${fileId}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
     credentials: 'include',
   })
 

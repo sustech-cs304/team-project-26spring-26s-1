@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 
 const API_MODE_KEY = 'defaultBaseURLIsCloud'
 const LOCAL_DEFAULT_BASE_URL = 'http://127.0.0.1:8000/api'
@@ -62,20 +62,6 @@ export function setDefaultBaseURLIsCloud (isCloud: boolean): void {
     localStorage.setItem(API_MODE_KEY, String(isCloud))
     syncBaseURL()
 }
-
-// Request Interceptor
-http.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-        const token = localStorage.getItem('accessToken')
-        if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`
-        }
-        return config
-    },
-    (error) => {
-        return Promise.reject(error)
-    }
-)
 
 // Response Interceptor
 http.interceptors.response.use(
