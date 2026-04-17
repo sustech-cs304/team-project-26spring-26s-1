@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter,  Request
 from agent.rag.cloud_sync import RagCloudSyncService
-from src.agent.api.rag_models import RagCloudSyncStatusResponse
+from agent.api.rag_models import RagCloudSyncStatusResponse
 
 router = APIRouter()
 
