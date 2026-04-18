@@ -5,7 +5,7 @@ from agent.api.env_vars import list_env_var_keys
 
 @tool
 def list_global_env_vars() -> dict:
-    """List global environment variable names available in the env vault.
+    """List global environment variable names available in the shared credential store.
 
     Returns keys only. Secret values are never exposed to the agent.
     """

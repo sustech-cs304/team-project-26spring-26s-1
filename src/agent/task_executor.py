@@ -39,7 +39,6 @@ log = logging.getLogger("task_executor")
 
 CRON_DIR = Path("./cron")
 RUNS_DIR = Path("./runs")
-ENV_VARS_FILE = Path("./cron/env_vars.json")
 DB_PATH = Path("./agent.db")
 
 DEFAULT_TIMEOUT = 300

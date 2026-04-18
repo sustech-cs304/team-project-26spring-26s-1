@@ -1,235 +1,51 @@
-"""Global environment variable vault — stored encrypted in cron/env_vars.json.
+"""Global environment variable storage backed by ``agent.db``."""
+from __future__ import annotations
 
-Plaintext values are encrypted locally before they are written to disk. The
-master key comes from ``AGENT_ENV_VAULT_MASTER_KEY`` or the system keyring.
-API responses still expose only variable names.
-"""
-import base64
-import getpass
-import hashlib
-import json
-import os
 import re
-import secrets
-import pydantic
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from fastapi import APIRouter, HTTPException, status
-import keyring
-from pydantic import field_validator
-from pathlib import Path
 from typing import Any
-from keyring.errors import KeyringError
+
+import pydantic
+from fastapi import APIRouter, HTTPException, status
+from pydantic import field_validator
+
+from agent.credentials_store import (
+    EnvVaultAccessError,
+    delete_credential,
+    decrypt_secret_value,
+    encrypt_secret_value,
+    get_credential_value,
+    list_credential_keys,
+    read_credential_values,
+    upsert_credential_value,
+)
 
 router = APIRouter(tags=["env-vars"])
 
-CRON_DIR = Path("./cron")
-ENV_VARS_FILE = Path("./cron/env_vars.json")
+__all__ = [
+    "EnvVaultAccessError",
+    "encrypt_secret_value",
+    "decrypt_secret_value",
+    "list_env_var_keys",
+    "read_env_values",
+    "get_env_var_entry",
+    "get_env_var_value",
+    "upsert_env_var_value",
+    "delete_env_var_value",
+    "validate_env_var_key",
+    "router",
+]
 
 MAX_ENV_KEY_LEN = 1024
 _ENV_KEY_RE = re.compile(r"^[A-Za-z0-9_]+$")
-_KEYRING_SERVICE_ENV = "AGENT_ENV_VAULT_KEYRING_SERVICE"
-_KEYCHAIN_SERVICE_ENV = "AGENT_ENV_VAULT_KEYCHAIN_SERVICE"
-_MASTER_KEY_ENV = "AGENT_ENV_VAULT_MASTER_KEY"
-_VAULT_FORMAT = "encrypted-v2"
-_VAULT_AAD = b"agent-env-vault:encrypted-v2"
-_AES_GCM_NONCE_BYTES = 12
-
-class EnvVaultAccessError(RuntimeError):
-    """Raised when the encrypted env vault cannot be safely accessed."""
-
-
-def _keyring_service_name() -> str:
-    explicit = os.getenv(_KEYRING_SERVICE_ENV) or os.getenv(_KEYCHAIN_SERVICE_ENV)
-    if explicit:
-        return explicit
-    fingerprint = hashlib.sha256(
-        str(ENV_VARS_FILE.resolve()).encode("utf-8")
-    ).hexdigest()[:16]
-    return f"agent-env-vault:{fingerprint}"
-
-
-def _master_key_bytes(master_key: str) -> bytes:
-    try:
-        raw = bytes.fromhex(master_key)
-        if len(raw) == 32:
-            return raw
-    except ValueError:
-        pass
-    try:
-        raw = base64.urlsafe_b64decode(master_key.encode("utf-8"))
-        if len(raw) == 32:
-            return raw
-    except Exception:
-        pass
-    return hashlib.sha256(master_key.encode("utf-8")).digest()
-
-
-def _load_or_create_master_key() -> str:
-    env_key = os.getenv(_MASTER_KEY_ENV)
-    if env_key:
-        return env_key
-
-    service = _keyring_service_name()
-    account = getpass.getuser()
-    try:
-        stored = keyring.get_password(service, account)
-    except KeyringError as exc:
-        raise EnvVaultAccessError(
-            "Failed to access system keyring for env vault. "
-            f"Set {_MASTER_KEY_ENV} or configure a supported keyring backend."
-        ) from exc
-    if stored:
-        return stored
-
-    master_key = secrets.token_hex(32)
-    try:
-        keyring.set_password(service, account, master_key)
-    except KeyringError as exc:
-        raise EnvVaultAccessError(
-            "Failed to store env-vault master key in system keyring. "
-            f"Set {_MASTER_KEY_ENV} or configure a supported keyring backend."
-        ) from exc
-    return master_key
-
-
-def _encrypt_payload(plaintext: str) -> str:
-    master_key = _master_key_bytes(_load_or_create_master_key())
-    nonce = secrets.token_bytes(_AES_GCM_NONCE_BYTES)
-    ciphertext = AESGCM(master_key).encrypt(nonce, plaintext.encode("utf-8"), _VAULT_AAD)
-    return json.dumps(
-        {
-            "format": _VAULT_FORMAT,
-            "cipher": "aes-256-gcm",
-            "nonce": base64.b64encode(nonce).decode("ascii"),
-            "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
-        },
-        ensure_ascii=False,
-    )
-
-def _decrypt_payload_v2(payload: dict[str, Any]) -> str:
-    nonce_b64 = payload.get("nonce")
-    ciphertext_b64 = payload.get("ciphertext")
-    if not isinstance(nonce_b64, str) or not isinstance(ciphertext_b64, str):
-        raise EnvVaultAccessError("Encrypted env vault is missing AES-GCM fields")
-    try:
-        nonce = base64.b64decode(nonce_b64)
-        ciphertext = base64.b64decode(ciphertext_b64)
-    except Exception as exc:
-        raise EnvVaultAccessError(f"Encrypted env vault has invalid base64 data: {exc}") from exc
-    try:
-        plaintext = AESGCM(_master_key_bytes(_load_or_create_master_key())).decrypt(
-            nonce,
-            ciphertext,
-            _VAULT_AAD,
-        )
-    except InvalidTag as exc:
-        raise EnvVaultAccessError("Encrypted env vault failed authentication; data or key is invalid") from exc
-    return plaintext.decode("utf-8")
-
-
-def encrypt_secret_value(plaintext: str) -> str:
-    """Encrypt one secret value into a JSON payload string."""
-    return _encrypt_payload(plaintext)
-
-
-def decrypt_secret_value(payload_text: str) -> str:
-    """Decrypt a JSON payload string produced by ``encrypt_secret_value``."""
-    try:
-        parsed = json.loads(payload_text)
-    except json.JSONDecodeError as exc:
-        raise EnvVaultAccessError(f"Encrypted secret is not valid JSON: {exc}") from exc
-    if (
-        isinstance(parsed, dict)
-        and parsed.get("format") == _VAULT_FORMAT
-        and isinstance(parsed.get("nonce"), str)
-        and isinstance(parsed.get("ciphertext"), str)
-    ):
-        return _decrypt_payload_v2(parsed)
-    raise EnvVaultAccessError("Encrypted secret payload format is unsupported")
-
-
-def _normalize_entry(raw: Any) -> dict[str, Any] | None:
-    if isinstance(raw, str):
-        return {"value": raw}
-    if not isinstance(raw, dict):
-        return None
-    value = raw.get("value")
-    if not isinstance(value, str):
-        return None
-    return {"value": value}
-
-
-def _normalize_vault(raw: Any) -> dict[str, dict[str, Any]]:
-    if not isinstance(raw, dict):
-        return {}
-    out: dict[str, dict[str, Any]] = {}
-    for key, value in raw.items():
-        if not isinstance(key, str):
-            continue
-        entry = _normalize_entry(value)
-        if entry is not None:
-            out[key] = entry
-    return out
-
-
-def _read_vault() -> dict[str, dict[str, Any]]:
-    if not ENV_VARS_FILE.is_file():
-        return {}
-    try:
-        raw_text = ENV_VARS_FILE.read_text("utf-8")
-        if not raw_text.strip():
-            return {}
-        parsed = json.loads(raw_text)
-        if (
-            isinstance(parsed, dict)
-            and parsed.get("format") == _VAULT_FORMAT
-            and isinstance(parsed.get("nonce"), str)
-            and isinstance(parsed.get("ciphertext"), str)
-        ):
-            decrypted = _decrypt_payload_v2(parsed)
-            return _normalize_vault(json.loads(decrypted))
-        if isinstance(parsed, dict) and "format" in parsed:
-            raise EnvVaultAccessError(
-                f"Unsupported env vault format: {parsed.get('format')!r}"
-            )
-        if not isinstance(parsed, dict):
-            raise EnvVaultAccessError("Env vault file must contain a JSON object")
-        raise EnvVaultAccessError(
-            "Env vault file must use the encrypted-v2 format"
-        )
-    except (
-        json.JSONDecodeError,
-        OSError,
-        EnvVaultAccessError,
-    ) as exc:
-        raise EnvVaultAccessError(f"Failed to read env vault {ENV_VARS_FILE}: {exc}") from exc
-
-
-def _write_vault(vault: dict[str, dict[str, Any]]) -> None:
-    CRON_DIR.mkdir(exist_ok=True)
-    flat_vault = {
-        key: entry["value"]
-        for key, entry in vault.items()
-        if isinstance(entry.get("value"), str)
-    }
-    plaintext = json.dumps(flat_vault, ensure_ascii=False, indent=2)
-    encrypted = json.loads(_encrypt_payload(plaintext))
-    ENV_VARS_FILE.write_text(json.dumps(encrypted, ensure_ascii=False, indent=2), "utf-8")
+_ENV_VAR_CREDENTIAL_TYPE = "env_var"
 
 
 def list_env_var_keys() -> list[str]:
-    return sorted(_read_vault().keys())
+    return list_credential_keys(_ENV_VAR_CREDENTIAL_TYPE)
 
 
 def read_env_values() -> dict[str, str]:
-    vault = _read_vault()
-    out: dict[str, str] = {}
-    for key, entry in vault.items():
-        value = entry.get("value")
-        if isinstance(value, str):
-            out[key] = value
-    return out
+    return read_credential_values(_ENV_VAR_CREDENTIAL_TYPE)
 
 
 def get_env_var_entry(key: str) -> dict[str, Any] | None:
@@ -237,7 +53,11 @@ def get_env_var_entry(key: str) -> dict[str, Any] | None:
         k = validate_env_var_key(key)
     except ValueError:
         return None
-    return _read_vault().get(k)
+
+    value = get_credential_value(_ENV_VAR_CREDENTIAL_TYPE, k)
+    if value is None:
+        return None
+    return {"value": value}
 
 
 def get_env_var_value(key: str) -> str | None:
@@ -250,20 +70,13 @@ def get_env_var_value(key: str) -> str | None:
 
 def upsert_env_var_value(key: str, value: str) -> dict[str, Any]:
     k = validate_env_var_key(key)
-    vault = _read_vault()
-    vault[k] = {"value": value}
-    _write_vault(vault)
+    upsert_credential_value(_ENV_VAR_CREDENTIAL_TYPE, k, value)
     return {"key": k}
 
 
 def delete_env_var_value(key: str) -> bool:
     k = validate_env_var_key(key)
-    vault = _read_vault()
-    if k not in vault:
-        return False
-    del vault[k]
-    _write_vault(vault)
-    return True
+    return delete_credential(_ENV_VAR_CREDENTIAL_TYPE, k)
 
 
 def validate_env_var_key(key: str) -> str:
@@ -298,11 +111,6 @@ def _raise_from_vault_access_error(exc: EnvVaultAccessError) -> None:
         status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail={"message": str(exc)},
     )
-
-
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
 
 
 class EnvVarKeyItem(pydantic.BaseModel):
@@ -341,10 +149,6 @@ class EnvVarDeleteResponse(pydantic.BaseModel):
 
     message: str
 
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
 
 @router.get(
     "/env-vars",

@@ -211,12 +211,12 @@ class RoutineEvent(Base):
     )
 
 
-class SchoolCredential(Base):
-    __tablename__ = "school_credentials"
+class Credential(Base):
+    __tablename__ = "credentials"
 
-    scope: Mapped[str] = mapped_column(String(64), primary_key=True)
-    student_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    credential_type: Mapped[str] = mapped_column("type", String(64), primary_key=True)
+    credential_key: Mapped[str] = mapped_column("key", String(1024), primary_key=True)
+    value_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: dt.datetime.now(dt.timezone.utc),

@@ -3,7 +3,7 @@
 Storage:
 
 - ``cron/<task_id>.json`` — task definition (file)
-- ``cron/env_vars.json`` — global env vars (file; see ``env_vars`` module)
+- ``agent.db`` ``credentials`` — global env vars (SQLite; see ``env_vars`` module)
 - ``agent.db`` — ``task_runs`` / ``task_run_logs`` (SQLite: runs + logs)
 """
 from __future__ import annotations
@@ -373,10 +373,10 @@ class LogEntryResponse(pydantic.BaseModel):
 
 
 class EnvVarRef(pydantic.BaseModel):
-    """Task-level env ref: ``key`` only, aligned with the global env vault."""
+    """Task-level env ref: ``key`` only, aligned with the global env store."""
 
     model_config = pydantic.ConfigDict(extra="ignore")
-    key: str = pydantic.Field(..., description="Name in the global env vault")
+    key: str = pydantic.Field(..., description="Name in the global env store")
 
 
 class TaskCreateRequest(pydantic.BaseModel):
