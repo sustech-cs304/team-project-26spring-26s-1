@@ -1149,7 +1149,7 @@ def _tis_payload_to_events(
 
 
 async def _replace_routines_from_bb(source: RoutineSource, db: AsyncSession) -> List[int]:
-    user_name, pwd = resolve_bb_credentials(None, None)
+    user_name, pwd = await resolve_bb_credentials(None, None)
     if not user_name or not pwd:
         raise HTTPException(status_code=400, detail=missing_cas_message()["message"])
 
@@ -1176,7 +1176,7 @@ async def _replace_routines_from_bb(source: RoutineSource, db: AsyncSession) -> 
 
 
 async def _replace_routines_from_tis(source: RoutineSource, db: AsyncSession) -> List[int]:
-    user_name, pwd = resolve_tis_credentials(None, None)
+    user_name, pwd = await resolve_tis_credentials(None, None)
     if not user_name or not pwd:
         raise HTTPException(status_code=400, detail=missing_cas_message()["message"])
 

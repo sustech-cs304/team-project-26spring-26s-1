@@ -69,7 +69,7 @@ async def get_calendar_events(
         return {"success": False, "message": f"Invalid date/time: {e}"}
     if start_ms > end_ms:
         return {"success": False, "message": "Start time must be <= end time"}
-    u, p = resolve_bb_credentials(user_name, pwd)
+    u, p = await resolve_bb_credentials(user_name, pwd)
     if not u or not p:
         return missing_cas_message()
     login_result = await login_bb(u, p)

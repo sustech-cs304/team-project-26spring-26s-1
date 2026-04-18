@@ -60,7 +60,7 @@ async def get_tis_credentials_status(
 ):
     """Return whether shared CAS credentials are set (password is never returned)."""
     _require_secret(x_school_settings_secret)
-    data = school_credentials.get_school_cas_credentials_status()
+    data = await school_credentials.get_school_cas_credentials_status()
     return TisCredentialsGetResponse(**data)
 
 
@@ -71,7 +71,7 @@ async def patch_cas(
 ):
     _require_secret(x_school_settings_secret)
     try:
-        school_credentials.patch_school_cas_config(
+        await school_credentials.patch_school_cas_config(
             student_id=body.id,
             password=body.password,
         )
@@ -89,7 +89,7 @@ async def put_tis_credentials(
 ):
     """Store shared CAS in the database for BB/TIS tool resolution."""
     _require_secret(x_school_settings_secret)
-    school_credentials.set_school_cas_credentials(body.student_id, body.password)
+    await school_credentials.set_school_cas_credentials(body.student_id, body.password)
     return TisCredentialsPutResponse(student_id=body.student_id.strip())
 
 
@@ -99,7 +99,7 @@ async def delete_tis_credentials(
 ):
     """Clear shared CAS from the database; tools fall back to process env only."""
     _require_secret(x_school_settings_secret)
-    school_credentials.clear_school_cas_credentials()
+    await school_credentials.clear_school_cas_credentials()
     return TisCredentialsDeleteResponse()
 
 
@@ -120,7 +120,7 @@ async def get_bb_credentials_status(
 ):
     """Same as ``GET /settings/tis/credentials``: shared CAS status (password never returned)."""
     _require_secret(x_school_settings_secret)
-    data = school_credentials.get_school_cas_credentials_status()
+    data = await school_credentials.get_school_cas_credentials_status()
     return TisCredentialsGetResponse(**data)
 
 
@@ -131,7 +131,7 @@ async def put_bb_credentials(
 ):
     """Save shared SUSTech CAS in Global Settings; BB and TIS tools read the same pair."""
     _require_secret(x_school_settings_secret)
-    school_credentials.set_school_cas_credentials(body.student_id, body.password)
+    await school_credentials.set_school_cas_credentials(body.student_id, body.password)
     return BbCredentialsPutResponse(student_id=body.student_id.strip())
 
 
@@ -141,5 +141,5 @@ async def delete_bb_credentials(
 ):
     """Clear shared CAS credentials (same as ``DELETE .../tis/credentials``)."""
     _require_secret(x_school_settings_secret)
-    school_credentials.clear_school_cas_credentials()
+    await school_credentials.clear_school_cas_credentials()
     return TisCredentialsDeleteResponse()

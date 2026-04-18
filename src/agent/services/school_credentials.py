@@ -22,8 +22,8 @@ _PASSWORD_RECORD_KEY = f"{_CREDENTIAL_SCOPE}:password"
 log = logging.getLogger(__name__)
 
 
-def _write_db_shared_cas(student_id: str, password: str) -> None:
-    upsert_credential_values(
+async def _write_db_shared_cas(student_id: str, password: str) -> None:
+    await upsert_credential_values(
         _CREDENTIAL_TYPE,
         {
             _STUDENT_ID_RECORD_KEY: student_id,
@@ -32,10 +32,10 @@ def _write_db_shared_cas(student_id: str, password: str) -> None:
     )
 
 
-def _read_db_shared_cas_record() -> tuple[str, str] | None:
+async def _read_db_shared_cas_record() -> tuple[str, str] | None:
     try:
-        student_id = get_credential_value(_CREDENTIAL_TYPE, _STUDENT_ID_RECORD_KEY) or ""
-        password_ciphertext = get_credential_ciphertext(_CREDENTIAL_TYPE, _PASSWORD_RECORD_KEY) or ""
+        student_id = await get_credential_value(_CREDENTIAL_TYPE, _STUDENT_ID_RECORD_KEY) or ""
+        password_ciphertext = await get_credential_ciphertext(_CREDENTIAL_TYPE, _PASSWORD_RECORD_KEY) or ""
     except EnvVaultAccessError as exc:
         log.warning("Failed to read shared CAS from database: %s", exc)
         return None
@@ -45,10 +45,10 @@ def _read_db_shared_cas_record() -> tuple[str, str] | None:
     return student_id, password_ciphertext
 
 
-def _read_db_shared_cas() -> tuple[str, str]:
+async def _read_db_shared_cas() -> tuple[str, str]:
     try:
-        student_id = get_credential_value(_CREDENTIAL_TYPE, _STUDENT_ID_RECORD_KEY) or ""
-        password = get_credential_value(_CREDENTIAL_TYPE, _PASSWORD_RECORD_KEY) or ""
+        student_id = await get_credential_value(_CREDENTIAL_TYPE, _STUDENT_ID_RECORD_KEY) or ""
+        password = await get_credential_value(_CREDENTIAL_TYPE, _PASSWORD_RECORD_KEY) or ""
     except EnvVaultAccessError as exc:
         log.warning("Failed to decrypt shared CAS from database: %s", exc)
         return "", ""
@@ -58,43 +58,42 @@ def _read_db_shared_cas() -> tuple[str, str]:
     return student_id, password
 
 
-def _read_shared_cas() -> tuple[str, str]:
-    shared_u, shared_p = _read_db_shared_cas()
+async def _read_shared_cas() -> tuple[str, str]:
+    shared_u, shared_p = await _read_db_shared_cas()
     if shared_u and shared_p:
         return shared_u, shared_p
-
     return (
         os.getenv(_CAS_STUDENT_ID_KEY) or "",
         os.getenv(_CAS_PASSWORD_KEY) or "",
     )
 
 
-def resolve_bb_credentials(user_name: str | None, pwd: str | None) -> tuple[str, str]:
+async def resolve_bb_credentials(user_name: str | None, pwd: str | None) -> tuple[str, str]:
     """Tool args first, then shared SUSTECH CAS."""
-    shared_u, shared_p = _read_shared_cas()
+    shared_u, shared_p = await _read_shared_cas()
     return user_name or shared_u or "", pwd or shared_p or ""
 
 
-def resolve_tis_credentials(user_name: str | None, pwd: str | None) -> tuple[str, str]:
+async def resolve_tis_credentials(user_name: str | None, pwd: str | None) -> tuple[str, str]:
     """Tool args first, then shared SUSTECH CAS."""
-    shared_u, shared_p = _read_shared_cas()
+    shared_u, shared_p = await _read_shared_cas()
     return user_name or shared_u or "", pwd or shared_p or ""
 
 
-def set_school_cas_credentials(student_id: str | None, password: str | None) -> None:
+async def set_school_cas_credentials(student_id: str | None, password: str | None) -> None:
     """Persist shared CAS in the database for both TIS and BB."""
     sid = (student_id or "").strip()
     pwd = password if password is not None else ""
     if not sid or not pwd:
-        clear_school_cas_credentials()
+        await clear_school_cas_credentials()
         return
-    _write_db_shared_cas(sid, pwd)
+    await _write_db_shared_cas(sid, pwd)
 
 
-def clear_school_cas_credentials() -> None:
+async def clear_school_cas_credentials() -> None:
     """Clear shared CAS from the database."""
     try:
-        delete_credentials(
+        await delete_credentials(
             _CREDENTIAL_TYPE,
             [_STUDENT_ID_RECORD_KEY, _PASSWORD_RECORD_KEY],
         )
@@ -102,8 +101,8 @@ def clear_school_cas_credentials() -> None:
         log.warning("Failed to clear shared CAS from database: %s", exc)
 
 
-def get_school_cas_config() -> dict[str, str] | None:
-    record = _read_db_shared_cas_record()
+async def get_school_cas_config() -> dict[str, str] | None:
+    record = await _read_db_shared_cas_record()
     if record is None:
         return None
     student_id, password_ciphertext = record
@@ -113,11 +112,11 @@ def get_school_cas_config() -> dict[str, str] | None:
     }
 
 
-def patch_school_cas_config(
+async def patch_school_cas_config(
     student_id: str | None = None,
     password: str | None = None,
 ) -> None:
-    current_id, current_password = _read_db_shared_cas()
+    current_id, current_password = await _read_db_shared_cas()
     next_id = current_id
     next_password = current_password
 
@@ -129,12 +128,12 @@ def patch_school_cas_config(
     if not next_id or not next_password:
         raise ValueError("Both id and password are required after patch merge")
 
-    _write_db_shared_cas(next_id, next_password)
+    await _write_db_shared_cas(next_id, next_password)
 
 
-def get_school_cas_credentials_status() -> dict:
+async def get_school_cas_credentials_status() -> dict:
     """Safe snapshot for GET /settings/*/credentials (password never returned)."""
-    sid, pwd = _read_shared_cas()
+    sid, pwd = await _read_shared_cas()
     configured = bool(sid and pwd)
     return {
         "runtime_configured": configured,

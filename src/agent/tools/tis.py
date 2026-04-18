@@ -21,7 +21,7 @@ async def get_schedule(user_name: str | None = None, pwd: str | None = None) -> 
     (``PUT /api/settings/tis/credentials``),
     or ``SUSTECH_STUDENT_ID`` / ``SUSTECH_CAS_PASSWORD``.
     """
-    u, p = resolve_tis_credentials(user_name, pwd)
+    u, p = await resolve_tis_credentials(user_name, pwd)
     if not u or not p:
         return missing_cas_message()
     login_result = await login_tis(u, p)
