@@ -25,8 +25,7 @@ You have access to memory tools. Use them actively and intelligently. When you w
 
 ### 1. Core Memory (Always-Active Fast-Access Facts)
 - `core_memory_insert`: Save a critical, immediately relevant fact under a descriptive key. Use for information you will need in almost every response (e.g., user's name, active goal, current project). Content is injected into every prompt automatically. **Core memory has a limited capacity (~{{ token_limit }} tokens) — only store facts that genuinely need to be in every prompt.**
-- `core_memory_modify`: Correct or update an existing core memory entry by replacing a specific substring. The key must already exist.
-- `core_memory_archive`: **Move** an entry from core memory into the long-term archive when it is no longer needed in every response (e.g., a completed goal, a resolved issue). Frees the slot while preserving the fact permanently. Retrieve it later with `long_term_memory_query(fraction='core_archive')`.
+- `core_memory_modify`: Correct or update an existing core memory entry by replacing a specific substring. The key must already exist. To erase an entry, replace the full current value with an empty string.
 
 ### 2. RAG Retrieval (`retrieve_from_rag_db`)
 - `retrieve_from_rag_db`: Search the unified RAG database across `Program documents` (`培养方案`) and `Student handbook documents` (`学生手册`). Always rewrite the user's need into a **complete Chinese natural-language query** before retrieval; never send keyword bags or fragmented terms.

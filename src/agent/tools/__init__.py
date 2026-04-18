@@ -9,7 +9,7 @@ class ToolArtifact(TypedDict):
 
 from .bb import get_calendar_events
 from .code_interpreter import code_interpreter
-from .core_memory import core_memory_insert
+from .core_memory import core_memory_insert, core_memory_modify
 from .tis import get_schedule, query_available_courses
 from .routine_tools import (
     add_routine_event,
@@ -45,6 +45,7 @@ tools = [
     update_scheduled_task,
     delete_scheduled_task,
     core_memory_insert,
+    core_memory_modify,
     code_interpreter,
     quiz_card,
     webfetch,
