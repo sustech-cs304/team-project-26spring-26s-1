@@ -25,6 +25,27 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
-    "opener:default"
+    "opener:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/agent-backend",
+          "sidecar": true,
+          "args": [
+            "agent.main:app",
+            "--host",
+            {
+              "validator": "\\S+"
+            },
+            "--port",
+            {
+              "validator": "\\d{2,5}"
+            }
+          ]
+        }
+      ]
+    },
+    "shell:allow-kill"
   ]
 }

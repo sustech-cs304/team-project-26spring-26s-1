@@ -30,6 +30,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": [
+      "binaries/agent-backend"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",
