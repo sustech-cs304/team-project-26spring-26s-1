@@ -76,51 +76,14 @@ def _log_entry(
         "tool_name": None,
     }
 
-
-def _legacy_log_to_log_entry(run_id: str, seq: int, entry: dict) -> dict:
-    """Convert legacy ``{level, message, ts}`` rows to LogEntry shape."""
-    level = entry.get("level") or "stdout"
-    message = entry.get("message") or ""
-    ts = entry.get("ts") or _now_iso()
-    lt_map = {
-        "stdout": "script_stdout",
-        "stderr": "script_stderr",
-        "info": "script_stdout",
-        "error": "script_stderr",
-    }
-    log_type = lt_map.get(level, "script_stdout")
-    st = "failed" if level == "error" else "success"
-    return {
-        "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{run_id}:log:{seq}")),
-        "run_id": run_id,
-        "step_index": seq + 1,
-        "log_type": log_type,
-        "duration_ms": 0,
-        "status": st,
-        "timestamp": ts,
-        "content": message,
-        "metadata": {},
-        "input_params": None,
-        "output": None,
-        "tool_name": None,
-    }
-
-
 def _level_message_for_db_row(entry: dict) -> tuple[str, str]:
-    """Derive legacy ``level`` / ``message`` columns from a LogEntry dict."""
+    """Derive denormalized ``level`` / ``message`` columns from a LogEntry dict."""
     lt = entry.get("log_type") or ""
     if lt == "script_stdout":
         return "stdout", entry.get("content") or ""
     if lt == "script_stderr":
         return "stderr", entry.get("content") or ""
     return "info", entry.get("content") or ""
-
-
-def _normalize_log_dict(run_id: str, seq: int, entry: dict) -> dict:
-    if entry.get("log_type"):
-        return entry
-    return _legacy_log_to_log_entry(run_id, seq, entry)
-
 
 def read_task(task_id: str) -> dict | None:
     p = CRON_DIR / f"{task_id}.json"
@@ -194,10 +157,6 @@ def _build_env(task: dict) -> dict[str, str]:
             continue
         if key in global_vars:
             env[key] = global_vars[key]
-            continue
-        secret_ref = (ref.get("secret_ref") or "").strip()
-        if secret_ref and secret_ref in global_vars:
-            env[key] = global_vars[secret_ref]
     return env
 
 
@@ -304,7 +263,9 @@ def persist_run_to_db(run: dict) -> None:
         for seq, entry in enumerate(logs):
             if not isinstance(entry, dict):
                 continue
-            full = _normalize_log_dict(run["id"], seq, entry)
+            if not entry.get("log_type"):
+                continue
+            full = entry
             entry_json = json.dumps(full, ensure_ascii=False)
             level, message = _level_message_for_db_row(full)
             conn.execute(

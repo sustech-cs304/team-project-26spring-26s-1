@@ -8,11 +8,9 @@ import base64
 import getpass
 import hashlib
 import json
-import logging
 import os
 import re
 import secrets
-import subprocess
 import pydantic
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -34,15 +32,8 @@ _KEYRING_SERVICE_ENV = "AGENT_ENV_VAULT_KEYRING_SERVICE"
 _KEYCHAIN_SERVICE_ENV = "AGENT_ENV_VAULT_KEYCHAIN_SERVICE"
 _MASTER_KEY_ENV = "AGENT_ENV_VAULT_MASTER_KEY"
 _VAULT_FORMAT = "encrypted-v2"
-_VAULT_FORMAT_LEGACY = "encrypted-v1"
 _VAULT_AAD = b"agent-env-vault:encrypted-v2"
 _AES_GCM_NONCE_BYTES = 12
-_OPENSSL_CIPHER = "aes-256-cbc"
-_OPENSSL_ITERATIONS = "200000"
-_SUBPROCESS_TIMEOUT_S = 5
-
-log = logging.getLogger(__name__)
-
 
 class EnvVaultAccessError(RuntimeError):
     """Raised when the encrypted env vault cannot be safely accessed."""
@@ -56,35 +47,6 @@ def _keyring_service_name() -> str:
         str(ENV_VARS_FILE.resolve()).encode("utf-8")
     ).hexdigest()[:16]
     return f"agent-env-vault:{fingerprint}"
-
-
-def _run_command(
-    args: list[str],
-    *,
-    input_bytes: bytes | None = None,
-    passphrase: str | None = None,
-) -> subprocess.CompletedProcess[bytes]:
-    extra_kwargs: dict[str, Any] = {
-        "capture_output": True,
-        "check": True,
-        "timeout": _SUBPROCESS_TIMEOUT_S,
-    }
-    if input_bytes is not None:
-        extra_kwargs["input"] = input_bytes
-    read_fd = -1
-    if passphrase is not None:
-        read_fd, write_fd = os.pipe()
-        try:
-            os.write(write_fd, passphrase.encode("utf-8"))
-        finally:
-            os.close(write_fd)
-        args = [*args, "-pass", f"fd:{read_fd}"]
-        extra_kwargs["pass_fds"] = (read_fd,)
-    try:
-        return subprocess.run(args, **extra_kwargs)
-    finally:
-        if read_fd >= 0:
-            os.close(read_fd)
 
 
 def _master_key_bytes(master_key: str) -> bytes:
@@ -145,27 +107,6 @@ def _encrypt_payload(plaintext: str) -> str:
         ensure_ascii=False,
     )
 
-
-def _decrypt_payload(ciphertext: str) -> str:
-    master_key = _load_or_create_master_key()
-    proc = _run_command(
-        [
-            "openssl",
-            "enc",
-            f"-{_OPENSSL_CIPHER}",
-            "-d",
-            "-pbkdf2",
-            "-iter",
-            _OPENSSL_ITERATIONS,
-            "-a",
-            "-A",
-        ],
-        input_bytes=ciphertext.encode("utf-8"),
-        passphrase=master_key,
-    )
-    return proc.stdout.decode("utf-8")
-
-
 def _decrypt_payload_v2(payload: dict[str, Any]) -> str:
     nonce_b64 = payload.get("nonce")
     ciphertext_b64 = payload.get("ciphertext")
@@ -205,12 +146,6 @@ def decrypt_secret_value(payload_text: str) -> str:
         and isinstance(parsed.get("ciphertext"), str)
     ):
         return _decrypt_payload_v2(parsed)
-    if (
-        isinstance(parsed, dict)
-        and parsed.get("format") == _VAULT_FORMAT_LEGACY
-        and isinstance(parsed.get("ciphertext"), str)
-    ):
-        return _decrypt_payload(parsed["ciphertext"])
     raise EnvVaultAccessError("Encrypted secret payload format is unsupported")
 
 
@@ -243,6 +178,8 @@ def _read_vault() -> dict[str, dict[str, Any]]:
         return {}
     try:
         raw_text = ENV_VARS_FILE.read_text("utf-8")
+        if not raw_text.strip():
+            return {}
         parsed = json.loads(raw_text)
         if (
             isinstance(parsed, dict)
@@ -252,34 +189,19 @@ def _read_vault() -> dict[str, dict[str, Any]]:
         ):
             decrypted = _decrypt_payload_v2(parsed)
             return _normalize_vault(json.loads(decrypted))
-        if (
-            isinstance(parsed, dict)
-            and parsed.get("format") == _VAULT_FORMAT_LEGACY
-            and isinstance(parsed.get("ciphertext"), str)
-        ):
-            decrypted = _decrypt_payload(parsed["ciphertext"])
-            normalized = _normalize_vault(json.loads(decrypted))
-            _write_vault(normalized)
-            return normalized
         if isinstance(parsed, dict) and "format" in parsed:
             raise EnvVaultAccessError(
                 f"Unsupported env vault format: {parsed.get('format')!r}"
             )
-        if raw_text.strip() and not isinstance(parsed, dict):
+        if not isinstance(parsed, dict):
             raise EnvVaultAccessError("Env vault file must contain a JSON object")
-        normalized = _normalize_vault(parsed)
-        if raw_text.strip():
-            try:
-                _write_vault(normalized)
-            except (OSError, EnvVaultAccessError, subprocess.CalledProcessError) as exc:
-                log.warning("Failed to migrate plaintext env vault %s: %s", ENV_VARS_FILE, exc)
-        return normalized
+        raise EnvVaultAccessError(
+            "Env vault file must use the encrypted-v2 format"
+        )
     except (
         json.JSONDecodeError,
         OSError,
         EnvVaultAccessError,
-        subprocess.CalledProcessError,
-        subprocess.TimeoutExpired,
     ) as exc:
         raise EnvVaultAccessError(f"Failed to read env vault {ENV_VARS_FILE}: {exc}") from exc
 

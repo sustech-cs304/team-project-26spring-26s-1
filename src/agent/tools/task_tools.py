@@ -22,11 +22,9 @@ from pydantic import (
 from agent.api.env_vars import validate_env_var_key
 from agent.api.task import (
     LastRunTrigger,
-    LogEntryResponse,
     _TASK_EXECUTOR_MAX_CONCURRENT,
     _TASK_EXECUTOR_TIMEOUT_S,
     _coerce_log_entry,
-    _legacy_level_message_to_log_dict,
     _paginate,
     _run_dict_to_execution_response,
     _runs_for_task,
@@ -521,10 +519,7 @@ def read_scheduled_task_run_logs(
         try:
             entry = _coerce_log_entry(rid, row, start + idx).model_dump(mode="json")
         except Exception:
-            flat = _legacy_level_message_to_log_dict(
-                rid, start + idx, "stdout", str(row), "",
-            )
-            entry = LogEntryResponse.model_validate(flat).model_dump(mode="json")
+            continue
         cal = _iso_like_to_calendar_date(entry.get("timestamp"))
         if cal is not None:
             entry["timestamp_date"] = cal

@@ -168,54 +168,14 @@ def _parse_dt(val, *, required: bool = False) -> datetime | None:
     return datetime.now(timezone.utc) if required else None
 
 
-def _legacy_level_message_to_log_dict(
-    run_id: str,
-    seq: int,
-    level: str,
-    message: str,
-    ts: str,
-) -> dict:
-    """Build LogEntry-shaped dict from legacy ``level`` / ``message`` / ``ts``."""
-    level = level or "stdout"
-    lt_map = {
-        "stdout": "script_stdout",
-        "stderr": "script_stderr",
-        "info": "script_stdout",
-        "error": "script_stderr",
-    }
-    log_type = lt_map.get(level, "script_stdout")
-    st = "failed" if level == "error" else "success"
-    return {
-        "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{run_id}:log:{seq}")),
-        "run_id": run_id,
-        "step_index": seq + 1,
-        "log_type": log_type,
-        "duration_ms": 0,
-        "status": st,
-        "timestamp": ts,
-        "content": message,
-        "metadata": {},
-        "input_params": None,
-        "output": None,
-        "tool_name": None,
-    }
-
-
-def _legacy_orm_log_to_log_dict(run_id: str, lg: TaskRunLog) -> dict:
-    """Build LogEntry-shaped dict from legacy ORM columns (no ``entry_json``)."""
-    ts = _db_row_to_ts(lg.ts) or ""
-    return _legacy_level_message_to_log_dict(
-        run_id, lg.seq, lg.level or "stdout", lg.message or "", ts
-    )
-
-
 def _orm_log_to_log_dict(run_id: str, lg: TaskRunLog) -> dict:
-    if getattr(lg, "entry_json", None):
-        try:
-            return json.loads(lg.entry_json)
-        except (json.JSONDecodeError, TypeError):
-            pass
-    return _legacy_orm_log_to_log_dict(run_id, lg)
+    raw = getattr(lg, "entry_json", None)
+    if not raw:
+        raise ValueError(f"Run {run_id} log row {lg.id} is missing entry_json")
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"Run {run_id} log row {lg.id} has invalid entry_json") from exc
 
 
 def _db_run_to_dict(row: TaskRun) -> dict:
@@ -413,7 +373,7 @@ class LogEntryResponse(pydantic.BaseModel):
 
 
 class EnvVarRef(pydantic.BaseModel):
-    """Task-level env ref: ``key`` only (aligned with global vault); legacy ``secret_ref`` ignored."""
+    """Task-level env ref: ``key`` only, aligned with the global env vault."""
 
     model_config = pydantic.ConfigDict(extra="ignore")
     key: str = pydantic.Field(..., description="Name in the global env vault")
@@ -775,40 +735,33 @@ def _run_dict_to_execution_response(r: dict) -> RunExecutionResponse:
 
 def _coerce_log_entry(run_id: str, raw: dict, seq_index: int) -> LogEntryResponse:
     """Normalize log dict from DB/file into ``LogEntryResponse``."""
-    if raw.get("log_type"):
-        meta = raw.get("metadata")
-        if meta is None or not isinstance(meta, dict):
-            meta = {}
-        try:
-            lt = LogType(raw["log_type"])
-        except (ValueError, KeyError, TypeError):
-            lt = LogType.script_stdout
-        try:
-            st = LogEntryStatus(str(raw.get("status", "success")))
-        except ValueError:
-            st = LogEntryStatus.success
-        return LogEntryResponse(
-            id=str(raw.get("id") or uuid.uuid4()),
-            run_id=str(raw.get("run_id") or run_id),
-            step_index=int(raw.get("step_index", seq_index + 1)),
-            log_type=lt,
-            duration_ms=int(raw.get("duration_ms", 0)),
-            status=st,
-            timestamp=str(raw.get("timestamp") or ""),
-            content=raw.get("content"),
-            metadata=LogMetadata.model_validate(meta),
-            input_params=raw.get("input_params"),
-            output=raw.get("output"),
-            tool_name=raw.get("tool_name"),
-        )
-    flat = _legacy_level_message_to_log_dict(
-        run_id,
-        seq_index,
-        str(raw.get("level") or "stdout"),
-        str(raw.get("message") or ""),
-        str(raw.get("ts") or ""),
+    if not raw.get("log_type"):
+        raise ValueError("Log entry is missing log_type")
+    meta = raw.get("metadata")
+    if meta is None or not isinstance(meta, dict):
+        meta = {}
+    try:
+        lt = LogType(raw["log_type"])
+    except (ValueError, KeyError, TypeError):
+        lt = LogType.script_stdout
+    try:
+        st = LogEntryStatus(str(raw.get("status", "success")))
+    except ValueError:
+        st = LogEntryStatus.success
+    return LogEntryResponse(
+        id=str(raw.get("id") or uuid.uuid4()),
+        run_id=str(raw.get("run_id") or run_id),
+        step_index=int(raw.get("step_index", seq_index + 1)),
+        log_type=lt,
+        duration_ms=int(raw.get("duration_ms", 0)),
+        status=st,
+        timestamp=str(raw.get("timestamp") or ""),
+        content=raw.get("content"),
+        metadata=LogMetadata.model_validate(meta),
+        input_params=raw.get("input_params"),
+        output=raw.get("output"),
+        tool_name=raw.get("tool_name"),
     )
-    return LogEntryResponse.model_validate(flat)
 
 
 def _run_dict_to_detail(r: dict) -> RunDetailResponse:
@@ -821,10 +774,7 @@ def _run_dict_to_detail(r: dict) -> RunDetailResponse:
         try:
             lines.append(_coerce_log_entry(r["id"], l, i))
         except Exception:
-            flat = _legacy_level_message_to_log_dict(
-                r["id"], i, "stdout", str(l), "",
-            )
-            lines.append(LogEntryResponse.model_validate(flat))
+            continue
     return RunDetailResponse(**base.model_dump(), logs=lines)
 
 
@@ -1226,10 +1176,7 @@ async def get_run_logs(
         try:
             items.append(_coerce_log_entry(run_id, raw, start + idx))
         except Exception:
-            flat = _legacy_level_message_to_log_dict(
-                run_id, start + idx, "stdout", str(raw), "",
-            )
-            items.append(LogEntryResponse.model_validate(flat))
+            continue
     return items
 
 
@@ -1267,10 +1214,7 @@ async def stream_run_progress(run_id: str) -> EventSourceResponse:
                 try:
                     entry = _coerce_log_entry(run_id, log, seen - 1)
                 except Exception:
-                    flat = _legacy_level_message_to_log_dict(
-                        run_id, seen - 1, "stdout", str(log), "",
-                    )
-                    entry = LogEntryResponse.model_validate(flat)
+                    continue
                 evt = RunStreamProgressEvent(
                     run_id=run_id,
                     status=_run_status_storage_to_api(r.get("status")),

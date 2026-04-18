@@ -10,9 +10,7 @@ from pathlib import Path
 from agent.api.env_vars import (
     EnvVaultAccessError,
     decrypt_secret_value,
-    delete_env_var_value,
     encrypt_secret_value,
-    get_env_var_value,
 )
 
 _CAS_STUDENT_ID_KEY = "SUSTECH_STUDENT_ID"
@@ -31,33 +29,12 @@ CREATE TABLE IF NOT EXISTS school_credentials (
 
 log = logging.getLogger(__name__)
 
-
-def _read_vault_env(key: str) -> str:
-    try:
-        return get_env_var_value(key) or ""
-    except EnvVaultAccessError as exc:
-        log.warning("Failed to read env var %s from encrypted vault: %s", key, exc)
-        return ""
-
-
-def _read_any_env(key: str) -> str:
-    return _read_vault_env(key) or os.getenv(key) or ""
-
-
 def _connect_db() -> sqlite3.Connection:
     conn = sqlite3.connect(_DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute(_CREATE_TABLE_SQL)
     conn.commit()
     return conn
-
-
-def _delete_legacy_vault_credentials() -> None:
-    for key in (_CAS_STUDENT_ID_KEY, _CAS_PASSWORD_KEY):
-        try:
-            delete_env_var_value(key)
-        except (ValueError, EnvVaultAccessError):
-            continue
 
 
 def _write_db_shared_cas(student_id: str, password: str) -> None:
@@ -128,39 +105,10 @@ def _read_db_shared_cas() -> tuple[str, str]:
         return "", ""
     return student_id, password
 
-
-def _migrate_legacy_vault_shared_cas() -> tuple[str, str]:
-    student_id = _read_vault_env(_CAS_STUDENT_ID_KEY)
-    password = _read_vault_env(_CAS_PASSWORD_KEY)
-    if not student_id or not password:
-        return "", ""
-    try:
-        _write_db_shared_cas(student_id, password)
-    except (sqlite3.Error, EnvVaultAccessError) as exc:
-        log.warning("Failed to migrate shared CAS from env vault to database: %s", exc)
-        return student_id, password
-    _delete_legacy_vault_credentials()
-    return student_id, password
-
-
-def _ensure_db_shared_cas_record() -> tuple[str, str] | None:
-    record = _read_db_shared_cas_record()
-    if record is not None:
-        return record
-    legacy_u, legacy_p = _migrate_legacy_vault_shared_cas()
-    if legacy_u and legacy_p:
-        return _read_db_shared_cas_record()
-    return None
-
-
 def _read_shared_cas() -> tuple[str, str]:
     shared_u, shared_p = _read_db_shared_cas()
     if shared_u and shared_p:
         return shared_u, shared_p
-
-    legacy_u, legacy_p = _migrate_legacy_vault_shared_cas()
-    if legacy_u and legacy_p:
-        return legacy_u, legacy_p
 
     return (
         os.getenv(_CAS_STUDENT_ID_KEY) or "",
@@ -188,11 +136,10 @@ def set_school_cas_credentials(student_id: str | None, password: str | None) -> 
         clear_school_cas_credentials()
         return
     _write_db_shared_cas(sid, pwd)
-    _delete_legacy_vault_credentials()
 
 
 def clear_school_cas_credentials() -> None:
-    """Clear shared CAS from the database and legacy vault."""
+    """Clear shared CAS from the database."""
     try:
         with _connect_db() as conn:
             conn.execute(
@@ -202,11 +149,10 @@ def clear_school_cas_credentials() -> None:
             conn.commit()
     except sqlite3.Error as exc:
         log.warning("Failed to clear shared CAS from database: %s", exc)
-    _delete_legacy_vault_credentials()
 
 
 def get_school_cas_config() -> dict[str, str] | None:
-    record = _ensure_db_shared_cas_record()
+    record = _read_db_shared_cas_record()
     if record is None:
         return None
     student_id, password_ciphertext = record
@@ -233,7 +179,6 @@ def patch_school_cas_config(
         raise ValueError("Both id and password are required after patch merge")
 
     _write_db_shared_cas_ciphertext(next_id, next_password_ciphertext)
-    _delete_legacy_vault_credentials()
 
 
 def get_school_cas_credentials_status() -> dict:

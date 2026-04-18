@@ -55,32 +55,18 @@ def test_set_school_cas_credentials_stores_encrypted_password_in_database():
     assert password == "super-secret"
 
 
-def test_reading_shared_cas_migrates_legacy_env_vault_to_database():
-    env_vars_module.upsert_env_var_value("SUSTECH_STUDENT_ID", "11810000")
-    env_vars_module.upsert_env_var_value("SUSTECH_CAS_PASSWORD", "from-vault")
+def test_reading_shared_cas_falls_back_to_process_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SUSTECH_STUDENT_ID", "11810000")
+    monkeypatch.setenv("SUSTECH_CAS_PASSWORD", "from-env")
 
     student_id, password = school_credentials.resolve_bb_credentials(None, None)
 
     assert student_id == "11810000"
-    assert password == "from-vault"
-    assert env_vars_module.get_env_var_value("SUSTECH_STUDENT_ID") is None
-    assert env_vars_module.get_env_var_value("SUSTECH_CAS_PASSWORD") is None
-
-    with sqlite3.connect(school_credentials._DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT student_id, password_ciphertext FROM school_credentials WHERE scope = ?",
-            (school_credentials._CREDENTIAL_SCOPE,),
-        ).fetchone()
-
-    assert row is not None
-    assert row[0] == "11810000"
-    assert "from-vault" not in row[1]
+    assert password == "from-env"
 
 
-def test_clear_school_cas_credentials_removes_database_and_legacy_vault():
+def test_clear_school_cas_credentials_removes_database_record():
     school_credentials.set_school_cas_credentials("12345678", "super-secret")
-    env_vars_module.upsert_env_var_value("SUSTECH_STUDENT_ID", "stale-user")
-    env_vars_module.upsert_env_var_value("SUSTECH_CAS_PASSWORD", "stale-password")
 
     school_credentials.clear_school_cas_credentials()
 
@@ -91,8 +77,6 @@ def test_clear_school_cas_credentials_removes_database_and_legacy_vault():
         ).fetchone()
 
     assert row == (0,)
-    assert env_vars_module.get_env_var_value("SUSTECH_STUDENT_ID") is None
-    assert env_vars_module.get_env_var_value("SUSTECH_CAS_PASSWORD") is None
 
 
 def test_get_cas_route_is_not_exposed(client: TestClient):
