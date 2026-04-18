@@ -8,7 +8,7 @@ class ToolArtifact(TypedDict):
     break_agent_loop: bool
 
 from .bb import get_calendar_events
-from .code_interpreter import python_interpreter
+from .code_interpreter import code_interpreter
 from .core_memory import core_memory_insert
 from .tis import get_schedule, query_available_courses
 from .routine_tools import (
@@ -45,7 +45,7 @@ tools = [
     update_scheduled_task,
     delete_scheduled_task,
     core_memory_insert,
-    python_interpreter,
+    code_interpreter,
     quiz_card,
     webfetch,
     websearch,

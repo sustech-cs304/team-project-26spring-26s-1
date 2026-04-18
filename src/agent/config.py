@@ -85,6 +85,9 @@ class RagCloudConfig(BaseModel):
     timeout_ms: int = 30000
     api_key: str = ""
 
+class CodeInterpreterConfig(BaseModel):
+    default_timeout_s: float = Field(default=10.0, gt=0)
+
 
 class SkillsCloudConfig(BaseModel):
     base_url: str = ""
@@ -101,6 +104,7 @@ class AppConfig(BaseModel):
     rag_cloud: RagCloudConfig = RagCloudConfig()
     skills_cloud: SkillsCloudConfig = Field(default_factory=SkillsCloudConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
+    code_interpreter: CodeInterpreterConfig = Field(default_factory=CodeInterpreterConfig)
 
 
 DEFAULT_CONFIG_PATH = "config.yaml"
