@@ -1,0 +1,181 @@
+name: Tauri Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      frontend_ref:
+        description: Frontend branch, tag, or SHA to package
+        required: false
+        default: frontend
+        type: string
+      backend_ref:
+        description: Backend branch, tag, or SHA to package
+        required: false
+        default: backend-new
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FRONTEND_REF: ${{ github.event.inputs.frontend_ref || 'frontend' }}
+  BACKEND_REF: ${{ github.event.inputs.backend_ref || 'backend-new' }}
+  TAURI_TARGET: x86_64-pc-windows-msvc
+  ARTIFACT_NAME: opencrab-windows-installer
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout frontend source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.FRONTEND_REF }}
+          path: frontend
+          fetch-depth: 0
+
+      - name: Checkout backend source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BACKEND_REF }}
+          path: backend
+          fetch-depth: 0
+
+      - name: Summarize selected refs
+        run: |
+          Write-Host "frontend ref: $env:FRONTEND_REF"
+          Write-Host "backend ref: $env:BACKEND_REF"
+          Write-Host "runner image: windows-2022"
+          Write-Host "artifact name: $env:ARTIFACT_NAME"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build outputs
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            frontend/src-tauri -> target
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          working-directory: backend
+
+      - name: Verify packaging prerequisites
+        run: |
+          if (-not (Select-String -Path frontend/src-tauri/Cargo.toml -Pattern 'tauri-plugin-shell = "2"' -Quiet)) {
+            throw "src-tauri/Cargo.toml is missing tauri-plugin-shell. Merge the sidecar-related Tauri changes into the frontend ref before running this workflow."
+          }
+
+          if (-not (Select-String -Path frontend/src-tauri/src/lib.rs -Pattern 'tauri_plugin_shell::init' -Quiet)) {
+            throw "src-tauri/src/lib.rs is missing tauri_plugin_shell::init(). Merge the sidecar-related Tauri changes into the frontend ref before running this workflow."
+          }
+
+          if (-not (Select-String -Path frontend/src-tauri/tauri.conf.json -Pattern '"externalBin"' -Quiet)) {
+            throw "src-tauri/tauri.conf.json is missing bundle.externalBin. Merge the sidecar-related Tauri changes into the frontend ref before running this workflow."
+          }
+
+          if (-not (Select-String -Path frontend/src-tauri/capabilities/default.json -Pattern '"shell:allow-spawn"' -Quiet)) {
+            throw "src-tauri/capabilities/default.json is missing shell spawn permissions. Merge the sidecar-related Tauri changes into the frontend ref before running this workflow."
+          }
+
+      - name: Sync backend dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Build backend sidecar
+        working-directory: backend
+        run: |
+          $uvicornMain = (uv run python -c "import importlib, inspect, pathlib; m = importlib.import_module('uvicorn.main'); print(pathlib.Path(inspect.getfile(m)).resolve())").Trim()
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to resolve uvicorn.main path."
+          }
+
+          if (-not (Test-Path $uvicornMain)) {
+            throw "Resolved uvicorn.main path does not exist: $uvicornMain"
+          }
+
+          uv run --with pyinstaller pyinstaller `
+            --onefile `
+            --name agent-backend `
+            --paths src `
+            --exclude-module tests `
+            --hidden-import agent.main `
+            --collect-submodules agent `
+            --collect-data agent `
+            $uvicornMain
+
+      - name: Stage sidecar for Tauri
+        run: |
+          $destDir = "frontend/src-tauri/binaries"
+          $dest = Join-Path $destDir "agent-backend-$env:TAURI_TARGET.exe"
+
+          if (-not (Test-Path backend/dist/agent-backend.exe)) {
+            throw "backend/dist/agent-backend.exe was not produced."
+          }
+
+          New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+          Copy-Item backend/dist/agent-backend.exe $dest -Force
+
+          if (-not (Test-Path $dest)) {
+            throw "Failed to stage sidecar at $dest."
+          }
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Tauri installer
+        working-directory: frontend
+        run: npm exec tauri build -- --target $env:TAURI_TARGET --bundles nsis
+
+      - name: Collect installer artifact
+        run: |
+          $bundleDir = "frontend/src-tauri/target/$env:TAURI_TARGET/release/bundle/nsis"
+          $artifactDir = "artifacts"
+
+          $installer = Get-ChildItem -Path $bundleDir -Filter *.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $installer) {
+            throw "No NSIS installer .exe was produced under $bundleDir."
+          }
+
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          Copy-Item $installer.FullName (Join-Path $artifactDir "$env:ARTIFACT_NAME.exe") -Force
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: artifacts/${{ env.ARTIFACT_NAME }}.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Write job summary
+        run: |
+          @"
+          ## Tauri Windows Release
+          - frontend ref: $env:FRONTEND_REF
+          - backend ref: $env:BACKEND_REF
+          - target: $env:TAURI_TARGET
+          - output: artifact $env:ARTIFACT_NAME.exe
+          - bundle type: NSIS installer
+          - config.yaml: add it manually beside the installed main program after packaging
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
