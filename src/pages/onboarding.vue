@@ -102,37 +102,30 @@
                                 </template>
                                 <template v-else-if="step.key === 'campus'">
                                     <div class="d-flex flex-column ga-4">
-                                        <div class="d-flex flex-wrap align-center justify-space-between ga-3">
+                                        <div>
                                             <div>
                                                 <div class="text-subtitle-1 font-weight-bold mb-2">SUSTech 教务配置</div>
                                             </div>
-                                            <v-switch v-model="campusAuth.enabled" color="primary" density="compact" hide-details inset>
-                                                <template #label>
-                                                    <span class="text-body-2">启用账号配置</span>
-                                                </template>
-                                            </v-switch>
                                         </div>
 
-                                        <div v-if="campusAuth.enabled">
-                                            <v-row density="comfortable">
-                                                <v-col cols="12" md="6">
-                                                    <div class="text-caption text-medium-emphasis mb-2">学号</div>
-                                                    <v-text-field v-model="campusAuth.studentId" density="compact" variant="outlined" rounded="lg"
-                                                        placeholder="例如 12110001" hide-details />
-                                                </v-col>
-                                                <v-col cols="12" md="6">
-                                                    <div class="text-caption text-medium-emphasis mb-2">密码</div>
-                                                    <v-text-field v-model="campusAuth.password" density="compact" variant="outlined" rounded="lg"
-                                                        :type="showCampusPassword ? 'text' : 'password'" hide-details>
-                                                        <template #append-inner>
-                                                            <v-btn size="x-small" variant="text" icon @click="showCampusPassword = !showCampusPassword">
-                                                                <v-icon size="16">{{ showCampusPassword ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
-                                                            </v-btn>
-                                                        </template>
-                                                    </v-text-field>
-                                                </v-col>
-                                            </v-row>
-                                        </div>
+                                        <v-row density="comfortable">
+                                            <v-col cols="12" md="6">
+                                                <div class="text-caption text-medium-emphasis mb-2">学号</div>
+                                                <v-text-field v-model="campusAuth.studentId" density="compact" variant="outlined" rounded="lg"
+                                                    placeholder="例如 12110001" hide-details />
+                                            </v-col>
+                                            <v-col cols="12" md="6">
+                                                <div class="text-caption text-medium-emphasis mb-2">密码</div>
+                                                <v-text-field v-model="campusAuth.password" density="compact" variant="outlined" rounded="lg"
+                                                    :type="showCampusPassword ? 'text' : 'password'" hide-details>
+                                                    <template #append-inner>
+                                                        <v-btn size="x-small" variant="text" icon @click="showCampusPassword = !showCampusPassword">
+                                                            <v-icon size="16">{{ showCampusPassword ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
+                                                        </v-btn>
+                                                    </template>
+                                                </v-text-field>
+                                            </v-col>
+                                        </v-row>
                                     </div>
                                 </template>
 
@@ -142,12 +135,7 @@
                                             <div class="text-subtitle-1 font-weight-bold mb-2">模型配置</div>
                                         </div>
                                         <v-row density="comfortable">
-                                            <v-col cols="12" md="4">
-                                                <div class="text-caption text-medium-emphasis mb-2">Provider</div>
-                                                <v-select v-model="modelEndpoint.provider" density="compact" variant="outlined" rounded="lg"
-                                                    :items="providerOptions" hide-details />
-                                            </v-col>
-                                            <v-col cols="12" md="8">
+                                            <v-col cols="12">
                                                 <div class="text-caption text-medium-emphasis mb-2">Base URL</div>
                                                 <v-text-field v-model="modelEndpoint.baseUrl" density="compact" variant="outlined" rounded="lg"
                                                     placeholder="https://api.openai.com/v1" hide-details />
@@ -305,6 +293,8 @@
 <script setup lang="ts">
     import confetti from 'canvas-confetti'
     import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+    import { patchCas } from '@/api/cas'
+    import { patchConfig } from '@/api/config'
     import { defaultRagSyncState, getApiErrorMessage, getRagSyncStatus, triggerRagSync, type RagSyncState } from '@/api/rag'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
 
@@ -334,7 +324,6 @@
         { label: '研究生', value: 'graduate' },
     ]
     const majorOptions = [{ label: 'Computer Science', value: 'cs' }]
-    const providerOptions = ['OpenAI', 'DeepSeek', 'Local Ollama']
     const router = useRouter()
     const route = useRoute()
     const {
@@ -364,13 +353,19 @@
     let confettiInstance: ReturnType<typeof confetti.create> | null = null
 
     const currentMeta = computed<StepMeta>(() => steps[currentStep.value] ?? steps[0]!)
+    const hasAnyCampusAuthValue = computed(() =>
+        !!campusAuth.studentId.trim() || !!campusAuth.password.trim()
+    )
+    const hasCompleteCampusAuth = computed(() =>
+        !!campusAuth.studentId.trim() && !!campusAuth.password.trim()
+    )
 
     const canProceed = computed(() => {
         switch (steps[currentStep.value]?.key) {
             case 'profile':
                 return userProfile.oneLineProfile.trim().length > 0
             case 'campus':
-                return !campusAuth.enabled || (!!campusAuth.studentId.trim() && !!campusAuth.password.trim())
+                return !hasAnyCampusAuthValue.value || hasCompleteCampusAuth.value
             case 'model':
                 return !!modelEndpoint.baseUrl.trim() && !!modelEndpoint.apiKey.trim() && !!modelEndpoint.modelName.trim()
             case 'knowledge':
@@ -452,9 +447,61 @@
 
     function persistCurrentStep () {
         saveUserProfile({ ...userProfile })
-        saveCampusAuth({ ...campusAuth })
+        saveCampusAuth({
+            ...campusAuth,
+            enabled: hasCompleteCampusAuth.value,
+        })
         saveModelEndpoint({ ...modelEndpoint })
         saveKnowledgePack({ ...knowledgePack })
+        void syncCurrentStepToBackend(steps[currentStep.value]?.key)
+    }
+
+    async function syncCurrentStepToBackend (stepKey?: StepKey) {
+        if (!stepKey) return
+
+        const syncJobs: Promise<unknown>[] = []
+
+        if ((stepKey === 'campus' || stepKey === 'finish') && hasCompleteCampusAuth.value) {
+            syncJobs.push(syncCampusAuthToBackend())
+        }
+
+        if ((stepKey === 'model' || stepKey === 'finish')
+            && modelEndpoint.baseUrl.trim()
+            && modelEndpoint.apiKey.trim()
+            && modelEndpoint.modelName.trim()) {
+            syncJobs.push(syncModelConfigToBackend())
+        }
+
+        if (!syncJobs.length) return
+
+        await Promise.all(syncJobs)
+    }
+
+    async function syncCampusAuthToBackend () {
+        try {
+            await patchCas({
+                id: campusAuth.studentId.trim(),
+                password: campusAuth.password,
+            })
+        } catch (error) {
+            showNotice(getApiErrorMessage(error, 'CAS 配置同步失败，本地草稿已保留'), 'warning')
+        }
+    }
+
+    async function syncModelConfigToBackend () {
+        try {
+            await patchConfig({
+                api: {
+                    agent: {
+                        base_url: modelEndpoint.baseUrl.trim(),
+                        api_key: modelEndpoint.apiKey.trim(),
+                        model: modelEndpoint.modelName.trim(),
+                    },
+                },
+            })
+        } catch (error) {
+            showNotice(getApiErrorMessage(error, '模型配置同步失败，本地草稿已保留'), 'warning')
+        }
     }
 
     function stopKnowledgePolling () {

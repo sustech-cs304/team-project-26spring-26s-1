@@ -1,439 +1,335 @@
 <template>
     <v-container fluid class="d-flex flex-column h-100 pa-0">
-
-        <!-- 头部 -->
         <v-sheet class="px-6 py-4 border-b flex-shrink-0" color="transparent">
             <div class="d-flex align-center ga-3">
                 <v-icon size="20" color="primary">mdi-cog-outline</v-icon>
                 <div>
-                    <div class="text-h6 font-weight-bold" style="font-size:18px;line-height:1.3;">Global Settings</div>
-                    <div class="text-caption text-medium-emphasis">Configure all infrastructure for your AI Agent</div>
+                    <div class="text-h6 font-weight-bold">Global Settings</div>
+                    <div class="text-caption text-medium-emphasis">
+                        Manage runtime config while keeping your local preferences together.
+                    </div>
                 </div>
             </div>
         </v-sheet>
 
-        <!-- 左右分栏 -->
         <div class="d-flex flex-grow-1 overflow-hidden">
-
-            <!-- 左侧标签导航 -->
             <v-sheet class="flex-shrink-0 overflow-y-auto border-e" color="transparent" width="220">
                 <v-list density="compact" class="pa-2" nav>
                     <v-list-item v-for="tab in tabs" :key="tab.id" :prepend-icon="tab.icon" :title="tab.label"
                         :active="activeTab === tab.id" active-color="primary" rounded="lg"
-                        :append-icon="activeTab === tab.id ? 'mdi-chevron-right' : undefined"
                         @click="activeTab = tab.id" />
                 </v-list>
             </v-sheet>
 
-            <!-- 右侧内容区 -->
             <v-sheet color="transparent" class="flex-grow-1 overflow-y-auto">
-                <div class="pa-6" style="max-width:672px;margin:0 auto;">
+                <v-container max-width="672" class="pa-6">
+                    <template v-if="isConfigTab(activeTab)">
+                        <v-alert rounded="lg" variant="tonal" type="info" class="mb-6">
+                            These changes are applied immediately to the running backend and persisted to `config.yaml`.
+                        </v-alert>
 
-                    <!-- LLM Configuration -->
-                    <div v-if="activeTab === 'llm'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">LLM Configuration</div>
-                        <div class="text-caption text-medium-emphasis mb-6" style="line-height:1.625;">
-                            Configure the language model API used by your AI Agent. Supports OpenAI-compatible
-                            endpoints.
+                        <div v-if="loadingConfig" class="d-flex justify-center py-16">
+                            <v-progress-circular indeterminate color="primary" />
                         </div>
 
-                        <!-- API Provider -->
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">API Provider</div>
-                            <v-btn-toggle v-model="llm.provider" mandatory density="compact" variant="outlined"
-                                color="primary">
-                                <v-btn v-for="p in apiProviders" :key="p" :value="p" size="small">{{ p }}</v-btn>
-                            </v-btn-toggle>
-                        </div>
+                        <div v-else-if="loadError">
+                            <v-alert rounded="lg" variant="tonal" type="error" class="mb-5">
+                                {{ loadError }}
+                            </v-alert>
 
-                        <!-- API Key -->
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">API Key</div>
-                            <div class="position-relative">
-                                <v-text-field v-model="llm.apiKey" density="compact" variant="outlined"
-                                    :type="showApiKey ? 'text' : 'password'" hide-details
-                                    style="font-family:monospace;font-size:14px;" class="pr-10" />
-                                <v-btn icon variant="text" size="x-small" class="position-absolute"
-                                    style="right:8px;top:50%;transform:translateY(-50%);"
-                                    @click="showApiKey = !showApiKey">
-                                    <v-icon size="16" class="text-medium-emphasis">{{ showApiKey ? 'mdi-eye-off' :
-                                        'mdi-eye' }}</v-icon>
-                                </v-btn>
-                            </div>
-                        </div>
-
-                        <!-- Base URL -->
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Base URL</div>
-                            <v-text-field v-model="llm.baseUrl" density="compact" variant="outlined" hide-details
-                                style="font-family:monospace;font-size:14px;" />
-                            <div class="text-medium-emphasis mt-1" style="font-size:11px;">
-                                Supports reverse proxy or custom relay endpoints.
-                            </div>
-                        </div>
-
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Model Name</div>
-                            <v-text-field v-model="llm.modelName" density="compact" variant="outlined" hide-details
-                                style="font-family:monospace;font-size:14px;" />
-                        </div>
-
-                        <!-- 连接测试 -->
-                        <div class="d-flex align-center ga-3 mb-5">
-                            <v-btn size="small" variant="outlined" :loading="llm.testing" @click="testConnection">
-                                <v-icon v-if="llm.testing" size="14" class="spin-icon mr-1">mdi-loading</v-icon>
-                                Test Connection
+                            <v-btn size="small" rounded="lg" variant="flat" color="primary" @click="loadConfigData">
+                                Retry Loading Config
                             </v-btn>
-                            <div v-if="llm.testResult === 'success'" class="d-flex align-center ga-1">
-                                <v-icon size="16" color="success">mdi-check-circle</v-icon>
-                                <span class="text-caption font-weight-bold text-success">{{ llm.testMessage || 'Connection successful' }}</span>
-                            </div>
-                            <div v-else-if="llm.testResult === 'failed'" class="d-flex align-center ga-1">
-                                <v-icon size="16" color="error">mdi-close-circle</v-icon>
-                                <span class="text-caption font-weight-bold text-error">{{ llm.testMessage || 'Connection failed' }}</span>
-                            </div>
                         </div>
 
-                        <v-divider class="mb-4" />
-                        <v-btn size="small" color="primary" @click="saveLlmConfiguration">Save Configuration</v-btn>
-                    </div>
+                        <div v-else-if="activeTab === 'llm'">
+                            <div class="text-subtitle-1 font-weight-bold mb-1">LLM Configuration</div>
+                            <div class="text-caption text-medium-emphasis mb-4">
+                                Edit the backend `api.agent` endpoint used as the primary model.
+                            </div>
 
-                    <!-- Credential Vault -->
+                            <div class="d-flex align-center ga-2 flex-wrap mb-5">
+                                <v-chip size="small" rounded="lg" variant="tonal" color="primary">
+                                    {{ llm.provider }}
+                                </v-chip>
+                                <div class="text-caption text-medium-emphasis">
+                                    Provider type is kept from backend config and is not editable here.
+                                </div>
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Base URL</div>
+                                <v-text-field v-model="llm.baseUrl" density="compact" variant="solo-filled" flat
+                                    rounded="lg" hide-details="auto" />
+                                <div class="text-caption text-medium-emphasis mt-1">
+                                    Supports reverse proxy or custom relay endpoints.
+                                </div>
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">API Key</div>
+                                <v-text-field v-model="llm.apiKey" density="compact" variant="solo-filled" flat
+                                    rounded="lg" hide-details="auto"
+                                    :type="visibility.llmApiKey ? 'text' : 'password'"
+                                    :append-inner-icon="visibility.llmApiKey ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                    @click:append-inner="visibility.llmApiKey = !visibility.llmApiKey" />
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Model Name</div>
+                                <v-text-field v-model="llm.modelName" density="compact" variant="solo-filled" flat
+                                    rounded="lg" hide-details="auto" />
+                            </div>
+
+                            <v-divider class="mb-4" />
+                            <v-btn size="small" rounded="lg" variant="flat" color="primary" :loading="saving.llm"
+                                @click="saveLlmConfiguration">
+                                Save Configuration
+                            </v-btn>
+                        </div>
+
+                        <div v-else-if="activeTab === 'file'">
+                            <div class="text-subtitle-1 font-weight-bold mb-1">File Configuration</div>
+                            <div class="text-caption text-medium-emphasis mb-6">
+                                Only the `file.mineru.api_key` value is editable from the frontend.
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">MinerU API Key</div>
+                                <v-text-field v-model="fileConfig.mineruApiKey" density="compact"
+                                    variant="solo-filled" flat rounded="lg" hide-details="auto"
+                                    :type="visibility.fileApiKey ? 'text' : 'password'"
+                                    :append-inner-icon="visibility.fileApiKey ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                    @click:append-inner="visibility.fileApiKey = !visibility.fileApiKey" />
+                            </div>
+
+                            <v-divider class="mb-4" />
+                            <v-btn size="small" rounded="lg" variant="flat" color="primary" :loading="saving.file"
+                                @click="saveFileConfiguration">
+                                Save File Configuration
+                            </v-btn>
+                        </div>
+
+                        <div v-else-if="activeTab === 'onebot'">
+                            <div class="text-subtitle-1 font-weight-bold mb-1">OneBot</div>
+                            <div class="text-caption text-medium-emphasis mb-6">
+                                Edit all backend-managed OneBot keys.
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Access Token</div>
+                                <v-text-field v-model="onebot.accessToken" density="compact" variant="solo-filled"
+                                    flat rounded="lg" hide-details="auto"
+                                    :type="visibility.onebotAccessToken ? 'text' : 'password'"
+                                    :append-inner-icon="visibility.onebotAccessToken ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                    @click:append-inner="visibility.onebotAccessToken = !visibility.onebotAccessToken" />
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Superuser ID</div>
+                                <v-text-field v-model="onebot.superuserId" density="compact" variant="solo-filled"
+                                    flat rounded="lg" hide-details="auto" />
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Command Name</div>
+                                <v-text-field v-model="onebot.commandName" density="compact" variant="solo-filled"
+                                    flat rounded="lg" hide-details="auto" />
+                            </div>
+
+                            <v-divider class="mb-4" />
+                            <v-btn size="small" rounded="lg" variant="flat" color="primary"
+                                :loading="saving.onebot" @click="saveOnebotConfiguration">
+                                Save OneBot Settings
+                            </v-btn>
+                        </div>
+                    </template>
+
                     <div v-else-if="activeTab === 'credentials'">
                         <div class="text-subtitle-1 font-weight-bold mb-1">Credential Vault</div>
-                        <div class="text-caption text-medium-emphasis mb-4" style="line-height:1.625;">
+                        <div class="text-caption text-medium-emphasis mb-4">
                             Securely store and manage your SUSTech authentication credentials.
                         </div>
 
-                        <!-- 安全提示 -->
-                        <v-sheet rounded="lg" color="surface-variant" class="px-4 py-3 mb-5 text-body-2 text-medium-emphasis">
-                            All credentials are encrypted locally using AES-256 and never transmitted to external
-                            servers.
-                        </v-sheet>
+                        <v-alert rounded="lg" variant="tonal" type="info" class="mb-5">
+                            Credentials are kept locally for the current frontend flow and synced to the backend CAS
+                            configuration when you save.
+                        </v-alert>
 
-                        <!-- 认证方式 -->
-                        <div class="mb-5">
-                            <v-switch v-model="creds.enabled" density="compact" hide-details color="primary">
-                                <template #label>
-                                    <span class="text-body-2">Enable SUSTech account configuration</span>
-                                </template>
-                            </v-switch>
+                        <div class="mb-4">
+                            <div class="text-caption text-medium-emphasis mb-1">Student ID</div>
+                            <v-text-field v-model="creds.studentId" density="compact" variant="solo-filled" flat
+                                rounded="lg" placeholder="e.g. 12110001" hide-details="auto" />
                         </div>
 
-                        <!-- CAS Login 表单 -->
-                        <template v-if="creds.enabled">
-                            <div class="mb-4">
-                                <div class="text-caption text-medium-emphasis mb-1">Student ID</div>
-                                <v-text-field v-model="creds.studentId" density="compact" variant="outlined"
-                                    placeholder="e.g. 12110001" hide-details style="font-family:monospace;" />
-                            </div>
-                            <div class="mb-5">
-                                <div class="text-caption text-medium-emphasis mb-1">Password</div>
-                                <div class="position-relative">
-                                    <v-text-field v-model="creds.password" density="compact" variant="outlined"
-                                        :type="showPassword ? 'text' : 'password'" hide-details />
-                                    <v-btn icon variant="text" size="x-small" class="position-absolute"
-                                        style="right:8px;top:50%;transform:translateY(-50%);"
-                                        @click="showPassword = !showPassword">
-                                        <v-icon size="16" class="text-medium-emphasis">{{ showPassword ? 'mdi-eye-off' :
-                                            'mdi-eye' }}</v-icon>
-                                    </v-btn>
-                                </div>
-                            </div>
-                        </template>
-
-                        <!-- Session Cookie 表单 -->
-                        <template v-else>
-                            <div class="text-caption text-medium-emphasis mb-5">
-                                This configuration is optional. You can enable it later from onboarding or settings.
-                            </div>
-                        </template>
+                        <div class="mb-5">
+                            <div class="text-caption text-medium-emphasis mb-1">Password</div>
+                            <v-text-field v-model="creds.password" density="compact" variant="solo-filled" flat
+                                rounded="lg" hide-details="auto" :type="showPassword ? 'text' : 'password'"
+                                :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                @click:append-inner="showPassword = !showPassword" />
+                        </div>
 
                         <v-divider class="mb-4" />
-                        <v-btn size="small" color="primary" @click="saveCredentialVault">Save Credentials</v-btn>
+                        <v-btn size="small" rounded="lg" variant="flat" color="primary"
+                            :loading="saving.credentials" @click="saveCredentialVault">
+                            Save Credentials
+                        </v-btn>
                     </div>
 
-                    <!-- System Preferences -->
-                    <div v-else-if="activeTab === 'preferences'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">System Preferences</div>
-                        <div class="text-caption text-medium-emphasis mb-6">Configure system-level behavior of the
-                            agent.</div>
+                    <div v-else-if="activeTab === 'appearance'">
+                        <div class="text-subtitle-1 font-weight-bold mb-1">Appearance</div>
+                        <div class="text-caption text-medium-emphasis mb-6">
+                            Customize the look and feel of the application.
+                        </div>
 
-                        <!-- 唤醒快捷键 -->
                         <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Wake Shortcut</div>
-                            <div class="d-flex align-center ga-2">
-                                <div class="shortcut-display flex-grow-1"
-                                    :class="{ 'shortcut-display--recording': prefs.recording }">
-                                    <v-icon size="14" class="text-medium-emphasis mr-2">mdi-keyboard-outline</v-icon>
-                                    <span v-if="prefs.recording" class="recording-text">Press a key
-                                        combination...</span>
-                                    <span v-else>{{ prefs.shortcut }}</span>
-                                </div>
-                                <v-btn variant="outlined" size="small" style="font-size:12px;"
-                                    :disabled="prefs.recording" @click="startRecording">
-                                    {{ prefs.recording ? 'Recording...' : 'Record' }}
-                                </v-btn>
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Theme</div>
+                            <v-item-group v-model="appearance.theme" mandatory>
+                                <v-row density="compact">
+                                    <v-col v-for="option in themeOptions" :key="option.value" cols="12" sm="4">
+                                        <v-item v-slot="{ isSelected, toggle }" :value="option.value">
+                                            <v-card rounded="lg" elevation="0"
+                                                :variant="isSelected ? 'tonal' : 'outlined'"
+                                                :color="isSelected ? 'primary' : undefined" @click="toggle">
+                                                <v-card-text class="pa-4">
+                                                    <div class="d-flex align-start ga-3">
+                                                        <v-avatar rounded="lg" size="32"
+                                                            :color="isSelected ? 'primary' : 'surface-variant'"
+                                                            :variant="isSelected ? 'flat' : 'tonal'">
+                                                            <v-icon size="18">{{ option.icon }}</v-icon>
+                                                        </v-avatar>
+                                                        <div class="flex-grow-1">
+                                                            <div class="d-flex align-center justify-space-between ga-2">
+                                                                <div class="text-body-2 font-weight-medium">
+                                                                    {{ option.label }}
+                                                                </div>
+                                                                <v-icon v-if="isSelected" size="16" color="primary">
+                                                                    mdi-check-circle
+                                                                </v-icon>
+                                                            </div>
+                                                            <div class="text-caption text-medium-emphasis mt-1">
+                                                                {{ option.description }}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </v-card-text>
+                                            </v-card>
+                                        </v-item>
+                                    </v-col>
+                                </v-row>
+                            </v-item-group>
+                            <div class="text-caption text-medium-emphasis mt-1">
+                                System mode follows your OS appearance settings.
                             </div>
                         </div>
 
-                        <!-- 开机自启动 -->
-                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-5" max-width="420">
-                            <div class="d-flex align-center ga-3">
-                                <v-icon size="16" class="text-medium-emphasis">mdi-power</v-icon>
-                                <div class="flex-grow-1">
-                                    <div class="text-body-large font-weight-medium">Launch on Startup</div>
-                                    <div class="text-medium-emphasis" style="font-size:11px;">
-                                        Automatically start Agent when system boots
-                                    </div>
-                                </div>
-                                <v-switch v-model="prefs.startup" density="compact" hide-details color="primary" />
-                            </div>
+                        <v-divider class="mb-4" />
+                        <v-btn size="small" rounded="lg" variant="flat" color="primary" @click="saveAppearance">
+                            Save Appearance
+                        </v-btn>
+                    </div>
+
+                    <div v-else-if="activeTab === 'notifications'">
+                        <div class="text-subtitle-1 font-weight-bold mb-1">Notifications</div>
+                        <div class="text-caption text-medium-emphasis mb-6">
+                            Control when and how you receive notifications.
+                        </div>
+
+                        <v-card rounded="lg" elevation="0" border class="mb-4" max-width="420">
+                            <v-list bg-color="transparent" density="comfortable">
+                                <v-list-item prepend-icon="mdi-bell-outline" title="Enable Notifications"
+                                    subtitle="Master toggle for all notification types.">
+                                    <template #append>
+                                        <v-switch v-model="notif.enabled" density="compact" hide-details
+                                            color="primary" />
+                                    </template>
+                                </v-list-item>
+                            </v-list>
                         </v-card>
 
-                        <!-- 工作区路径 -->
+                        <v-card rounded="lg" elevation="0" border class="mb-5 overflow-hidden" max-width="420">
+                            <v-list bg-color="transparent" density="comfortable">
+                                <template v-for="(item, index) in notifItems" :key="item.key">
+                                    <v-list-item :prepend-icon="item.icon" :title="item.label"
+                                        :subtitle="item.description">
+                                        <template #append>
+                                            <v-switch v-model="notif[item.key]" density="compact" hide-details
+                                                color="primary" :disabled="!notif.enabled" />
+                                        </template>
+                                    </v-list-item>
+                                    <v-divider v-if="index < notifItems.length - 1" />
+                                </template>
+                            </v-list>
+                        </v-card>
+
+                        <v-divider class="mb-4 mt-2" />
+                        <v-btn size="small" rounded="lg" variant="flat" color="primary"
+                            @click="saveNotificationSettings">
+                            Save Notification Settings
+                        </v-btn>
+                    </div>
+
+                    <div v-else-if="activeTab === 'preferences'">
+                        <div class="text-subtitle-1 font-weight-bold mb-1">System Preferences</div>
+                        <div class="text-caption text-medium-emphasis mb-6">
+                            Configure system-level behavior of the agent.
+                        </div>
+
                         <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Default Workspace
-                                Path</div>
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Wake Shortcut</div>
+                            <v-text-field
+                                :model-value="prefs.recording ? 'Listening for a shortcut...' : prefs.shortcut"
+                                density="compact" variant="solo-filled" flat rounded="lg" hide-details readonly
+                                prepend-inner-icon="mdi-keyboard-outline"
+                                :color="prefs.recording ? 'primary' : undefined" />
+                            <div class="d-flex align-center ga-2 mt-3">
+                                <v-btn variant="tonal" rounded="lg" size="small" :disabled="prefs.recording"
+                                    @click="startRecording">
+                                    {{ prefs.recording ? 'Recording...' : 'Record' }}
+                                </v-btn>
+                                <v-chip v-if="prefs.recording" size="small" rounded="lg" variant="tonal"
+                                    color="warning">
+                                    Press a key combination...
+                                </v-chip>
+                            </div>
+                        </div>
+
+                        <v-card variant="outlined" rounded="lg" class="mb-5" max-width="420">
+                            <v-list bg-color="transparent" density="comfortable">
+                                <v-list-item prepend-icon="mdi-power" title="Launch on Startup"
+                                    subtitle="Automatically start Agent when system boots.">
+                                    <template #append>
+                                        <v-switch v-model="prefs.startup" density="compact" hide-details
+                                            color="primary" />
+                                    </template>
+                                </v-list-item>
+                            </v-list>
+                        </v-card>
+
+                        <div class="mb-5">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">
+                                Default Workspace Path
+                            </div>
                             <div class="d-flex ga-2">
-                                <v-text-field v-model="prefs.workspacePath" density="compact" variant="outlined"
-                                    hide-details style="font-family:monospace;font-size:14px;" class="flex-grow-1" />
-                                <v-btn variant="outlined" size="small" style="font-size:12px;">
-                                    <v-icon size="14" class="mr-1">mdi-folder-outline</v-icon>
+                                <v-text-field v-model="prefs.workspacePath" density="compact" variant="solo-filled"
+                                    flat rounded="lg" hide-details="auto" class="flex-grow-1" />
+                                <v-btn variant="text" rounded="lg" size="small" prepend-icon="mdi-folder-outline"
+                                    @click="browseWorkspace">
                                     Browse
                                 </v-btn>
                             </div>
-                            <div class="text-medium-emphasis mt-1" style="font-size:11px;">
+                            <div class="text-caption text-medium-emphasis mt-1">
                                 Agent will organize files, download courseware, and store data in this directory.
                             </div>
                         </div>
 
                         <v-divider class="mb-4" />
-                        <v-btn size="small" color="primary" @click="">Save Preferences</v-btn>
+                        <v-btn size="small" rounded="lg" variant="flat" color="primary" @click="savePreferences">
+                            Save Preferences
+                        </v-btn>
                     </div>
-
-                    <!-- Appearance -->
-                    <div v-else-if="activeTab === 'appearance'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">Appearance</div>
-                        <div class="text-caption text-medium-emphasis mb-6">Customize the look and feel of the
-                            application.</div>
-
-                        <!-- Theme -->
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Theme</div>
-                            <v-btn-toggle v-model="appearance.theme" mandatory density="compact" variant="outlined"
-                                color="primary">
-                                <v-btn v-for="t in themeOptions" :key="t.value" :value="t.value" size="small">
-                                    <v-icon :size="13" class="mr-1">{{ t.icon }}</v-icon>{{ t.label }}
-                                </v-btn>
-                            </v-btn-toggle>
-                            <div class="text-medium-emphasis mt-1" style="font-size:11px;">
-                                System mode follows your OS appearance settings.
-                            </div>
-                        </div>
-
-                        <!-- Language -->
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Language</div>
-                            <v-select v-model="appearance.language" :items="languageOptions" item-title="label"
-                                item-value="value" density="compact" variant="outlined" hide-details
-                                style="max-width:260px;" />
-                        </div>
-
-                        <!-- Font Size -->
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">
-                                UI Font Size — <span class="text-primary font-weight-bold">{{ appearance.fontSize
-                                    }}px</span>
-                            </div>
-                            <v-slider v-model="appearance.fontSize" :min="11" :max="16" :step="1" density="compact"
-                                hide-details thumb-label color="primary" style="max-width:320px;" />
-                        </div>
-
-                        <!-- Compact Mode -->
-                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-5" max-width="420">
-                            <div class="d-flex align-center ga-3">
-                                <v-icon size="16" class="text-medium-emphasis">mdi-arrow-collapse-all</v-icon>
-                                <div class="flex-grow-1">
-                                    <div class="text-body-large font-weight-medium">Compact Mode</div>
-                                    <div class="text-medium-emphasis" style="font-size:11px;">
-                                        Reduce padding and spacing for a denser layout
-                                    </div>
-                                </div>
-                                <v-switch v-model="appearance.compact" density="compact" hide-details color="primary" />
-                            </div>
-                        </v-card>
-
-                        <v-divider class="mb-4" />
-                        <v-btn size="small" color="primary">Save Appearance</v-btn>
-                    </div>
-
-                    <!-- Window -->
-                    <div v-else-if="activeTab === 'window'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">Window</div>
-                        <div class="text-caption text-medium-emphasis mb-6">Control how the application window behaves
-                            (Tauri desktop).
-                        </div>
-
-                        <!-- Always on Top -->
-                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-3" max-width="420">
-                            <div class="d-flex align-center ga-3">
-                                <v-icon size="16" class="text-medium-emphasis">mdi-pin-outline</v-icon>
-                                <div class="flex-grow-1">
-                                    <div class="text-body-large font-weight-medium">Always on Top</div>
-                                    <div class="text-medium-emphasis" style="font-size:11px;">Keep window above all
-                                        other application windows</div>
-                                </div>
-                                <v-switch v-model="winSettings.alwaysOnTop" density="compact" hide-details
-                                    color="primary" @update:model-value="applyAlwaysOnTop" />
-                            </div>
-                        </v-card>
-
-                        <!-- Minimize to Tray -->
-                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-3" max-width="420">
-                            <div class="d-flex align-center ga-3">
-                                <v-icon size="16" class="text-medium-emphasis">mdi-tray-arrow-down</v-icon>
-                                <div class="flex-grow-1">
-                                    <div class="text-body-large font-weight-medium">Minimize to System Tray</div>
-                                    <div class="text-medium-emphasis" style="font-size:11px;">Closing the window hides
-                                        to tray instead of quitting</div>
-                                </div>
-                                <v-switch v-model="winSettings.minimizeToTray" density="compact" hide-details
-                                    color="primary" />
-                            </div>
-                        </v-card>
-
-                        <!-- Start Minimized -->
-                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-5" max-width="420">
-                            <div class="d-flex align-center ga-3">
-                                <v-icon size="16" class="text-medium-emphasis">mdi-window-minimize</v-icon>
-                                <div class="flex-grow-1">
-                                    <div class="text-body-large font-weight-medium">Start Minimized</div>
-                                    <div class="text-medium-emphasis" style="font-size:11px;">Launch in background
-                                        without showing the window</div>
-                                </div>
-                                <v-switch v-model="winSettings.startMinimized" density="compact" hide-details
-                                    color="primary" />
-                            </div>
-                        </v-card>
-
-                        <!-- Window Opacity -->
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">
-                                Window Opacity — <span class="text-primary font-weight-bold">{{ winSettings.opacity
-                                    }}%</span>
-                            </div>
-                            <v-slider v-model="winSettings.opacity" :min="60" :max="100" :step="5" density="compact"
-                                hide-details thumb-label color="primary" style="max-width:320px;" />
-                        </div>
-
-                        <v-divider class="mb-4" />
-                        <v-btn size="small" color="primary">Apply Window Settings</v-btn>
-                    </div>
-
-                    <!-- Notifications -->
-                    <div v-else-if="activeTab === 'notifications'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">Notifications</div>
-                        <div class="text-caption text-medium-emphasis mb-6">Control when and how you receive
-                            notifications.</div>
-
-                        <!-- Master Switch -->
-                        <v-card variant="outlined" rounded="lg" class="pa-3 mb-4" max-width="420">
-                            <div class="d-flex align-center ga-3">
-                                <v-icon size="16" :color="notif.enabled ? 'primary' : undefined"
-                                    class="text-medium-emphasis">mdi-bell-outline</v-icon>
-                                <div class="flex-grow-1">
-                                    <div class="text-body-large font-weight-medium">Enable Notifications</div>
-                                    <div class="text-medium-emphasis" style="font-size:11px;">Master toggle for all
-                                        notification types</div>
-                                </div>
-                                <v-switch v-model="notif.enabled" density="compact" hide-details color="primary" />
-                            </div>
-                        </v-card>
-
-                        <div :class="{ 'opacity-40': !notif.enabled }" style="pointer-events: var(--notif-events);"
-                            :style="{ pointerEvents: notif.enabled ? 'auto' : 'none' }">
-                            <v-card v-for="item in notifItems" :key="item.key" variant="outlined" rounded="lg"
-                                class="pa-3 mb-3" max-width="420">
-                                <div class="d-flex align-center ga-3">
-                                    <v-icon size="16" class="text-medium-emphasis">{{ item.icon }}</v-icon>
-                                    <div class="flex-grow-1">
-                                        <div class="text-body-large font-weight-medium">{{ item.label }}</div>
-                                        <div class="text-medium-emphasis" style="font-size:11px;">{{ item.desc }}</div>
-                                    </div>
-                                    <v-switch v-model="(notif as any)[item.key]" density="compact" hide-details
-                                        color="primary" />
-                                </div>
-                            </v-card>
-                        </div>
-
-                        <v-divider class="mb-4 mt-2" />
-                        <v-btn size="small" color="primary">Save Notification Settings</v-btn>
-                    </div>
-
-                    <!-- Capability Hub -->
-                    <div v-else-if="activeTab === 'capabilities'">
-                        <div class="d-flex align-center justify-space-between mb-1">
-                            <div class="text-subtitle-1 font-weight-bold">Capability Hub</div>
-                            <v-chip variant="outlined" size="x-small" density="compact" color="primary"
-                                style="font-size:10px;">
-                                {{capabilities.filter(c => c.enabled).length}}/{{ capabilities.length }} active
-                            </v-chip>
-                        </div>
-                        <div class="text-caption text-medium-emphasis mb-6" style="line-height:1.625;">
-                            Manage all detected .py plugins and their permissions. Toggle capabilities to control agent
-                            behavior.
-                        </div>
-
-                        <div class="d-flex flex-column ga-2">
-                            <v-card v-for="cap in capabilities" :key="cap.id"
-                                :color="cap.enabled ? 'primary' : undefined"
-                                :variant="cap.enabled ? 'tonal' : 'outlined'" rounded="lg">
-                                <!-- 折叠态 -->
-                                <div class="d-flex align-center ga-3 px-4 py-3">
-                                    <v-btn icon variant="text" size="x-small" @click="cap.expanded = !cap.expanded">
-                                        <v-icon size="14" class="text-medium-emphasis"
-                                            :style="cap.expanded ? 'transform:rotate(180deg)' : ''">
-                                            mdi-chevron-down
-                                        </v-icon>
-                                    </v-btn>
-                                    <div class="flex-grow-1 min-width-0">
-                                        <div class="d-flex align-center ga-2">
-                                            <span class="text-body-large font-weight-medium">{{ cap.name }}</span>
-                                            <code class="text-medium-emphasis"
-                                                style="font-size:10px;">{{ cap.filename }}</code>
-                                        </div>
-                                        <div class="text-medium-emphasis mt-1" style="font-size:11px;">{{
-                                            cap.description }}</div>
-                                    </div>
-                                    <v-switch v-model="cap.enabled" density="compact" hide-details color="primary" />
-                                </div>
-                                <!-- 展开态 -->
-                                <template v-if="cap.expanded">
-                                    <v-divider />
-                                    <div class="px-4 py-3">
-                                        <div class="d-flex align-center ga-1 mb-2">
-                                            <v-icon size="14"
-                                                class="text-medium-emphasis">mdi-information-outline</v-icon>
-                                            <span class="text-caption font-weight-bold text-medium-emphasis">Required
-                                                Permissions</span>
-                                        </div>
-                                        <div class="d-flex flex-column ga-1 pl-5">
-                                            <div v-for="perm in cap.permissions" :key="perm"
-                                                class="d-flex align-center ga-2">
-                                                <v-icon size="6" :color="cap.enabled ? 'primary' : undefined"
-                                                    style="opacity:0.7;">mdi-circle</v-icon>
-                                                <span style="font-size:11px;" class="text-medium-emphasis">{{ perm
-                                                }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </template>
-                            </v-card>
-                        </div>
-                    </div>
-
-                </div>
+                </v-container>
             </v-sheet>
         </div>
 
@@ -444,22 +340,45 @@
 </template>
 
 <script setup lang="ts">
-    import { testModelConnection } from '@/api/model'
+    import { patchCas } from '@/api/cas'
+    import { getConfig, patchConfig, type AppConfig, type DeepPartial, type LLMEndpointConfig, type LLMProviderType } from '@/api/config'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
     import { useRoute } from 'vue-router'
+    import { useTheme } from 'vuetify'
+
+    type SettingsTabId =
+        | 'llm'
+        | 'file'
+        | 'onebot'
+        | 'credentials'
+        | 'appearance'
+        | 'notifications'
+        | 'preferences'
+
+    type NoticeColor = 'success' | 'error' | 'warning'
+    type ThemePreference = 'system' | 'light' | 'dark'
+    type NotificationKey = 'taskComplete' | 'taskFailed' | 'calendarReminder'
+
+    interface NotificationItem {
+        key: NotificationKey
+        icon: string
+        label: string
+        description: string
+    }
 
     const route = useRoute()
-    const activeTab = ref('llm')
-    const { modelEndpoint, campusAuth, saveModelEndpoint, saveCampusAuth } = useOnboardingConfig()
+    const theme = useTheme()
+    const activeTab = ref<SettingsTabId>('llm')
+    const { campusAuth, saveCampusAuth } = useOnboardingConfig()
 
-    const tabs = [
+    const tabs: { id: SettingsTabId, icon: string, label: string }[] = [
         { id: 'llm', icon: 'mdi-brain', label: 'LLM Configuration' },
+        { id: 'file', icon: 'mdi-file-outline', label: 'File' },
+        { id: 'onebot', icon: 'mdi-robot-outline', label: 'OneBot' },
         { id: 'credentials', icon: 'mdi-shield-check', label: 'Credential Vault' },
         { id: 'appearance', icon: 'mdi-palette-outline', label: 'Appearance' },
-        { id: 'window', icon: 'mdi-application-outline', label: 'Window' },
         { id: 'notifications', icon: 'mdi-bell-outline', label: 'Notifications' },
         { id: 'preferences', icon: 'mdi-wrench-outline', label: 'System Preferences' },
-        { id: 'capabilities', icon: 'mdi-puzzle-outline', label: 'Capability Hub' },
     ]
 
     watch(
@@ -467,233 +386,385 @@
         (value) => {
             if (typeof value !== 'string') return
             if (tabs.some(tab => tab.id === value)) {
-                activeTab.value = value
+                activeTab.value = value as SettingsTabId
             }
         },
         { immediate: true }
     )
 
-    // LLM
-    const apiProviders = ['OpenAI', 'DeepSeek', 'Local Ollama']
-    const showApiKey = ref(false)
-    const llm = ref({
-        provider: modelEndpoint.provider,
-        apiKey: modelEndpoint.apiKey,
-        baseUrl: modelEndpoint.baseUrl,
-        modelName: modelEndpoint.modelName,
-        testing: false,
-        testResult: '' as '' | 'success' | 'failed',
-        testMessage: '',
+    const notice = reactive({
+        show: false,
+        text: '',
+        color: 'success' as NoticeColor,
     })
 
-    const testConnection = async () => {
-        if (!llm.value.baseUrl.trim() || !llm.value.apiKey.trim() || !llm.value.modelName.trim()) {
-            llm.value.testResult = 'failed'
-            llm.value.testMessage = '请先填写完整的模型配置'
-            showNotice('请先填写完整的模型配置', 'error')
-            return
-        }
+    const loadingConfig = ref(true)
+    const loadError = ref('')
+    const loadedConfig = shallowRef<AppConfig | null>(null)
 
-        llm.value.testing = true
-        llm.value.testResult = ''
-        llm.value.testMessage = ''
+    const saving = reactive({
+        llm: false,
+        file: false,
+        onebot: false,
+        credentials: false,
+    })
 
-        try {
-            const result = await testModelConnection({
-                provider: llm.value.provider,
-                apiKey: llm.value.apiKey.trim(),
-                baseUrl: llm.value.baseUrl.trim(),
-                modelName: llm.value.modelName.trim(),
-            })
+    const visibility = reactive({
+        llmApiKey: false,
+        fileApiKey: false,
+        onebotAccessToken: false,
+    })
 
-            llm.value.testResult = result.success ? 'success' : 'failed'
-            llm.value.testMessage = result.message || (result.success ? '连接成功' : '连接失败')
+    const llm = reactive({
+        provider: 'OpenAI' as LLMProviderType,
+        baseUrl: '',
+        apiKey: '',
+        modelName: '',
+    })
 
-            if (result.success) {
-                showNotice(llm.value.testMessage)
-            } else {
-                showNotice(llm.value.testMessage, 'error')
-            }
-        } catch (error: any) {
-            const status = error?.response?.status
-            const serverMessage = error?.response?.data?.message || error?.response?.data?.detail
-            llm.value.testResult = 'failed'
-            llm.value.testMessage = status === 404
-                ? '测试接口暂未接入后端'
-                : (serverMessage || error?.message || '连接测试失败')
-            showNotice(llm.value.testMessage, 'error')
-        } finally {
-            llm.value.testing = false
-        }
-    }
+    const fileConfig = reactive({
+        mineruApiKey: '',
+    })
 
-    // Credentials
+    const onebot = reactive({
+        accessToken: '',
+        superuserId: '',
+        commandName: '',
+    })
+
     const showPassword = ref(false)
-    const creds = ref({
-        enabled: campusAuth.enabled,
+    const creds = reactive({
         studentId: campusAuth.studentId,
         password: campusAuth.password,
     })
 
-    const notice = reactive({
-        show: false,
-        text: '',
-        color: 'success',
+    const themeOptions = [
+        {
+            value: 'system' as ThemePreference,
+            label: 'System',
+            icon: 'mdi-monitor',
+            description: 'Follow your operating system setting.',
+        },
+        {
+            value: 'light' as ThemePreference,
+            label: 'Light',
+            icon: 'mdi-white-balance-sunny',
+            description: 'Use a brighter interface for daytime work.',
+        },
+        {
+            value: 'dark' as ThemePreference,
+            label: 'Dark',
+            icon: 'mdi-weather-night',
+            description: 'Use a darker interface for lower-glare viewing.',
+        },
+    ]
+
+    const appearance = reactive({
+        theme: 'system' as ThemePreference,
     })
 
-    const showNotice = (text: string, color: 'success' | 'error' = 'success') => {
+    const notif = reactive({
+        enabled: true,
+        taskComplete: true,
+        taskFailed: true,
+        calendarReminder: true,
+    })
+
+    const notifItems: NotificationItem[] = [
+        {
+            key: 'taskComplete',
+            icon: 'mdi-check-circle-outline',
+            label: 'Task Completed',
+            description: 'Notify when a scheduled task finishes successfully.',
+        },
+        {
+            key: 'taskFailed',
+            icon: 'mdi-alert-circle-outline',
+            label: 'Task Failed',
+            description: 'Notify when a task encounters an error or failure.',
+        },
+        {
+            key: 'calendarReminder',
+            icon: 'mdi-calendar-clock-outline',
+            label: 'Calendar Reminders',
+            description: 'Remind you before upcoming events.',
+        },
+    ]
+
+    const prefs = reactive({
+        shortcut: 'Alt + Space',
+        recording: false,
+        startup: true,
+        workspacePath: '~/Documents/OpenCrab',
+    })
+
+    let shortcutHandler: ((event: KeyboardEvent) => void) | null = null
+    let recordTimer: ReturnType<typeof setTimeout> | null = null
+
+    function isConfigTab(tab: SettingsTabId) {
+        return tab === 'llm' || tab === 'file' || tab === 'onebot'
+    }
+
+    function showNotice(text: string, color: NoticeColor = 'success') {
         notice.show = true
         notice.text = text
         notice.color = color
     }
 
-    const saveLlmConfiguration = () => {
-        saveModelEndpoint({
-            provider: llm.value.provider,
-            apiKey: llm.value.apiKey.trim(),
-            baseUrl: llm.value.baseUrl.trim(),
-            modelName: llm.value.modelName.trim(),
-        })
-        showNotice('LLM configuration saved')
+    function getErrorMessage(error: unknown, fallback: string) {
+        const responseMessage = (error as any)?.response?.data?.message || (error as any)?.response?.data?.detail
+        return responseMessage || (error as any)?.message || fallback
     }
 
-    const saveCredentialVault = () => {
-        saveCampusAuth({
-            enabled: creds.value.enabled,
-            studentId: creds.value.studentId.trim(),
-            password: creds.value.password,
-        })
-        showNotice('Credential vault saved')
+    function applyConfig(config: AppConfig) {
+        loadedConfig.value = config
+
+        llm.provider = config.api.agent.type
+        llm.baseUrl = config.api.agent.base_url || ''
+        llm.apiKey = config.api.agent.api_key || ''
+        llm.modelName = config.api.agent.model || ''
+
+        fileConfig.mineruApiKey = config.file?.mineru?.api_key || ''
+
+        onebot.accessToken = config.onebot?.access_token || ''
+        onebot.superuserId = config.onebot?.superuser_id || ''
+        onebot.commandName = config.onebot?.command_name || ''
     }
 
-    // Preferences
-    const prefs = ref({ shortcut: 'Alt + Space', recording: false, startup: true, workspacePath: '~/Documents/OpenCrab' })
-    let recordTimer: ReturnType<typeof setTimeout>
-    const startRecording = () => {
-        prefs.value.recording = true
-        const handler = (e: KeyboardEvent) => {
-            e.preventDefault()
-            const parts: string[] = []
-            if (e.ctrlKey) parts.push('Ctrl')
-            if (e.altKey) parts.push('Alt')
-            if (e.shiftKey) parts.push('Shift')
-            if (e.metaKey) parts.push('Meta')
-            if (e.key && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key))
-                parts.push(e.key.toUpperCase())
-            if (parts.length > 1) {
-                prefs.value.shortcut = parts.join(' + ')
-                prefs.value.recording = false
-                window.removeEventListener('keydown', handler)
-                clearTimeout(recordTimer)
-            }
+    async function loadConfigData() {
+        loadingConfig.value = true
+        loadError.value = ''
+
+        try {
+            const config = await getConfig()
+            applyConfig(config)
+        } catch (error) {
+            loadError.value = getErrorMessage(error, 'Failed to load backend config.')
+        } finally {
+            loadingConfig.value = false
         }
-        window.addEventListener('keydown', handler)
-        recordTimer = setTimeout(() => {
-            prefs.value.recording = false
-            window.removeEventListener('keydown', handler)
+    }
+
+    function buildLlmPatch(): DeepPartial<AppConfig> | null {
+        const snapshot = loadedConfig.value
+        if (!snapshot) return null
+
+        const agentPatch: DeepPartial<LLMEndpointConfig> = {}
+        const nextBaseUrl = llm.baseUrl.trim()
+        const nextApiKey = llm.apiKey.trim()
+        const nextModel = llm.modelName.trim()
+
+        if (nextBaseUrl !== snapshot.api.agent.base_url) {
+            agentPatch.base_url = nextBaseUrl
+        }
+
+        if (nextApiKey !== snapshot.api.agent.api_key) {
+            agentPatch.api_key = nextApiKey
+        }
+
+        if (nextModel !== snapshot.api.agent.model) {
+            agentPatch.model = nextModel
+        }
+
+        if (!Object.keys(agentPatch).length) return null
+
+        return {
+            api: {
+                agent: agentPatch,
+            },
+        }
+    }
+
+    function buildFilePatch(): DeepPartial<AppConfig> | null {
+        const snapshot = loadedConfig.value
+        if (!snapshot) return null
+
+        const nextApiKey = fileConfig.mineruApiKey.trim()
+        if (nextApiKey === snapshot.file.mineru.api_key) return null
+
+        return {
+            file: {
+                mineru: {
+                    api_key: nextApiKey,
+                },
+            },
+        }
+    }
+
+    function buildOnebotPatch(): DeepPartial<AppConfig> | null {
+        const snapshot = loadedConfig.value
+        if (!snapshot) return null
+
+        const onebotPatch: DeepPartial<AppConfig['onebot']> = {}
+        const nextAccessToken = onebot.accessToken.trim()
+        const nextSuperuserId = onebot.superuserId.trim()
+        const nextCommandName = onebot.commandName.trim()
+
+        if (nextAccessToken !== snapshot.onebot.access_token) {
+            onebotPatch.access_token = nextAccessToken
+        }
+
+        if (nextSuperuserId !== snapshot.onebot.superuser_id) {
+            onebotPatch.superuser_id = nextSuperuserId
+        }
+
+        if (nextCommandName !== snapshot.onebot.command_name) {
+            onebotPatch.command_name = nextCommandName
+        }
+
+        if (!Object.keys(onebotPatch).length) return null
+
+        return {
+            onebot: onebotPatch,
+        }
+    }
+
+    async function saveLlmConfiguration() {
+        const delta = buildLlmPatch()
+        if (!delta) {
+            showNotice('No main model changes to save.', 'warning')
+            return
+        }
+
+        saving.llm = true
+
+        try {
+            const config = await patchConfig(delta)
+            applyConfig(config)
+            showNotice('Main model configuration saved.')
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save main model configuration.'), 'error')
+        } finally {
+            saving.llm = false
+        }
+    }
+
+    async function saveFileConfiguration() {
+        const delta = buildFilePatch()
+        if (!delta) {
+            showNotice('No file API key changes to save.', 'warning')
+            return
+        }
+
+        saving.file = true
+
+        try {
+            const config = await patchConfig(delta)
+            applyConfig(config)
+            showNotice('File configuration saved.')
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save file configuration.'), 'error')
+        } finally {
+            saving.file = false
+        }
+    }
+
+    async function saveOnebotConfiguration() {
+        const delta = buildOnebotPatch()
+        if (!delta) {
+            showNotice('No OneBot changes to save.', 'warning')
+            return
+        }
+
+        saving.onebot = true
+
+        try {
+            const config = await patchConfig(delta)
+            applyConfig(config)
+            showNotice('OneBot configuration saved.')
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save OneBot configuration.'), 'error')
+        } finally {
+            saving.onebot = false
+        }
+    }
+
+    async function saveCredentialVault() {
+        saving.credentials = true
+
+        saveCampusAuth({
+            enabled: true,
+            studentId: creds.studentId.trim(),
+            password: creds.password,
+        })
+
+        try {
+            const response = await patchCas({
+                id: creds.studentId.trim(),
+                password: creds.password,
+            })
+            showNotice(response.message || 'Credential vault saved')
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save CAS credentials.'), 'error')
+        } finally {
+            saving.credentials = false
+        }
+    }
+
+    function saveAppearance() {
+        theme.global.name.value = appearance.theme
+        showNotice('Appearance saved')
+    }
+
+    function saveNotificationSettings() {
+        showNotice('Notification settings saved')
+    }
+
+    function cleanupShortcutCapture() {
+        if (shortcutHandler) {
+            window.removeEventListener('keydown', shortcutHandler)
+            shortcutHandler = null
+        }
+
+        if (recordTimer) {
+            clearTimeout(recordTimer)
+            recordTimer = null
+        }
+    }
+
+    function startRecording() {
+        cleanupShortcutCapture()
+        prefs.recording = true
+
+        shortcutHandler = (event: KeyboardEvent) => {
+            event.preventDefault()
+
+            const parts: string[] = []
+            if (event.ctrlKey) parts.push('Ctrl')
+            if (event.altKey) parts.push('Alt')
+            if (event.shiftKey) parts.push('Shift')
+            if (event.metaKey) parts.push('Meta')
+            if (event.key && !['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) {
+                parts.push(event.key.toUpperCase())
+            }
+
+            if (parts.length < 2) return
+
+            prefs.shortcut = parts.join(' + ')
+            prefs.recording = false
+            cleanupShortcutCapture()
+        }
+
+        window.addEventListener('keydown', shortcutHandler)
+        recordTimer = window.setTimeout(() => {
+            prefs.recording = false
+            cleanupShortcutCapture()
         }, 5000)
     }
 
-    // Capabilities
-    const capabilities = ref([
-        { id: 1, name: 'Web Search', filename: 'web_search.py', description: 'Search the internet for real-time information.', enabled: true, expanded: false, permissions: ['Network access', 'External API calls', 'Response caching'] },
-        { id: 2, name: 'File Manager', filename: 'file_manager.py', description: 'Read, write, and organize files in the workspace.', enabled: true, expanded: false, permissions: ['File system read', 'File system write', 'Directory listing'] },
-        { id: 3, name: 'Email Sender', filename: 'email_sender.py', description: 'Send emails on behalf of the user.', enabled: false, expanded: false, permissions: ['SMTP access', 'Contact list read', 'Email compose'] },
-        { id: 4, name: 'Calendar Sync', filename: 'calendar_sync.py', description: 'Read and write calendar events.', enabled: true, expanded: false, permissions: ['Calendar read', 'Calendar write', 'External calendar API'] },
-    ])
-
-    // Appearance
-    const themeOptions = [
-        { value: 'system', label: 'System', icon: 'mdi-monitor' },
-        { value: 'light', label: 'Light', icon: 'mdi-white-balance-sunny' },
-        { value: 'dark', label: 'Dark', icon: 'mdi-weather-night' },
-    ]
-    const languageOptions = [
-        { value: 'en', label: 'English' },
-        { value: 'zh', label: '中文 (简体)' },
-        { value: 'zh-tw', label: '中文 (繁體)' },
-        { value: 'ja', label: '日本語' },
-    ]
-    const appearance = ref({ theme: 'system', language: 'en', fontSize: 13, compact: true })
-
-    // Window (Tauri)
-    const winSettings = ref({ alwaysOnTop: false, minimizeToTray: true, startMinimized: false, opacity: 100 })
-
-    const toggleAlwaysOnTop = async () => {
-        winSettings.value.alwaysOnTop = !winSettings.value.alwaysOnTop
-        await applyAlwaysOnTop(winSettings.value.alwaysOnTop)
+    function browseWorkspace() {
+        showNotice('Workspace picker is not connected yet. You can still edit the path manually.', 'warning')
     }
 
-    const applyAlwaysOnTop = async (val: boolean | null) => {
-        const v = val ?? false
-        try {
-            const { getCurrentWindow } = await import('@tauri-apps/api/window')
-            await getCurrentWindow().setAlwaysOnTop(v)
-        } catch { /* web fallback: ignore */ }
+    function savePreferences() {
+        showNotice('Preferences saved')
     }
 
-    // Notifications
-    const notif = ref({ enabled: true, taskComplete: true, taskFailed: true, calendarReminder: true, sound: false, desktopBanner: true })
-    const notifItems = [
-        { key: 'taskComplete', icon: 'mdi-check-circle-outline', label: 'Task Completed', desc: 'Notify when a scheduled task finishes successfully' },
-        { key: 'taskFailed', icon: 'mdi-alert-circle-outline', label: 'Task Failed', desc: 'Notify when a task encounters an error or failure' },
-        { key: 'calendarReminder', icon: 'mdi-calendar-clock-outline', label: 'Calendar Reminders', desc: 'Remind you before upcoming events (15 min default)' },
-        { key: 'sound', icon: 'mdi-volume-high', label: 'Notification Sound', desc: 'Play a sound when a notification arrives' },
-        { key: 'desktopBanner', icon: 'mdi-message-badge-outline', label: 'Desktop Banner', desc: 'Show OS-level desktop banner notifications' },
-    ]
+    onMounted(() => {
+        void loadConfigData()
+    })
+
+    onBeforeUnmount(() => {
+        cleanupShortcutCapture()
+    })
 </script>
-
-<style scoped>
-
-    /* 旋转动画（框架无法实现） */
-    .spin-icon {
-        animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-        from {
-            transform: rotate(0deg);
-        }
-
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    /* 快捷键录制显示框（需要特定样式状态切换，保留） */
-    .shortcut-display {
-        height: 36px;
-        border-radius: 8px;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        display: flex;
-        align-items: center;
-        padding: 0 12px;
-        font-family: monospace;
-        font-size: 14px;
-        transition: border-color 0.15s, background 0.15s, color 0.15s;
-    }
-
-    .shortcut-display--recording {
-        border-color: rgb(var(--v-theme-primary));
-        background: rgba(var(--v-theme-primary), 0.05);
-        color: rgb(var(--v-theme-primary));
-    }
-
-    .recording-text {
-        font-family: inherit;
-        font-size: 12px;
-        animation: pulse-opacity 1.5s ease-in-out infinite;
-    }
-
-    @keyframes pulse-opacity {
-
-        0%,
-        100% {
-            opacity: 1;
-        }
-
-        50% {
-            opacity: 0.5;
-        }
-    }
-</style>
