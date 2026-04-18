@@ -9,7 +9,7 @@ import orjson
 import sqlite_vec
 
 from agent.config import AppConfig
-from agent.tools.embedding_store import NAMESPACE, build_indexed_store
+from agent.services.embedding_store import NAMESPACE, build_indexed_store
 
 
 @dataclass(slots=True)

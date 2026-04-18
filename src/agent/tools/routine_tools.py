@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from agent.api.routine_events import DEFAULT_EVENT_COLOR
 from agent.db.models import RoutineEvent, RoutineSource
-from agent.tools.calendar_time import (
+from agent.services.calendar_time import (
     format_local_hms,
     format_local_ymd,
     local_ymdhms_to_unix_sec,
@@ -180,6 +180,7 @@ def add_routine_event(
             src = _ensure_agent_source(session)
             ev = RoutineEvent(
                 time_=ts,
+                end_time_=ts,
                 event_name=title,
                 detail=(description or "").strip(),
                 color=DEFAULT_EVENT_COLOR,

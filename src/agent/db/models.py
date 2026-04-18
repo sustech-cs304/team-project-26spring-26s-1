@@ -86,66 +86,90 @@ class IMPermission(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc))
 
 
-class TaskRun(Base):
-    """Single execution of a scheduled task."""
+class ScheduledTask(Base):
+    """Scheduled task definition plus current/latest execution state."""
 
-    __tablename__ = "task_runs"
+    __tablename__ = "tasks"
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4()),
     )
-    task_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending",
-    )
-    trigger: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="manual",
-    )
-    override_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
-    started_at: Mapped[dt.datetime] = mapped_column(
+    name: Mapped[str] = mapped_column(String(1024), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    cron_expression: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    execution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="script")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="enabled", index=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    env_var_refs_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
     )
-    finished_at: Mapped[dt.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
     )
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    last_run_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_run_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    last_run_trigger: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
-    logs: Mapped[list["TaskRunLog"]] = relationship(
-        "TaskRunLog",
-        back_populates="run",
+    logs: Mapped[list["TaskLog"]] = relationship(
+        "TaskLog",
+        back_populates="task",
         cascade="all, delete-orphan",
-        order_by="TaskRunLog.seq",
+        order_by="TaskLog.seq",
     )
 
     __table_args__ = (
-        Index("ix_task_runs_task_started", "task_id", "started_at"),
+        Index("ix_tasks_status_updated", "status", "updated_at"),
     )
 
 
-class TaskRunLog(Base):
-    """Single log line belonging to a :class:`TaskRun`."""
+class TaskLog(Base):
+    """Per-log entry storage with denormalized run metadata."""
 
-    __tablename__ = "task_run_logs"
+    __tablename__ = "task_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("task_runs.id", ondelete="CASCADE"), nullable=False,
+    task_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
-    level: Mapped[str] = mapped_column(
-        String(10), nullable=False, default="stdout",
+    level: Mapped[str] = mapped_column(String(10), nullable=False, default="info")
+    log_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entry_status: Mapped[str] = mapped_column(String(20), nullable=False, default="success")
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timestamp: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
     )
-    message: Mapped[str] = mapped_column(Text, nullable=False)
-    ts: Mapped[dt.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
-    )
-    entry_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    input_params_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    run_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    run_trigger: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    run_override_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    run_started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    run_finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    run_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    run: Mapped["TaskRun"] = relationship("TaskRun", back_populates="logs")
+    task: Mapped["ScheduledTask"] = relationship("ScheduledTask", back_populates="logs")
 
     __table_args__ = (
-        Index("ix_task_run_logs_run_seq", "run_id", "seq"),
+        Index("ix_task_logs_task_run_seq", "task_id", "run_id", "seq"),
+        Index("ix_task_logs_task_started", "task_id", "run_started_at"),
+        Index("ix_task_logs_run_started", "run_id", "run_started_at"),
     )
 
 
@@ -198,6 +222,7 @@ class RoutineEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     time_: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_time_: Mapped[int] = mapped_column(Integer, nullable=False)
     event_name: Mapped[str] = mapped_column(String(1024), nullable=False)
     detail: Mapped[str] = mapped_column(Text, nullable=False)
     color: Mapped[str] = mapped_column(String(32), nullable=False, default="#3b82f6")
@@ -207,4 +232,22 @@ class RoutineEvent(Base):
 
     source: Mapped["RoutineSource | None"] = relationship(
         "RoutineSource", back_populates="events", lazy="joined"
+    )
+
+
+class Credential(Base):
+    __tablename__ = "credentials"
+
+    credential_type: Mapped[str] = mapped_column("type", String(64), primary_key=True)
+    credential_key: Mapped[str] = mapped_column("key", String(1024), primary_key=True)
+    value_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
     )

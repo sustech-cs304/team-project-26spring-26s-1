@@ -1,13 +1,8 @@
-"""Scheduled tasks CRUD — storage matches HTTP ``/api/tasks`` (``cron/<id>.json`` + ``agent.db`` runs)."""
+"""Async scheduled task tools backed by the shared task runtime."""
 from __future__ import annotations
 
-import asyncio
-import json
-import sqlite3
-import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
-from pathlib import Path
 
 from langchain.tools import tool
 from pydantic import (
@@ -20,23 +15,10 @@ from pydantic import (
 )
 
 from agent.api.env_vars import validate_env_var_key
-from agent.api.task import (
-    LastRunTrigger,
-    LogEntryResponse,
-    _TASK_EXECUTOR_MAX_CONCURRENT,
-    _TASK_EXECUTOR_TIMEOUT_S,
-    _coerce_log_entry,
-    _legacy_level_message_to_log_dict,
-    _paginate,
-    _run_dict_to_execution_response,
-    _runs_for_task,
-)
-from agent.task_executor import TaskExecutor, delete_run_json_files_for_task
+from agent.api.task import LastRunTrigger, _coerce_log_entry, _run_dict_to_execution_response
+from agent.services.task_runtime import get_task_runtime
 
-CRON_DIR = Path("./cron")
 _MAX_TEXT = 1024
-
-# Agent tool schema: only ``script`` today; extend this Literal when new modes exist.
 AgentExecutionMode = Literal["script"]
 
 
@@ -45,15 +27,14 @@ def _now_iso() -> str:
 
 
 def _iso_like_to_calendar_date(value: Any) -> str | None:
-    """ISO timestamps or unix seconds → ``YYYY-MM-DD`` for agent-facing tool payloads."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
         try:
-            from agent.tools.calendar_time import unix_sec_to_local_ymdhms
+            from agent.services.calendar_time import unix_sec_to_local_ymdhms
 
-            p = unix_sec_to_local_ymdhms(int(value))
-            return f"{p['year']:04d}-{p['month']:02d}-{p['day']:02d}"
+            parsed = unix_sec_to_local_ymdhms(int(value))
+            return f"{parsed['year']:04d}-{parsed['month']:02d}-{parsed['day']:02d}"
         except (ValueError, OSError, OverflowError):
             return None
     s = str(value).strip()
@@ -62,19 +43,18 @@ def _iso_like_to_calendar_date(value: Any) -> str | None:
     try:
         if s.endswith("Z"):
             s = s[:-1] + "+00:00"
-        dt = datetime.fromisoformat(s)
-        return dt.date().isoformat()
+        return datetime.fromisoformat(s).date().isoformat()
     except ValueError:
         return None
 
 
-def _enrich_iso_date_fields(d: dict, keys: tuple[str, ...]) -> dict:
-    out = dict(d)
-    for k in keys:
-        if k in out and out[k] is not None:
-            cal = _iso_like_to_calendar_date(out[k])
+def _enrich_iso_date_fields(payload: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    out = dict(payload)
+    for key in keys:
+        if key in out and out[key] is not None:
+            cal = _iso_like_to_calendar_date(out[key])
             if cal is not None:
-                out[f"{k}_date"] = cal
+                out[f"{key}_date"] = cal
     return out
 
 
@@ -82,131 +62,23 @@ _TASK_PUBLIC_DATE_KEYS = ("created_at", "started_at", "updated_at", "last_run_at
 _RUN_SUMMARY_DATE_KEYS = ("started_at", "finished_at")
 
 
-def _ensure_cron_dir() -> None:
-    CRON_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def _normalize_id(raw: str) -> str:
-    s = (raw or "").strip()
-    if not s or "/" in s or "\\" in s or ".." in s:
-        return ""
-    return s
-
-
-def _read_task(task_id: str) -> dict | None:
-    tid = _normalize_id(task_id)
-    if not tid:
-        return None
-    p = CRON_DIR / f"{tid}.json"
-    if not p.is_file():
-        return None
-    try:
-        return json.loads(p.read_text("utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-
-
-def _write_task(task: dict) -> None:
-    _ensure_cron_dir()
-    p = CRON_DIR / f"{task['id']}.json"
-    p.write_text(json.dumps(task, ensure_ascii=False, indent=2), "utf-8")
-
-
-def _delete_task_file(task_id: str) -> bool:
-    tid = _normalize_id(task_id)
-    if not tid:
-        return False
-    p = CRON_DIR / f"{tid}.json"
-    if not p.is_file():
-        return False
-    p.unlink()
-    return True
-
-
-def _all_tasks() -> list[dict]:
-    _ensure_cron_dir()
-    out: list[dict] = []
-    for p in sorted(CRON_DIR.glob("*.json")):
-        if p.name == "env_vars.json":
-            continue
-        try:
-            out.append(json.loads(p.read_text("utf-8")))
-        except (json.JSONDecodeError, OSError):
-            continue
-    return out
-
-
-def _paginate(items: list, page: int, page_size: int) -> tuple[list, int]:
-    total = len(items)
-    start = (page - 1) * page_size
-    return items[start : start + page_size], total
-
-
-def _delete_runs_for_task_sync(task_id: str) -> None:
-    delete_run_json_files_for_task(task_id)
-    path = str("./agent.db")
-    conn = sqlite3.connect(path, timeout=10)
-    try:
-        conn.execute(
-            "DELETE FROM task_run_logs WHERE run_id IN (SELECT id FROM task_runs WHERE task_id = ?)",
-            (task_id,),
-        )
-        conn.execute("DELETE FROM task_runs WHERE task_id = ?", (task_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _normalize_env_keys(keys: list[str] | None) -> tuple[list[dict] | None, str | None]:
+def _normalize_env_keys(keys: list[str] | None) -> tuple[list[dict[str, str]] | None, str | None]:
     if keys is None:
         return None, None
-    out: list[dict] = []
-    for k in keys:
+    out: list[dict[str, str]] = []
+    for key in keys:
         try:
-            out.append({"key": validate_env_var_key(k)})
+            out.append({"key": validate_env_var_key(key)})
         except ValueError:
-            return None, f"Invalid env var key: {k!r}"
+            return None, f"Invalid env var key: {key!r}"
     return out, None
 
 
-def _cron_string_is_llm_sentinel(s: str) -> bool:
-    """True for empty string or the literal words None/null (models often send these instead of omitting the field)."""
-    t = s.strip()
-    if not t:
+def _cron_string_is_llm_sentinel(value: str) -> bool:
+    stripped = value.strip()
+    if not stripped:
         return True
-    return t.lower() in ("none", "null", "nil")
-
-
-def _validate_task_core(
-    name: str,
-    description: str,
-    cron_expression: str,
-    execution_mode: AgentExecutionMode,
-    payload: str,
-    env_var_keys: list[str] | None,
-) -> tuple[dict | None, str | None]:
-    """Shared create/update body validation. Returns ``(core_fields, error_message)``."""
-    if len(name) > _MAX_TEXT or len(description) > _MAX_TEXT:
-        return None, f"name and description must be at most {_MAX_TEXT} characters"
-    if _cron_string_is_llm_sentinel(cron_expression):
-        return None, (
-            "cron_expression must be a valid 5-field cron string, not the text 'None', 'null', or empty."
-        )
-    cron_expr, cerr = _normalize_cron_expression(cron_expression)
-    if cerr:
-        return None, cerr
-    refs, emsg = _normalize_env_keys(env_var_keys)
-    if emsg:
-        return None, emsg
-    env_refs = refs if refs is not None else []
-    return {
-        "name": name.strip(),
-        "description": description.strip(),
-        "cron_expression": cron_expr,
-        "execution_mode": execution_mode,
-        "payload": payload if payload is not None else "",
-        "env_var_refs": env_refs,
-    }, None
+    return stripped.lower() in {"none", "null", "nil"}
 
 
 def _normalize_cron_expression(expr: str) -> tuple[str | None, str | None]:
@@ -219,7 +91,37 @@ def _normalize_cron_expression(expr: str) -> tuple[str | None, str | None]:
     return " ".join(parts), None
 
 
-def _cron_fields_public(cron_expression: str | None) -> dict | None:
+def _validate_task_core(
+    name: str,
+    description: str,
+    cron_expression: str,
+    execution_mode: AgentExecutionMode,
+    payload: str,
+    env_var_keys: list[str] | None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if len(name) > _MAX_TEXT or len(description) > _MAX_TEXT:
+        return None, f"name and description must be at most {_MAX_TEXT} characters"
+    if _cron_string_is_llm_sentinel(cron_expression):
+        return None, (
+            "cron_expression must be a valid 5-field cron string, not the text 'None', 'null', or empty."
+        )
+    normalized_cron, cron_error = _normalize_cron_expression(cron_expression)
+    if cron_error:
+        return None, cron_error
+    refs, env_error = _normalize_env_keys(env_var_keys)
+    if env_error:
+        return None, env_error
+    return {
+        "name": name.strip(),
+        "description": description.strip(),
+        "cron_expression": normalized_cron,
+        "execution_mode": execution_mode,
+        "payload": payload if payload is not None else "",
+        "env_var_refs": refs if refs is not None else [],
+    }, None
+
+
+def _cron_fields_public(cron_expression: str | None) -> dict[str, Any] | None:
     if not cron_expression:
         return None
     parts = cron_expression.strip().split()
@@ -235,31 +137,29 @@ def _cron_fields_public(cron_expression: str | None) -> dict | None:
     }
 
 
-def _task_public_dict(t: dict) -> dict:
-    ce = t.get("cron_expression")
-    base = {
-        "id": t.get("id"),
-        "name": t.get("name"),
-        "description": t.get("description"),
-        "cron_expression": ce,
-        "cron_fields": _cron_fields_public(ce) if isinstance(ce, str) else None,
-        "execution_mode": t.get("execution_mode"),
-        "status": t.get("status"),
-        "payload": t.get("payload") if t.get("payload") is not None else "",
-        "env_var_refs": t.get("env_var_refs") or [],
-        "created_at": t.get("created_at"),
-        "started_at": t.get("started_at"),
-        "updated_at": t.get("updated_at"),
-        "last_run_at": t.get("last_run_at"),
-        "last_run_status": t.get("last_run_status"),
-        "last_run_trigger": t.get("last_run_trigger"),
+def _task_public_dict(task: dict[str, Any]) -> dict[str, Any]:
+    cron_expression = task.get("cron_expression")
+    payload = {
+        "id": task.get("id"),
+        "name": task.get("name"),
+        "description": task.get("description"),
+        "cron_expression": cron_expression,
+        "cron_fields": _cron_fields_public(cron_expression) if isinstance(cron_expression, str) else None,
+        "execution_mode": task.get("execution_mode"),
+        "status": task.get("status"),
+        "payload": task.get("payload") if task.get("payload") is not None else "",
+        "env_var_refs": task.get("env_var_refs") or [],
+        "created_at": task.get("created_at"),
+        "started_at": task.get("started_at"),
+        "updated_at": task.get("updated_at"),
+        "last_run_at": task.get("last_run_at"),
+        "last_run_status": task.get("last_run_status"),
+        "last_run_trigger": task.get("last_run_trigger"),
     }
-    return _enrich_iso_date_fields(base, _TASK_PUBLIC_DATE_KEYS)
+    return _enrich_iso_date_fields(payload, _TASK_PUBLIC_DATE_KEYS)
 
 
 class UpdateScheduledTaskInput(BaseModel):
-    """Full replacement: same fields as creating a task, plus ``task_id`` and ``enabled``."""
-
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     task_id: str = Field(validation_alias=AliasChoices("task_id", "taskId"))
@@ -270,37 +170,26 @@ class UpdateScheduledTaskInput(BaseModel):
         ...,
         description="Must be ``script`` (only supported mode for now; more may be added later).",
     )
-    payload: str = Field(
-        default="",
-        description="Script body when execution_mode is script.",
-    )
-    env_var_keys: list[str] | None = Field(
-        default=None,
-        description="Env var key names to attach; same as create.",
-    )
-    started_at: str | None = Field(
-        default=None,
-        description="ISO start time if applicable; same as create.",
-    )
-    enabled: bool = Field(
-        description="If true, task status is enabled; if false, disabled (create always starts enabled).",
-    )
+    payload: str = Field(default="", description="Script body.")
+    env_var_keys: list[str] | None = None
+    started_at: str | None = None
+    enabled: bool
 
     @field_validator("cron_expression", mode="before")
     @classmethod
-    def cron_expression_no_placeholders(cls, v: Any) -> Any:
-        if not isinstance(v, str):
+    def cron_expression_no_placeholders(cls, value: Any) -> Any:
+        if not isinstance(value, str):
             raise ValueError("cron_expression must be a string")
-        if _cron_string_is_llm_sentinel(v):
+        if _cron_string_is_llm_sentinel(value):
             raise ValueError(
                 "cron_expression must be a valid 5-field cron string. "
                 "Do not use the text 'None', 'null', or an empty string."
             )
-        return v
+        return value
 
 
 @tool
-def create_scheduled_task(
+async def create_scheduled_task(
     name: str,
     description: str,
     cron_expression: str,
@@ -309,55 +198,55 @@ def create_scheduled_task(
     env_var_keys: list[str] | None = None,
     started_at: str | None = None,
 ) -> dict:
-    """Create a task (``cron/*.json``). Pass ``execution_mode``; only ``script`` is valid today (extend later).
-
-    ``cron_expression``: five whitespace-separated cron fields.
-    """
-    core, err = _validate_task_core(
-        name, description, cron_expression, execution_mode, payload, env_var_keys
+    """Create a scheduled script task with cron timing and optional injected env vars."""
+    core, error = _validate_task_core(
+        name,
+        description,
+        cron_expression,
+        execution_mode,
+        payload,
+        env_var_keys,
     )
-    if err:
-        return {"success": False, "message": err}
+    if error:
+        return {"success": False, "message": error}
 
-    task_id = str(uuid.uuid4())
-    now = _now_iso()
-    task = {
-        "id": task_id,
-        **core,
-        "status": "enabled",
-        "created_at": now,
-        "started_at": started_at,
-        "updated_at": now,
-    }
-    _write_task(task)
+    task = await get_task_runtime().create_task(
+        name=core["name"],
+        description=core["description"],
+        cron_expression=core["cron_expression"],
+        execution_mode=core["execution_mode"],
+        payload=core["payload"],
+        env_var_refs=core["env_var_refs"],
+        started_at=started_at,
+    )
     return {"success": True, "task": _task_public_dict(task), "message": "Task created."}
 
 
 @tool
-def read_scheduled_tasks(
+async def read_scheduled_tasks(
     task_id: str | None = None,
     status: Literal["enabled", "disabled", "running", "all"] = "all",
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
-    """Read tasks: pass ``task_id`` for one task; omit it for a paginated list (``status``, ``page``, ``page_size``)."""
+    """Read one scheduled task by id or list scheduled tasks with optional status filtering."""
+    runtime = get_task_runtime()
     if task_id is not None and str(task_id).strip():
-        tid = _normalize_id(str(task_id))
-        if not tid:
-            return {"success": False, "message": "Invalid task_id"}
-        t = _read_task(tid)
-        if not t:
+        task = await runtime.get_task(str(task_id).strip())
+        if task is None:
             return {"success": False, "message": "Task not found"}
-        return {"success": True, "task": _task_public_dict(t)}
+        return {"success": True, "task": _task_public_dict(task)}
 
     if page < 1 or page_size < 1 or page_size > 200:
         return {"success": False, "message": "page must be >= 1; page_size between 1 and 200"}
-    all_raw = _all_tasks()
-    filtered = all_raw if status == "all" else [t for t in all_raw if t.get("status") == status]
-    items, total = _paginate(filtered, page, page_size)
+    items, total = await runtime.list_tasks(
+        status=None if status == "all" else status,
+        page=page,
+        page_size=page_size,
+    )
     return {
         "success": True,
-        "items": [_task_public_dict(t) for t in items],
+        "items": [_task_public_dict(task) for task in items],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -365,7 +254,7 @@ def read_scheduled_tasks(
 
 
 @tool(args_schema=UpdateScheduledTaskInput)
-def update_scheduled_task(
+async def update_scheduled_task(
     task_id: str,
     name: str,
     description: str,
@@ -377,10 +266,7 @@ def update_scheduled_task(
     *,
     enabled: bool,
 ) -> dict:
-    """Replace a task: ``task_id`` plus the same arguments as ``create_scheduled_task``, then ``enabled``.
-
-    ``execution_mode`` must be ``script`` for now. Read the current task first, then submit the full payload.
-    """
+    """Replace a scheduled task's definition and set whether it is enabled."""
     try:
         data = UpdateScheduledTaskInput.model_validate(
             {
@@ -395,18 +281,10 @@ def update_scheduled_task(
                 "enabled": enabled,
             }
         )
-    except ValidationError as e:
-        return {"success": False, "message": f"Invalid arguments: {e}"}
+    except ValidationError as exc:
+        return {"success": False, "message": f"Invalid arguments: {exc}"}
 
-    tid = _normalize_id(data.task_id)
-    if not tid:
-        return {"success": False, "message": "Invalid task_id"}
-
-    old = _read_task(tid)
-    if not old:
-        return {"success": False, "message": "Task not found"}
-
-    core, err = _validate_task_core(
+    core, error = _validate_task_core(
         data.name,
         data.description,
         data.cron_expression,
@@ -414,71 +292,59 @@ def update_scheduled_task(
         data.payload,
         data.env_var_keys,
     )
-    if err:
-        return {"success": False, "message": err}
+    if error:
+        return {"success": False, "message": error}
 
-    now = _now_iso()
-    status = "enabled" if data.enabled else "disabled"
-
-    task = {
-        "id": tid,
-        **core,
-        "status": status,
-        "created_at": old.get("created_at"),
-        "started_at": data.started_at,
-        "updated_at": now,
-        "last_run_at": old.get("last_run_at"),
-        "last_run_status": old.get("last_run_status"),
-        "last_run_trigger": old.get("last_run_trigger"),
-    }
-    _write_task(task)
+    runtime = get_task_runtime()
+    task = await runtime.update_task(
+        data.task_id,
+        {
+            "name": core["name"],
+            "description": core["description"],
+            "cron_expression": core["cron_expression"],
+            "execution_mode": core["execution_mode"],
+            "payload": core["payload"],
+            "env_var_refs": core["env_var_refs"],
+            "started_at": data.started_at,
+        },
+    )
+    if task is None:
+        return {"success": False, "message": "Task not found"}
+    task = await runtime.set_task_enabled(data.task_id, data.enabled)
+    if task is None:
+        return {"success": False, "message": "Task not found"}
     return {"success": True, "task": _task_public_dict(task), "message": "Task updated."}
 
 
 @tool
-def delete_scheduled_task(task_id: str) -> dict:
-    """Delete a task and its run rows in ``agent.db``."""
-    tid = _normalize_id(task_id)
-    if not tid:
-        return {"success": False, "message": "Invalid task_id"}
-    if not _delete_task_file(tid):
+async def delete_scheduled_task(task_id: str) -> dict:
+    """Delete a scheduled task and cancel any active runs that belong to it."""
+    ok = await get_task_runtime().delete_task(task_id.strip())
+    if not ok:
         return {"success": False, "message": "Task not found"}
-    try:
-        _delete_runs_for_task_sync(tid)
-    except Exception as e:
-        return {"success": False, "message": f"Removed task file but failed to clean DB runs: {e}"}
-    return {"success": True, "id": tid, "message": "Task deleted."}
-
-
-def _run_async(coro):
-    return asyncio.run(coro)
+    return {"success": True, "id": task_id.strip(), "message": "Task deleted."}
 
 
 @tool
-def read_scheduled_task_run_logs(
+async def read_scheduled_task_run_logs(
     task_id: str,
     run_id: str | None = None,
     log_page: int = 1,
     log_page_size: int = 50,
 ) -> dict:
-    """Read run history / logs for a task (same data as ``GET /tasks/{task_id}/runs`` and ``GET /runs/{run_id}/logs``).
-
-    Returns ``recent_runs`` (up to 10 summaries, newest first). Omit ``run_id`` to load the **latest** run's log page;
-    pass a ``run_id`` from ``recent_runs`` to inspect an older run. Log lines use ``log_page`` / ``log_page_size``.
-    """
-    tid = _normalize_id(task_id)
-    if not tid:
-        return {"success": False, "message": "Invalid task_id"}
-    if not _read_task(tid):
+    """Read recent runs for a task and page through log entries for one selected run."""
+    runtime = get_task_runtime()
+    task = await runtime.get_task(task_id.strip())
+    if task is None:
         return {"success": False, "message": "Task not found"}
     if log_page < 1 or log_page_size < 1 or log_page_size > 200:
         return {"success": False, "message": "log_page must be >= 1; log_page_size between 1 and 200"}
 
-    all_runs = _run_async(_runs_for_task(tid))
-    if not all_runs:
+    runs = await runtime.list_runs_for_task(task_id.strip())
+    if not runs:
         return {
             "success": True,
-            "task_id": tid,
+            "task_id": task_id.strip(),
             "message": "No runs for this task yet.",
             "recent_runs": [],
             "run": None,
@@ -490,41 +356,32 @@ def read_scheduled_task_run_logs(
 
     recent_runs = [
         _enrich_iso_date_fields(
-            _run_dict_to_execution_response(r).model_dump(mode="json"),
+            _run_dict_to_execution_response(run).model_dump(mode="json"),
             _RUN_SUMMARY_DATE_KEYS,
         )
-        for r in all_runs[:10]
+        for run in runs[:10]
     ]
 
     if run_id is not None and str(run_id).strip():
-        rid = _normalize_id(str(run_id))
-        if not rid:
-            return {"success": False, "message": "Invalid run_id"}
-        raw = next((r for r in all_runs if r.get("id") == rid), None)
-        if not raw:
+        normalized_run_id = str(run_id).strip()
+        run = next((item for item in runs if item.get("id") == normalized_run_id), None)
+        if run is None:
             return {"success": False, "message": "Run not found for this task"}
     else:
-        raw = all_runs[0]
+        run = runs[0]
 
     summary = _enrich_iso_date_fields(
-        _run_dict_to_execution_response(raw).model_dump(mode="json"),
+        _run_dict_to_execution_response(run).model_dump(mode="json"),
         _RUN_SUMMARY_DATE_KEYS,
     )
-    all_logs: list = raw.get("logs") or []
-    page_items, _ = _paginate(all_logs, log_page, log_page_size)
+    logs = run.get("logs") or []
     start = (log_page - 1) * log_page_size
-    rid = raw["id"]
-    log_payload: list[dict] = []
-    for idx, row in enumerate(page_items):
-        if not isinstance(row, dict):
+    page_items = logs[start : start + log_page_size]
+    log_payload: list[dict[str, Any]] = []
+    for idx, raw in enumerate(page_items):
+        if not isinstance(raw, dict):
             continue
-        try:
-            entry = _coerce_log_entry(rid, row, start + idx).model_dump(mode="json")
-        except Exception:
-            flat = _legacy_level_message_to_log_dict(
-                rid, start + idx, "stdout", str(row), "",
-            )
-            entry = LogEntryResponse.model_validate(flat).model_dump(mode="json")
+        entry = _coerce_log_entry(run["id"], raw, start + idx).model_dump(mode="json")
         cal = _iso_like_to_calendar_date(entry.get("timestamp"))
         if cal is not None:
             entry["timestamp_date"] = cal
@@ -532,58 +389,36 @@ def read_scheduled_task_run_logs(
 
     return {
         "success": True,
-        "task_id": tid,
+        "task_id": task_id.strip(),
         "recent_runs": recent_runs,
         "run": summary,
         "logs": log_payload,
-        "log_total": len(all_logs),
+        "log_total": len(logs),
         "log_page": log_page,
         "log_page_size": log_page_size,
     }
 
 
 @tool
-def run_scheduled_task(task_id: str, override_prompt: str | None = None) -> dict:
-    """Start a task run in the background (same behavior as ``POST /tasks/{task_id}/trigger``).
-
-    Non-empty ``override_prompt`` uses the **agent** trigger; otherwise **manual**. Execution is asynchronous.
-    """
-    tid = _normalize_id(task_id)
-    if not tid:
-        return {"success": False, "message": "Invalid task_id"}
-    t = _read_task(tid)
-    if not t:
+async def run_scheduled_task(task_id: str, override_prompt: str | None = None) -> dict:
+    """Trigger a scheduled task immediately, optionally with an override prompt."""
+    runtime = get_task_runtime()
+    task = await runtime.get_task(task_id.strip())
+    if task is None:
         return {"success": False, "message": "Task not found"}
 
     op = (override_prompt or "").strip()
-    if op:
-        trig = LastRunTrigger.agent.value
-        ovp: str | None = op
-    else:
-        trig = LastRunTrigger.manual.value
-        ovp = None
-
-    task_copy = dict(t)
-    if not task_copy.get("started_at"):
-        task_copy["started_at"] = _now_iso()
-
-    executor = TaskExecutor(
-        timeout=_TASK_EXECUTOR_TIMEOUT_S,
-        max_concurrent=_TASK_EXECUTOR_MAX_CONCURRENT,
+    trigger = LastRunTrigger.agent.value if op else LastRunTrigger.manual.value
+    run = await runtime.trigger_task(
+        task_id.strip(),
+        trigger=trigger,
+        override_prompt=op or None,
     )
-
-    async def _trigger() -> tuple[dict, Any]:
-        return await asyncio.to_thread(
-            executor.execute_background,
-            task_copy,
-            trig,
-            ovp,
-        )
-
-    run, _thread = _run_async(_trigger())
+    if run is None:
+        return {"success": False, "message": "Task not found"}
     return {
         "success": True,
-        "task_id": tid,
+        "task_id": task_id.strip(),
         "run_id": run["id"],
         "run_status": run.get("status"),
         "message": run.get("message"),

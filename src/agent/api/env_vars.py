@@ -1,39 +1,85 @@
-"""Global environment variable vault — stored in cron/env_vars.json.
+"""Global environment variable storage backed by ``agent.db``."""
+from __future__ import annotations
 
-GET returns an array of objects with **keys only**; POST create/update returns a single item; secret values never appear in responses.
-"""
-import json
 import re
+from typing import Any
+
 import pydantic
 from fastapi import APIRouter, HTTPException, status
 from pydantic import field_validator
-from pathlib import Path
+
+from agent.credentials_store import (
+    EnvVaultAccessError,
+    decrypt_secret_value,
+    delete_credential,
+    encrypt_secret_value,
+    get_credential_value,
+    list_credential_keys,
+    read_credential_values,
+    upsert_credential_value,
+)
 
 router = APIRouter(tags=["env-vars"])
 
-CRON_DIR = Path("./cron")
-ENV_VARS_FILE = Path("./cron/env_vars.json")
+__all__ = [
+    "EnvVaultAccessError",
+    "encrypt_secret_value",
+    "decrypt_secret_value",
+    "list_env_var_keys",
+    "read_env_values",
+    "get_env_var_entry",
+    "get_env_var_value",
+    "upsert_env_var_value",
+    "delete_env_var_value",
+    "validate_env_var_key",
+    "router",
+]
 
 MAX_ENV_KEY_LEN = 1024
 _ENV_KEY_RE = re.compile(r"^[A-Za-z0-9_]+$")
+_ENV_VAR_CREDENTIAL_TYPE = "env_var"
 
 
-def _read_vault() -> dict[str, str]:
-    if not ENV_VARS_FILE.is_file():
-        return {}
+async def list_env_var_keys() -> list[str]:
+    return await list_credential_keys(_ENV_VAR_CREDENTIAL_TYPE)
+
+
+async def read_env_values() -> dict[str, str]:
+    return await read_credential_values(_ENV_VAR_CREDENTIAL_TYPE)
+
+
+async def get_env_var_entry(key: str) -> dict[str, Any] | None:
     try:
-        return json.loads(ENV_VARS_FILE.read_text("utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
+        k = validate_env_var_key(key)
+    except ValueError:
+        return None
+
+    value = await get_credential_value(_ENV_VAR_CREDENTIAL_TYPE, k)
+    if value is None:
+        return None
+    return {"value": value}
 
 
-def _write_vault(vault: dict[str, str]) -> None:
-    CRON_DIR.mkdir(exist_ok=True)
-    ENV_VARS_FILE.write_text(json.dumps(vault, ensure_ascii=False, indent=2), "utf-8")
+async def get_env_var_value(key: str) -> str | None:
+    entry = await get_env_var_entry(key)
+    if entry is None:
+        return None
+    value = entry.get("value")
+    return value if isinstance(value, str) else None
+
+
+async def upsert_env_var_value(key: str, value: str) -> dict[str, Any]:
+    k = validate_env_var_key(key)
+    await upsert_credential_value(_ENV_VAR_CREDENTIAL_TYPE, k, value)
+    return {"key": k}
+
+
+async def delete_env_var_value(key: str) -> bool:
+    k = validate_env_var_key(key)
+    return await delete_credential(_ENV_VAR_CREDENTIAL_TYPE, k)
 
 
 def validate_env_var_key(key: str) -> str:
-    """Validate env var name: length ≤1024, alphanumeric and underscore only. Routes map errors to 400."""
     s = key.strip()
     if not s:
         raise ValueError("empty_key")
@@ -59,14 +105,14 @@ def _raise_from_key_validation(exc: ValueError) -> None:
     raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"message": str(exc)})
 
 
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
+def _raise_from_vault_access_error(exc: EnvVaultAccessError) -> None:
+    raise HTTPException(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail={"message": str(exc)},
+    )
 
 
 class EnvVarKeyItem(pydantic.BaseModel):
-    """Global env list / create response: ``key`` only (no ``secret_ref``)."""
-
     model_config = pydantic.ConfigDict(
         extra="forbid",
         json_schema_extra={"title": "EnvVarKeyItem"},
@@ -91,8 +137,6 @@ class EnvVarUpsertRequest(pydantic.BaseModel):
 
 
 class EnvVarDeleteResponse(pydantic.BaseModel):
-    """Successful delete response **200**, matches frontend ``Response``."""
-
     model_config = pydantic.ConfigDict(
         extra="allow",
         json_schema_extra={"title": "Response"},
@@ -101,22 +145,12 @@ class EnvVarDeleteResponse(pydantic.BaseModel):
     message: str
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
-
-@router.get(
-    "/env-vars",
-    response_model=list[EnvVarKeyItem],
-    summary="List global env vars",
-    description=(
-        "Returns a **JSON array** of ``{ \"key\": \"...\" }`` objects (keys only, no secret_ref)."
-    ),
-)
+@router.get("/env-vars", response_model=list[EnvVarKeyItem], summary="List global env vars")
 async def list_global_env_vars() -> list[EnvVarKeyItem]:
-    vault = _read_vault()
-    keys = sorted(vault.keys())
-    return [EnvVarKeyItem(key=k) for k in keys]
+    try:
+        return [EnvVarKeyItem(key=key) for key in await list_env_var_keys()]
+    except EnvVaultAccessError as exc:
+        _raise_from_vault_access_error(exc)
 
 
 @router.post(
@@ -124,17 +158,15 @@ async def list_global_env_vars() -> list[EnvVarKeyItem]:
     response_model=EnvVarKeyItem,
     status_code=status.HTTP_200_OK,
     summary="Create or update a global env var",
-    description="Create or update a global env var. **200** returns ``{ key }`` only (no plaintext value).",
 )
 async def upsert_global_env_var(body: EnvVarUpsertRequest) -> EnvVarKeyItem:
     try:
-        k = validate_env_var_key(body.key)
-    except ValueError as e:
-        _raise_from_key_validation(e)
-    vault = _read_vault()
-    vault[k] = body.value
-    _write_vault(vault)
-    return EnvVarKeyItem(key=k)
+        item = await upsert_env_var_value(body.key, body.value)
+    except ValueError as exc:
+        _raise_from_key_validation(exc)
+    except EnvVaultAccessError as exc:
+        _raise_from_vault_access_error(exc)
+    return EnvVarKeyItem(**item)
 
 
 @router.delete(
@@ -142,16 +174,14 @@ async def upsert_global_env_var(body: EnvVarUpsertRequest) -> EnvVarKeyItem:
     response_model=EnvVarDeleteResponse,
     status_code=status.HTTP_200_OK,
     summary="Delete a global env var",
-    description="On success returns **200** with body ``{ message }``.",
 )
 async def delete_global_env_var(key: str) -> EnvVarDeleteResponse:
     try:
-        k = validate_env_var_key(key)
-    except ValueError as e:
-        _raise_from_key_validation(e)
-    vault = _read_vault()
-    if k not in vault:
+        ok = await delete_env_var_value(key)
+    except ValueError as exc:
+        _raise_from_key_validation(exc)
+    except EnvVaultAccessError as exc:
+        _raise_from_vault_access_error(exc)
+    if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Env var key not found")
-    del vault[k]
-    _write_vault(vault)
     return EnvVarDeleteResponse(message="Deleted.")
