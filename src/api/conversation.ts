@@ -117,6 +117,11 @@ export function chatCompletion (
                 let currentData = ''
                 let doneEventReceived = false
 
+                const parseFieldValue = (line: string, prefixLength: number) => {
+                    const rawValue = line.slice(prefixLength)
+                    return rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
+                }
+
                 const processFrame = () => {
                     if (!currentData && !currentEvent) {
                         return
@@ -169,6 +174,21 @@ export function chatCompletion (
                     }
                 }
 
+                const processLine = (rawLine: string) => {
+                    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+
+                    if (line.startsWith('event:')) {
+                        currentEvent = parseFieldValue(line, 6)
+                    }
+                    else if (line.startsWith('data:')) {
+                        const chunk = parseFieldValue(line, 5)
+                        currentData += (currentData ? '\n' : '') + chunk
+                    }
+                    else if (line === '') {
+                        processFrame()
+                    }
+                }
+
                 while (true) {
                     const { value, done } = await reader.read()
                     if (done) break
@@ -178,34 +198,15 @@ export function chatCompletion (
                     buffer = lines.pop() ?? ''
 
                     for (const line of lines) {
-                        const trimmed = line.trim()
-                        if (trimmed.startsWith('event:')) {
-                            currentEvent = trimmed.slice(6).trim()
-                        }
-                        else if (trimmed.startsWith('data:')) {
-                            const chunk = trimmed.slice(5).trim()
-                            currentData += (currentData ? '\n' : '') + chunk
-                        }
-                        else if (trimmed === '') {
-                            processFrame()
-                        }
+                        processLine(line)
                     }
                 }
                 // 处理剩余的 buffer 数据
-                if (buffer.trim()) {
-                    const lines = buffer.trim().split('\n')
-                    for (const line of lines) {
-                        const trimmed = line.trim()
-                        if (trimmed.startsWith('event:')) {
-                            currentEvent = trimmed.slice(6).trim()
-                        }
-                        else if (trimmed.startsWith('data:')) {
-                            const chunk = trimmed.slice(5).trim()
-                            currentData += (currentData ? '\n' : '') + chunk
-                        }
-                    }
-                    processFrame()
+                buffer += decoder.decode()
+                if (buffer) {
+                    processLine(buffer)
                 }
+                processFrame()
 
                 // 如果流结束但未收到 done 事件，说明是断连
                 if (!doneEventReceived) {

@@ -44,5 +44,7 @@
         border-left: 2px solid rgba(var(--v-theme-on-surface), 0.12);
         margin-left: 11px;
         padding-left: 10px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
     }
 </style>
