@@ -115,13 +115,13 @@ class AnthropicEventParser:
         if isinstance(chunk, AIMessage):
             content, thought = self._extract_ai_text_and_thought(chunk)
 
-            if thinking := thought.strip():
+            if thought:
                 deltas.append(CompletionResponseDelta(
                     message_id=message_id,
-                    delta=thinking,
+                    delta=thought,
                     is_thinking=True,
                 ))
-            if content.strip():
+            if content:
                 deltas.append(CompletionResponseDelta(
                     message_id=message_id,
                     delta=content,
