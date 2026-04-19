@@ -636,15 +636,6 @@ def _delete_skill_submission(skill_id: int, user: User, db: Session) -> dict:
     if user.role != "admin" and skill.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权限删除该技能")
 
-    if skill.status == "approved":
-        raise HTTPException(status_code=409, detail="技能状态为 approved，不允许删除")
-
-    if skill.status not in ALLOWED_DELETE_STATUSES:
-        raise HTTPException(
-            status_code=409,
-            detail=f"技能状态为 {skill.status}，不允许删除"
-        )
-
     db.query(SkillTag).filter(SkillTag.skill_id == skill_id).delete()
     db.delete(skill)
     db.commit()
