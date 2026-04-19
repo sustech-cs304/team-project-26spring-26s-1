@@ -10,7 +10,5 @@ export interface PatchCasResponse {
 }
 
 export function patchCas(payload: PatchCasPayload): Promise<PatchCasResponse> {
-    return http.patch<PatchCasResponse>('/patch_cas', null, {
-        params: payload,
-    })
+    return http.patch<PatchCasResponse>('/patch_cas', payload)
 }
