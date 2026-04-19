@@ -10,12 +10,9 @@ yarn-error.log*
 pnpm-debug.log*
 .pnpm-store
 
-# 忽略 Rust 编译生成的巨大二进制文件和缓存
 src-tauri/target/
 
-# 如果你不需要跟踪 Cargo.lock，可以取消下面这行的注释（但官方通常建议保留以保证依赖版本一致）
-# src-tauri/Cargo.lock
-
+*.exe
 .env
 .env.*
 !.env.example

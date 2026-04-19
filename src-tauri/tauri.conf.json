@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "frontend",
+  "productName": "OpenCrab",
   "version": "0.1.0",
   "identifier": "com.tmp.dev",
   "build": {
@@ -13,7 +13,8 @@
     "windows": [
       {
         "label": "main",
-        "title": "frontend",
+        "title": "OpenCrab",
+        "devtools": true,
         "width": 1300,
         "height": 900,
         "resizable": true,
