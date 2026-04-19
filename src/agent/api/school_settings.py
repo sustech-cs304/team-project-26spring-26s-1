@@ -5,22 +5,13 @@ username/password pair in the local database for both BB and TIS.
 
 ``/settings/bb/credentials`` and ``/settings/tis/credentials`` behave the same.
 """
-import os
 
 import pydantic
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from agent.services import school_credentials
 
 router = APIRouter(tags=["settings"])
-
-
-def _require_secret(x_secret: str | None) -> None:
-    expected = os.getenv("SCHOOL_SETTINGS_SECRET")
-    if not expected:
-        return
-    if not x_secret or x_secret != expected:
-        raise HTTPException(status_code=401, detail="Invalid or missing X-School-Settings-Secret")
 
 
 class TisCredentialsBody(pydantic.BaseModel):
@@ -55,11 +46,8 @@ class MessageResponse(pydantic.BaseModel):
 
 
 @router.get("/settings/tis/credentials", response_model=TisCredentialsGetResponse)
-async def get_tis_credentials_status(
-    x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
-):
+async def get_tis_credentials_status():
     """Return whether shared CAS credentials are set (password is never returned)."""
-    _require_secret(x_school_settings_secret)
     data = await school_credentials.get_school_cas_credentials_status()
     return TisCredentialsGetResponse(**data)
 
@@ -67,9 +55,7 @@ async def get_tis_credentials_status(
 @router.patch("/patch_cas", response_model=MessageResponse)
 async def patch_cas(
     body: CasConfigPatchRequest,
-    x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
 ):
-    _require_secret(x_school_settings_secret)
     try:
         await school_credentials.patch_school_cas_config(
             student_id=body.id,
@@ -83,22 +69,15 @@ async def patch_cas(
 
 
 @router.put("/settings/tis/credentials", response_model=TisCredentialsPutResponse)
-async def put_tis_credentials(
-    body: TisCredentialsBody,
-    x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
-):
+async def put_tis_credentials(body: TisCredentialsBody):
     """Store shared CAS in the database for BB/TIS tool resolution."""
-    _require_secret(x_school_settings_secret)
     await school_credentials.set_school_cas_credentials(body.student_id, body.password)
     return TisCredentialsPutResponse(student_id=body.student_id.strip())
 
 
 @router.delete("/settings/tis/credentials", response_model=TisCredentialsDeleteResponse)
-async def delete_tis_credentials(
-    x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
-):
+async def delete_tis_credentials():
     """Clear shared CAS from the database; tools fall back to process env only."""
-    _require_secret(x_school_settings_secret)
     await school_credentials.clear_school_cas_credentials()
     return TisCredentialsDeleteResponse()
 
@@ -115,31 +94,21 @@ class BbCredentialsPutResponse(pydantic.BaseModel):
 
 
 @router.get("/settings/bb/credentials", response_model=TisCredentialsGetResponse)
-async def get_bb_credentials_status(
-    x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
-):
+async def get_bb_credentials_status():
     """Same as ``GET /settings/tis/credentials``: shared CAS status (password never returned)."""
-    _require_secret(x_school_settings_secret)
     data = await school_credentials.get_school_cas_credentials_status()
     return TisCredentialsGetResponse(**data)
 
 
 @router.put("/settings/bb/credentials", response_model=BbCredentialsPutResponse)
-async def put_bb_credentials(
-    body: TisCredentialsBody,
-    x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
-):
+async def put_bb_credentials(body: TisCredentialsBody):
     """Save shared SUSTech CAS in Global Settings; BB and TIS tools read the same pair."""
-    _require_secret(x_school_settings_secret)
     await school_credentials.set_school_cas_credentials(body.student_id, body.password)
     return BbCredentialsPutResponse(student_id=body.student_id.strip())
 
 
 @router.delete("/settings/bb/credentials", response_model=TisCredentialsDeleteResponse)
-async def delete_bb_credentials(
-    x_school_settings_secret: str | None = Header(None, alias="X-School-Settings-Secret"),
-):
+async def delete_bb_credentials():
     """Clear shared CAS credentials (same as ``DELETE .../tis/credentials``)."""
-    _require_secret(x_school_settings_secret)
     await school_credentials.clear_school_cas_credentials()
     return TisCredentialsDeleteResponse()
