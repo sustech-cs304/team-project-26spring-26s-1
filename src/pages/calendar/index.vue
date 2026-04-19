@@ -1,112 +1,109 @@
 <template>
-    <v-sheet class="calendar-root d-flex flex-column h-100" style="overflow: hidden;">
-
-        <v-sheet class="px-4 py-2 border-b d-flex align-center justify-space-between flex-shrink-0">
-            <v-sheet class="d-flex align-center ga-2">
-                <v-btn icon size="x-small" variant="text" @click="prevMonth">
-                    <v-icon size="16">mdi-chevron-left</v-icon>
-                </v-btn>
-                <span class="text-subtitle-2 font-weight-bold" style="min-width: 130px; text-align: center;">{{ monthLabel }}</span>
-                <v-btn icon size="x-small" variant="text" @click="nextMonth">
-                    <v-icon size="16">mdi-chevron-right</v-icon>
-                </v-btn>
-                <v-btn size="small" variant="outlined" class="ml-1" @click="goToday">Today</v-btn>
-            </v-sheet>
-
-            <v-sheet class="d-flex align-center ga-2">
-                <v-btn icon size="small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
-                    <v-icon size="14">{{ searchRailCollapsed ? 'mdi-dock-right' : 'mdi-dock-window' }}</v-icon>
-                    <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show search' : 'Hide search' }}</v-tooltip>
-                </v-btn>
-                <v-btn size="small" color="primary" @click="openCreate(selectedCell?.dateKey ?? todayKey)">
-                    <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
-                </v-btn>
-            </v-sheet>
-        </v-sheet>
-
-        <v-sheet class="d-flex flex-grow-1 min-height-0" style="overflow: hidden;">
-            <aside class="border-e d-flex flex-column" style="width: 260px; min-width: 260px; overflow-y: auto;">
-                <v-sheet class="pa-3 border-b">
-                    <v-sheet class="d-flex align-center justify-center mb-2">
-                        <span class="text-caption font-weight-bold">{{ monthLabel }}</span>
+    <v-sheet color="surface" class="d-flex flex-column h-100 overflow-hidden">
+        <v-sheet class="d-flex flex-grow-1 min-height-0 overflow-hidden">
+            <v-sheet width="250" min-width="250" max-width="250"
+                class="border-e d-flex flex-column min-height-0 overflow-hidden">
+                <v-sheet class="d-flex flex-column flex-shrink-0 overflow-y-auto">
+                    <v-sheet class="pa-3 border-b">
+                        <v-sheet class="d-flex align-center justify-space-between ga-1 mb-2">
+                            <v-btn icon size="x-small" variant="text" @click="prevMonth">
+                                <v-icon size="16">mdi-chevron-left</v-icon>
+                            </v-btn>
+                            <span class="text-caption font-weight-bold text-center flex-grow-1">{{ monthLabel }}</span>
+                            <v-btn icon size="x-small" variant="text" @click="nextMonth">
+                                <v-icon size="16">mdi-chevron-right</v-icon>
+                            </v-btn>
+                        </v-sheet>
+                        <v-sheet style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;">
+                            <span v-for="h in miniHeaders" :key="h" style="font-size: 10px; text-align: center; color: rgba(var(--v-theme-on-surface), 0.5);">{{ h }}</span>
+                            <button v-for="c in cells" :key="`mini-${c.dateKey}`" class="mini-day-btn"
+                                :class="{ muted: !c.currentMonth, today: c.isToday, active: selectedCell?.dateKey === c.dateKey }"
+                                @click="onCellClick(c)">
+                                {{ c.day }}
+                            </button>
+                        </v-sheet>
                     </v-sheet>
-                    <v-sheet style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;">
-                        <span v-for="h in miniHeaders" :key="h" style="font-size: 10px; text-align: center; color: rgba(var(--v-theme-on-surface), 0.5);">{{ h }}</span>
-                        <button v-for="c in cells" :key="`mini-${c.dateKey}`" class="mini-day-btn"
-                            :class="{ muted: !c.currentMonth, today: c.isToday, active: selectedCell?.dateKey === c.dateKey }"
-                            @click="onCellClick(c)">
-                            {{ c.day }}
-                        </button>
-                    </v-sheet>
-                </v-sheet>
 
-                <v-sheet class="pa-3 border-b">
-                    <v-sheet class="text-caption text-medium-emphasis mb-2">Source</v-sheet>
-                    <v-sheet class="d-flex flex-column ga-2">
-                        <v-chip v-for="src in sourceOptions" :key="src.value" class="source-chip" size="small" label
-                            :variant="activeSource === src.value ? 'flat' : 'outlined'" :style="sourceChipStyle(src.value)"
-                            @click="toggleSourceSelection(src.value)">
-                            <v-sheet class="d-flex align-center w-100 ga-2">
-                                <v-sheet class="flex-shrink-0" width="3" rounded="pill"
-                                    style="align-self: stretch; margin: 2px 0; background: var(--strip-accent);" />
-                                <span>{{ src.label }}</span>
-                                <span class="source-chip-dot" :style="{ background: sourceColorHex(src.value) }" />
-                                <v-btn icon size="x-small" variant="text"
-                                    style="width: 22px; height: 22px; margin-left: auto; margin-right: -4px; color: rgba(var(--v-theme-on-surface), 0.62);"
-                                    :aria-label="sourceHighlighted(src.value) ? 'Hide highlight' : 'Show highlight'"
-                                    @click.stop="toggleSourceHighlight(src.value)">
-                                    <v-icon size="14">{{ sourceHighlighted(src.value) ? 'mdi-eye' : 'mdi-eye-off' }}</v-icon>
-                                </v-btn>
-                                <v-btn icon size="x-small" variant="text"
-                                    style="width: 22px; height: 22px; margin-right: -4px; color: rgba(var(--v-theme-on-surface), 0.62);"
-                                    aria-label="Edit source color" @click.stop="openSourceColorDialog(src.value)">
-                                    <v-icon size="14">mdi-palette</v-icon>
-                                </v-btn>
-                            </v-sheet>
-                        </v-chip>
+                    <v-sheet class="pa-3 border-b">
+                        <v-sheet class="text-caption text-medium-emphasis mb-2">Source</v-sheet>
+                        <v-sheet class="d-flex flex-column ga-2">
+                            <v-chip v-for="src in sourceOptions" :key="src.value" class="source-chip" size="small" label
+                                :variant="activeSource === src.value ? 'flat' : 'outlined'" :style="sourceChipStyle(src.value)"
+                                @click="toggleSourceSelection(src.value)">
+                                <v-sheet class="d-flex align-center w-100 ga-2">
+                                    <v-sheet class="flex-shrink-0" width="4" rounded="pill"
+                                        style="align-self: stretch; margin: 2px 0; background: var(--strip-accent);" />
+                                    <span>{{ src.label }}</span>
+                                    <v-btn icon size="x-small" variant="text"
+                                        style="width: 22px; height: 22px; margin-left: auto; margin-right: -4px; color: rgba(var(--v-theme-on-surface), 0.62);"
+                                        :aria-label="sourceHighlighted(src.value) ? 'Hide highlight' : 'Show highlight'"
+                                        @click.stop="toggleSourceHighlight(src.value)">
+                                        <v-icon size="14">{{ sourceHighlighted(src.value) ? 'mdi-eye' : 'mdi-eye-off' }}</v-icon>
+                                    </v-btn>
+                                    <v-btn icon size="x-small" variant="text"
+                                        style="width: 22px; height: 22px; margin-right: -4px; color: rgba(var(--v-theme-on-surface), 0.62);"
+                                        aria-label="Edit source color" @click.stop="openSourceColorDialog(src.value)">
+                                        <v-icon size="14">mdi-palette</v-icon>
+                                    </v-btn>
+                                </v-sheet>
+                            </v-chip>
+                        </v-sheet>
                     </v-sheet>
                 </v-sheet>
 
-            </aside>
+                <CalendarEventPanel embedded :title="panelTitle" :subtitle="panelSubtitle" :events="panelEvents"
+                    :selected-event-id="selectedEventId" :source-color-map="resolvedSourceColorMap"
+                    @select="onEventClick" @edit="openEdit" @delete="deleteEvent"
+                    @contextmenu="openEventContextMenu" />
+            </v-sheet>
 
-            <CalendarEventPanel :title="panelTitle" :subtitle="panelSubtitle" :events="panelEvents"
-                :selected-event-id="selectedEventId" :source-color-map="resolvedSourceColorMap"
-                @select="onEventClick" @edit="openEdit" @delete="deleteEvent"
-                @contextmenu="openEventContextMenu" />
-
-            <section class="flex-grow-1 d-flex flex-column min-width-0"
-                style="overflow: hidden; position: relative; border: 1px solid rgba(var(--v-border-color), 0.5);"
-                @wheel.prevent="onCalendarWheel">
-                <CalendarGrid :cells="cells" :events="displayEvents" :highlighted-sources="highlightedSourceList"
-                    :selected-cell="selectedCell" :source-color-map="resolvedSourceColorMap"
-                    @cell-click="onCellClick" @event-click="onEventClick" @event-context-menu="openEventContextMenu" />
-
-                <v-card v-if="selectedEventDetail" class="event-details-card" rounded="lg" elevation="6">
-                    <v-sheet class="d-flex align-center justify-space-between mb-2">
-                        <v-sheet class="text-caption text-medium-emphasis">Event Details</v-sheet>
-                        <v-btn icon size="x-small" variant="text" @click="selectedEventId = null">
-                            <v-icon size="14">mdi-close</v-icon>
+            <v-sheet class="flex-grow-1 d-flex flex-column min-width-0 min-height-0 overflow-hidden">
+                <v-sheet class="px-4 py-2 border-s border-e border-b d-flex align-center justify-end flex-shrink-0">
+                    <v-sheet class="d-flex align-center ga-2">
+                        <v-btn size="small" variant="outlined" @click="goToday">Today</v-btn>
+                        <v-btn icon size="small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
+                            <v-icon size="14">{{ searchRailCollapsed ? 'mdi-dock-right' : 'mdi-dock-window' }}</v-icon>
+                            <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show search' : 'Hide search' }}</v-tooltip>
+                        </v-btn>
+                        <v-btn size="small" color="primary" @click="openCreate(selectedCell?.dateKey ?? todayKey)">
+                            <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
                         </v-btn>
                     </v-sheet>
+                </v-sheet>
 
-                    <v-sheet class="text-body-2 font-weight-bold mb-2">{{ selectedEventDetail.title }}</v-sheet>
+                <section class="flex-grow-1 d-flex flex-column min-width-0 min-height-0 border-s border-e border-b"
+                    style="overflow: hidden; position: relative;" @wheel.prevent="onCalendarWheel">
+                    <CalendarGrid :cells="cells" :events="displayEvents" :highlighted-sources="highlightedSourceList"
+                        :selected-cell="selectedCell" :source-color-map="resolvedSourceColorMap"
+                        @cell-click="onCellClick" @event-click="onEventClick" @event-context-menu="openEventContextMenu" />
 
-                    <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Source</span><span>{{ selectedEventDetail.source }}</span></v-sheet>
-                    <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Color</span><span>{{ selectedEventDetail.color || '-' }}</span></v-sheet>
-                    <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Start Time</span><span>{{ getEventStartTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                    <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">End Time</span><span>{{ getEventEndTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                    <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Time</span><span>{{ getEventDisplayTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                    <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Location</span><span>{{ selectedEventDetail.location || '-' }}</span></v-sheet>
-                    <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Description</span><span>{{ selectedEventDetail.description || '-' }}</span></v-sheet>
-                    <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Link</span>
-                        <a v-if="selectedEventDetail.link" class="event-detail-link"
-                            :href="selectedEventDetail.link" target="_blank" rel="noopener noreferrer">
-                            {{ selectedEventDetail.link }}
-                        </a>
-                        <span v-else>-</span>
-                    </v-sheet>
-                </v-card>
-            </section>
+                    <v-card v-if="selectedEventDetail" class="event-details-card" rounded="lg" elevation="6">
+                        <v-sheet class="d-flex align-center justify-space-between mb-2">
+                            <v-sheet class="text-caption text-medium-emphasis">Event Details</v-sheet>
+                            <v-btn icon size="x-small" variant="text" @click="selectedEventId = null">
+                                <v-icon size="14">mdi-close</v-icon>
+                            </v-btn>
+                        </v-sheet>
+
+                        <v-sheet class="text-body-2 font-weight-bold mb-2">{{ selectedEventDetail.title }}</v-sheet>
+
+                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Source</span><span>{{ selectedEventDetail.source }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Color</span><span>{{ selectedEventDetail.color || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Start Time</span><span>{{ getEventStartTime(selectedEventDetail) || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">End Time</span><span>{{ getEventEndTime(selectedEventDetail) || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Time</span><span>{{ getEventDisplayTime(selectedEventDetail) || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Location</span><span>{{ selectedEventDetail.location || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Description</span><span>{{ selectedEventDetail.description || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Link</span>
+                            <a v-if="selectedEventDetail.link" class="event-detail-link"
+                                :href="selectedEventDetail.link" target="_blank" rel="noopener noreferrer">
+                                {{ selectedEventDetail.link }}
+                            </a>
+                            <span v-else>-</span>
+                        </v-sheet>
+                    </v-card>
+                </section>
+            </v-sheet>
 
 
             <aside v-if="!searchRailCollapsed" class="border-s d-flex flex-column"
@@ -224,6 +221,7 @@
     const CALENDAR_PAGE_STORAGE_KEY = 'calendar:index:state:v1'
     const CALENDAR_POLL_INTERVAL_MS = 30000
     const CALENDAR_POLL_INTERVAL_GUARD_MS = 28000
+    const CALENDAR_SCROLL_REFRESH_DEBOUNCE_MS = 320
 
     interface CalendarPagePersistedState {
         viewStartDate: string
@@ -301,7 +299,10 @@
     const colorNoticeOpen = ref(false)
     const persistenceReady = ref(false)
     const calendarPollTimer = ref<ReturnType<typeof window.setInterval> | null>(null)
+    const calendarScrollRefreshTimer = ref<ReturnType<typeof window.setTimeout> | null>(null)
+    const calendarWheelScrolling = ref(false)
     let sourceEventsRequestToken = 0
+    let visibleEventsRequestToken = 0
 
     type CalendarPollingWindow = Window & {
         __calendarIndexPollTimer__?: ReturnType<typeof window.setInterval> | null
@@ -595,17 +596,49 @@
     }
 
     const loadVisibleEvents = async (silent = false) => {
+        const requestToken = ++visibleEventsRequestToken
+        const start = visibleStart.value
+        const end = visibleEnd.value
         if (!silent) searchError.value = ''
         try {
             const rows = await getCalendarEvents({
-                start: visibleStart.value,
-                end: visibleEnd.value,
+                start,
+                end,
             })
+            if (requestToken !== visibleEventsRequestToken) return
             events.value = applyPendingEventPatches(rows)
         } catch (error) {
+            if (requestToken !== visibleEventsRequestToken) return
             console.error(error)
             if (!silent) searchError.value = 'Load calendar events failed. Please check backend/API config.'
         }
+    }
+
+    const clearCalendarScrollRefreshTimer = () => {
+        if (typeof window === 'undefined') return
+        if (!calendarScrollRefreshTimer.value) return
+        window.clearTimeout(calendarScrollRefreshTimer.value)
+        calendarScrollRefreshTimer.value = null
+    }
+
+    const cancelCalendarScrollRefresh = () => {
+        clearCalendarScrollRefreshTimer()
+        calendarWheelScrolling.value = false
+    }
+
+    const scheduleCalendarScrollRefresh = (silent = true) => {
+        if (typeof window === 'undefined') {
+            void loadVisibleEvents(silent)
+            return
+        }
+
+        calendarWheelScrolling.value = true
+        clearCalendarScrollRefreshTimer()
+        calendarScrollRefreshTimer.value = window.setTimeout(() => {
+            calendarScrollRefreshTimer.value = null
+            calendarWheelScrolling.value = false
+            void loadVisibleEvents(silent)
+        }, CALENDAR_SCROLL_REFRESH_DEBOUNCE_MS)
     }
 
     const pollCalendarVisibleEvents = async () => {
@@ -617,6 +650,7 @@
         // Guard against duplicated poll timers (e.g. HMR / remount side effects).
         if (now - lastAt < CALENDAR_POLL_INTERVAL_GUARD_MS) return
         if (pollingWindow.__calendarIndexPollInFlight__) return
+        if (calendarWheelScrolling.value || calendarScrollRefreshTimer.value) return
 
         pollingWindow.__calendarIndexPollInFlight__ = true
         try {
@@ -700,7 +734,7 @@
         return `Date: ${selectedCell.value.dateKey}`
     })
 
-    const panelSubtitle = computed(() => `${panelEvents.value.length} event${panelEvents.value.length === 1 ? '' : 's'}`)
+    const panelSubtitle = computed(() => '')
 
     const selectedEventDetail = computed(() => {
         if (!selectedEventId.value) return null
@@ -712,14 +746,17 @@
     })
 
     const prevMonth = () => {
+        cancelCalendarScrollRefresh()
         shiftVisibleMonth(-1)
     }
 
     const nextMonth = () => {
+        cancelCalendarScrollRefresh()
         shiftVisibleMonth(1)
     }
 
     const goToday = () => {
+        cancelCalendarScrollRefresh()
         const now = new Date()
         viewStartDate.value = startOfWeek(new Date(now.getFullYear(), now.getMonth(), 1))
         const cell = cells.value.find(c => c.dateKey === todayKey)
@@ -736,6 +773,7 @@
         const eventDate = fromDateKey(ev.date)
         const inCurrentView = cells.value.some(c => c.dateKey === ev.date)
         if (!inCurrentView) {
+            cancelCalendarScrollRefresh()
             viewStartDate.value = startOfWeek(new Date(eventDate.getFullYear(), eventDate.getMonth(), 1))
             await nextTick()
         }
@@ -749,6 +787,7 @@
         const now = Date.now()
         if (now - lastWheelAt.value < 220) return
         lastWheelAt.value = now
+        scheduleCalendarScrollRefresh(true)
 
         if (event.deltaY > 0) {
             viewStartDate.value = addDays(viewStartDate.value, 7)
@@ -759,19 +798,18 @@
 
     const sourceChipStyle = (source: CalEvent['source']) => {
         const color = sourceColorHex(source)
-        const accent = `color-mix(in srgb, ${color} 48%, #7f8794)`
         const selected = activeSource.value === source
         return sourceHighlighted(source)
             ? {
-                '--strip-accent': accent,
-                background: `color-mix(in srgb, ${color} 13%, rgb(var(--v-theme-surface)))`,
+                '--strip-accent': color,
+                background: 'transparent',
                 color: 'rgba(var(--v-theme-on-surface), 0.9)',
                 borderColor: selected ? `color-mix(in srgb, ${color} 45%, rgba(var(--v-theme-on-surface), 0.3))` : 'rgba(var(--v-theme-on-surface), 0.18)',
                 boxShadow: selected ? `inset 0 0 0 1px color-mix(in srgb, ${color} 50%, transparent)` : 'none'
             }
             : {
-                '--strip-accent': accent,
-                background: 'rgba(var(--v-theme-on-surface), 0.02)',
+                '--strip-accent': color,
+                background: 'transparent',
                 color: 'rgba(var(--v-theme-on-surface), 0.78)',
                 borderColor: selected ? `color-mix(in srgb, ${color} 38%, rgba(var(--v-theme-on-surface), 0.24))` : 'rgba(var(--v-theme-on-surface), 0.12)',
                 boxShadow: selected ? `inset 0 0 0 1px color-mix(in srgb, ${color} 42%, transparent)` : 'none'
@@ -1017,6 +1055,7 @@
     )
 
     watch([visibleStart, visibleEnd], () => {
+        if (calendarWheelScrolling.value || calendarScrollRefreshTimer.value) return
         loadVisibleEvents(true)
     })
 
@@ -1033,23 +1072,12 @@
     })
 
     onBeforeUnmount(() => {
+        cancelCalendarScrollRefresh()
         stopCalendarPolling()
     })
 </script>
 
 <style scoped>
-    .calendar-root {
-        background: rgb(var(--v-theme-surface));
-    }
-
-    .search-result-list {
-        max-height: 320px;
-        overflow-y: auto;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 10px;
-        background: rgba(var(--v-theme-surface), 0.5);
-    }
-
     .source-chip {
         width: 100%;
         min-height: 30px;
@@ -1067,14 +1095,12 @@
         gap: 8px;
     }
 
-    .source-chip-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        border: 1px solid rgba(var(--v-theme-on-surface), 0.35);
-        margin-left: 4px;
-        flex-shrink: 0;
-        display: inline-block;
+    .search-result-list {
+        max-height: 320px;
+        overflow-y: auto;
+        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-radius: 10px;
+        background: rgba(var(--v-theme-surface), 0.5);
     }
 
     .event-details-card {
@@ -1115,7 +1141,7 @@
         border-radius: 6px;
         background: transparent;
         color: rgba(var(--v-theme-on-surface), 0.88);
-        font-size: 11px;
+        font-size: 10px;
         height: 24px;
         cursor: pointer;
     }

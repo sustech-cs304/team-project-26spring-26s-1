@@ -34,7 +34,7 @@
         filter: props.dimmed ? 'grayscale(0.85)' : isHovered.value ? 'brightness(1.06)' : undefined,
     }))
     const sourceStyle = computed(() => ({
-        width: '11px',
+        width: '4px',
         height: '100%',
         flexShrink: 0,
         backgroundColor: sourceColor.value,
