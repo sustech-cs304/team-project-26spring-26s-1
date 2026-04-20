@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 
 from langchain.tools import tool
-from sqlalchemy import create_engine, delete, select
+from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from agent.api.routine_events import DEFAULT_EVENT_COLOR
@@ -61,14 +61,19 @@ def get_my_routine_events(
     end_hour: int = 23,
     end_minute: int = 59,
     end_second: int = 59,
+    source: str | None = None,
 ) -> dict:
     """Query events from the local routine DB (same source as the frontend calendar).
 
     Use **calendar date** and optional **time-of-day** (local wall clock); do not convert to Unix yourself
     — rules match Blackboard tools (see ``calendar_time``).
 
+    For timetable/course/class queries, query the synced calendar instead of BB/TIS directly:
+    set ``source`` to ``bb``, ``tis``, or ``bb,tis`` as appropriate.
+
     - If **all six** date fields are omitted: default window is **14 days** from **now**.
     - If a range is set: provide both ``start_year/month/day`` and ``end_year/month/day``; ``start_hour`` etc. default to 00:00:00 that day, ``end_hour`` etc. default to 23:59:59.
+    - ``source`` is optional and filters by calendar source title. It accepts a single source such as ``tis`` or a comma-separated list such as ``bb,tis``.
     - Each row includes id, time (Unix seconds), date (YYYY-MM-DD), local_time (HH:MM:SS), title, description, source title.
     """
     if not _ymd_all_or_none(start_year, start_month, start_day):
@@ -122,13 +127,22 @@ def get_my_routine_events(
     if st > et:
         return {"success": False, "message": "Start time must be <= end time", "events": []}
 
+    source_titles = list(dict.fromkeys(
+        part.strip().lower()
+        for part in (source or "").split(",")
+        if part.strip()
+    ))
+
     try:
         with _session() as session:
             stmt = (
                 select(RoutineEvent)
+                .outerjoin(RoutineSource)
                 .where(RoutineEvent.time_ >= st, RoutineEvent.time_ <= et)
                 .order_by(RoutineEvent.time_.asc())
             )
+            if source_titles:
+                stmt = stmt.where(func.lower(RoutineSource.title).in_(source_titles))
             rows = session.scalars(stmt).all()
             events = []
             for r in rows:

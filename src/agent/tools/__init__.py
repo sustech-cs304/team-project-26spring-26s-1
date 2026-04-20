@@ -7,10 +7,8 @@ from langgraph.prebuilt import ToolNode
 class ToolArtifact(TypedDict):
     break_agent_loop: bool
 
-from .bb import get_calendar_events
 from .code_interpreter import code_interpreter
 from .core_memory import core_memory_insert, core_memory_modify
-from .tis import get_schedule, query_available_courses
 from .routine_tools import (
     add_routine_event,
     delete_routine_events,
@@ -32,9 +30,6 @@ from .skills_tools import read_installed_skills
 from .subagent import create_subagent
 
 tools = [
-    get_calendar_events,
-    get_schedule,
-    query_available_courses,
     get_my_routine_events,
     add_routine_event,
     update_routine_event,
