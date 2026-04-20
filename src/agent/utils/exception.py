@@ -23,6 +23,7 @@ def is_langchain_network_failure(exc: BaseException) -> bool:
         "TransportError",
         "WriteError",
         "WriteTimeout",
+        "RatelimitError"
     }
     network_name_tokens = (
         "Connect",

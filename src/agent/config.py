@@ -67,8 +67,16 @@ class WebSearchConfig(BaseModel):
 
 class OneBotConfig(BaseModel):
     access_token: str = ""
-    superuser_id: str = ""
-    command_name: str = "agent"
+    superuser_ids: list[str] = Field(default_factory=list)
+    command_trigger: str = ""
+    message_trigger: str = ""
+
+
+class TelegramConfig(BaseModel):
+    token: str = ""
+    superuser_ids: list[str] = Field(default_factory=list)
+    command_trigger: str = ""
+    message_trigger: str = ""
 
 class NotificationConfig(BaseModel):
     enabled: bool = True
@@ -101,6 +109,7 @@ class AppConfig(BaseModel):
     webfetch: WebFetchConfig
     websearch: WebSearchConfig
     onebot: OneBotConfig = Field(default_factory=OneBotConfig)
+    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     rag_cloud: RagCloudConfig = RagCloudConfig()
     skills_cloud: SkillsCloudConfig = Field(default_factory=SkillsCloudConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)

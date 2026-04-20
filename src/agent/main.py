@@ -17,7 +17,7 @@ from agent.db.database import (
 from agent.api.conversation import router as conversation_router
 from agent.api.file import router as file_router
 from agent.api.notifications import router as notifications_router
-from agent.api.onebot import OneBotHub, router as onebot_router
+from agent.im.onebot import OneBotHub, router as onebot_router
 from agent.api.rag import router as rag_router
 from agent.api.skills import router as skills_router
 from agent.api.conversation_runner import ConversationRunner
@@ -48,6 +48,7 @@ graph = None
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
 	global engine, async_session, graph
+	telegram_bot = None
 
 	engine = get_default_async_engine()
 	async_session = get_default_session_factory()
@@ -70,6 +71,13 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.async_session = async_session
 	app.state.ConversationRunner = ConversationRunner(graph, async_session)
 	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner)
+	await ensure_default_schema()
+	if get_config().telegram.token.strip():
+		from agent.im.telegram.bot import TelegramBot
+
+		telegram_bot = TelegramBot(async_session, graph, app.state.ConversationRunner)
+		await telegram_bot.start()
+	app.state.TelegramBot = telegram_bot
 	app.state.graph = graph
 	app.state.NotificationService = notification_service
 	configure_notification_service(notification_service)
@@ -78,7 +86,6 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.skills_auth_state = skills_auth_state
 	app.state.skills_local_store = skills_local_store
 
-	await ensure_default_schema()
 	calendar_sync_task = await start_calendar_sync(async_session)
 
 	task_runtime = get_task_runtime()
@@ -90,6 +97,8 @@ async def lifespan(app: fastapi.FastAPI):
   
 	finally:
 		configure_notification_service(None)
+		if telegram_bot is not None:
+			await telegram_bot.stop()
 		calendar_sync_task.cancel()
 		try:
 			await calendar_sync_task

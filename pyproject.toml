@@ -24,6 +24,7 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=3.0.3",
     "pytest>=9.0.3",
     "pypdf>=4.3.1",
+    "python-telegram-bot>=22.7",
     "python-multipart>=0.0.22",
     "pyyaml>=6.0.0",
     "sqlalchemy[asyncio]>=2.0.49",

@@ -68,3 +68,44 @@ def format_tool_paragraph(tool_call: CompletionResponseToolCall, trim_long_field
     lines.append("Status: running")
     return "\n".join(lines)
 
+
+def render_tool_message(tool_call: CompletionResponseToolCall, truncate_limit: int = TOOL_TRUNCATE_THRESHOLD) -> str:
+    tool_message = format_tool_paragraph(tool_call)
+    if len(tool_message) <= truncate_limit:
+        return tool_message
+
+    tool_message = format_tool_paragraph(tool_call, trim_long_fields=True)
+    if len(tool_message) <= truncate_limit:
+        return tool_message
+
+    return trim_head(tool_message, truncate_limit)
+
+
+def split_text_chunks(text: str, limit: int) -> list[str]:
+    message = text.strip()
+    if not message:
+        return []
+
+    chunks: list[str] = []
+    while len(message) > limit:
+        split_at = message.rfind("\n\n", 0, limit + 1)
+        if split_at <= 0:
+            split_at = message.rfind("\n", 0, limit + 1)
+        if split_at <= 0:
+            split_at = message.rfind(" ", 0, limit + 1)
+        if split_at <= 0:
+            split_at = limit
+
+        chunk = message[:split_at].rstrip()
+        if not chunk:
+            chunk = message[:limit]
+            split_at = limit
+
+        chunks.append(chunk)
+        message = message[split_at:].lstrip()
+
+    if message:
+        chunks.append(message)
+
+    return chunks
+

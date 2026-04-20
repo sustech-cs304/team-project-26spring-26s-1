@@ -7,3 +7,4 @@ router = APIRouter()
 async def onebot_reverse_websocket(websocket: WebSocket):
     hub = websocket.app.state.OneBotHub
     await hub.serve(websocket)
+
