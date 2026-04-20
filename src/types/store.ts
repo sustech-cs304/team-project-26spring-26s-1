@@ -23,6 +23,21 @@ export interface StoreMySkill extends StoreSkillSummary {
   markdown_content: string
 }
 
+export interface StoreDownloadedSkill extends StoreSkillSummary {
+  install: true
+}
+
+export interface LocalDownloadedSkill {
+  cloud_skill_id: number
+  name: string
+  description: string
+  markdown_path: string
+}
+
+export interface LocalDownloadedSkillDetail extends LocalDownloadedSkill {
+  markdown_content: string
+}
+
 export interface StoreSkillListResponse {
   total: number
   page: number

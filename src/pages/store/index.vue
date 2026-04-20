@@ -26,6 +26,7 @@
             <div class="d-flex flex-wrap align-center ga-3">
                 <v-tabs v-model="currentTab" color="primary" class="flex-grow-0">
                     <v-tab value="store">技能商店</v-tab>
+                    <v-tab value="downloaded">已下载</v-tab>
                     <v-tab value="mySubmissions">我的投稿</v-tab>
                 </v-tabs>
 
@@ -161,6 +162,53 @@
                         total-visible="7"
                     />
                 </div>
+            </template>
+
+            <template v-else-if="currentTab === 'downloaded'">
+                <v-row v-if="filteredDownloadedSkills.length">
+                    <v-col v-for="skill in filteredDownloadedSkills" :key="skill.id" cols="12" sm="6" lg="4" xl="3">
+                        <SkillCard
+                            :title="skill.name"
+                            :description="skill.description"
+                            :tags="skill.tags.map(t => t.name)"
+                            :downloads="skill.download_count"
+                            @click="openDetail(skill)"
+                        >
+                            <template #top-right>
+                                <v-chip
+                                    size="small"
+                                    rounded="lg"
+                                    color="success"
+                                    variant="tonal"
+                                >
+                                    已安装
+                                </v-chip>
+                            </template>
+
+                            <template #bottom-right>
+                                <v-btn
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    rounded="lg"
+                                    :loading="actionSkillId === skill.id && actionMode === 'remove'"
+                                    @click.stop="removeSkill(skill)"
+                                >
+                                    卸载
+                                </v-btn>
+                            </template>
+                        </SkillCard>
+                    </v-col>
+                </v-row>
+
+                <v-sheet
+                    v-else-if="!loading"
+                    rounded="xl"
+                    class="pa-8 text-center text-medium-emphasis"
+                    style="background: rgba(var(--v-theme-surface), 0.55);"
+                >
+                    暂无已下载技能
+                </v-sheet>
             </template>
 
             <template v-else-if="currentTab === 'mySubmissions'">
@@ -301,6 +349,8 @@
     import UploadSkillDialog from '@/components/store/UploadSkillDialog.vue'
     import {
         deleteMySkill,
+        getDownloadedSkillDetail,
+        getDownloadedSkills,
         getMySkills,
         getSkillDetail,
         getSkills,
@@ -310,13 +360,27 @@
         uploadSkill,
     } from '@/api/store'
     import { useAuthStore } from '@/stores/auth'
-    import type { StoreMySkill, StoreSkillDetail, StoreSkillSummary, StoreTag } from '@/types/store'
+    import type {
+        LocalDownloadedSkill,
+        LocalDownloadedSkillDetail,
+        StoreMySkill,
+        StoreSkillDetail,
+        StoreSkillSummary,
+        StoreTag,
+    } from '@/types/store'
 
     type StoreSkillCard = StoreSkillSummary & {
         tagNames: string[]
     }
 
-    type StoreActionSkill = StoreSkillCard | StoreSkillDetail
+    type DownloadedSkillCard = LocalDownloadedSkill & {
+        id: number
+        install: true
+        download_count: number
+        tags: StoreTag[]
+    }
+
+    type StoreActionSkill = StoreSkillCard | DownloadedSkillCard | StoreSkillDetail
 
     const MAX_MY_SUBMISSIONS = 5
     const pageSize = 20
@@ -329,9 +393,10 @@
     const mySubmissionDetailOpen = ref(false)
     const apiMessage = ref('')
     const apiMessageType = ref<'info' | 'success' | 'warning' | 'error'>('info')
-    const currentTab = ref<'store' | 'mySubmissions'>('store')
+    const currentTab = ref<'store' | 'downloaded' | 'mySubmissions'>('store')
     const skills = ref<StoreSkillCard[]>([])
     const skillsTotal = ref(0)
+    const downloadedSkills = ref<DownloadedSkillCard[]>([])
     const mySkills = ref<StoreMySkill[]>([])
     const uploadDialogOpen = ref(false)
     const uploading = ref(false)
@@ -364,12 +429,31 @@
         })
     })
 
+    const filteredDownloadedSkills = computed(() => {
+        const keyword = search.value.trim().toLowerCase()
+        if (!keyword) return downloadedSkills.value
+
+        return downloadedSkills.value.filter((skill) => {
+            return skill.name.toLowerCase().includes(keyword)
+                || skill.description.toLowerCase().includes(keyword)
+                || skill.tags.some(tag => tag.name.toLowerCase().includes(keyword))
+        })
+    })
+
     const currentStatCount = computed(() =>
-        currentTab.value === 'store' ? skillsTotal.value : filteredMySkills.value.length,
+        currentTab.value === 'store'
+            ? skillsTotal.value
+            : currentTab.value === 'downloaded'
+                ? filteredDownloadedSkills.value.length
+                : filteredMySkills.value.length,
     )
 
     const currentStatLabel = computed(() =>
-        currentTab.value === 'store' ? 'SKILLS COUNT' : 'MY SUBMISSIONS',
+        currentTab.value === 'store'
+            ? 'SKILLS COUNT'
+            : currentTab.value === 'downloaded'
+                ? 'DOWNLOADED'
+                : 'MY SUBMISSIONS',
     )
 
     const categoryOptions = computed(() => [
@@ -412,10 +496,17 @@
             }
 
             await loadStoreSkills()
-        } else {
-            page.value = 1
-            await loadMySubmissionSkills()
+            return
         }
+
+        page.value = 1
+
+        if (tab === 'downloaded') {
+            await loadDownloadedSkills()
+            return
+        }
+
+        await loadMySubmissionSkills()
     })
 
     function getMySkillStatusText(status: string) {
@@ -489,6 +580,45 @@
         }
     }
 
+    function toDownloadedSkillCard(skill: LocalDownloadedSkill): DownloadedSkillCard {
+        return {
+            ...skill,
+            id: skill.cloud_skill_id,
+            install: true,
+            download_count: 0,
+            tags: [],
+        }
+    }
+
+    function toDownloadedSkillDetail(skill: LocalDownloadedSkillDetail): StoreSkillDetail {
+        return {
+            id: skill.cloud_skill_id,
+            name: skill.name,
+            description: skill.description,
+            markdown_content: skill.markdown_content,
+            install: true,
+            download_count: 0,
+            tags: [],
+            created_at: '',
+        }
+    }
+
+    function syncStoreSkillInstallState(downloadedList: LocalDownloadedSkill[] = downloadedSkills.value) {
+        const downloadedSkillIds = new Set(downloadedList.map(skill => skill.cloud_skill_id))
+
+        skills.value = skills.value.map(skill => ({
+            ...skill,
+            install: downloadedSkillIds.has(skill.id),
+        }))
+
+        if (selectedSkill.value) {
+            selectedSkill.value = {
+                ...selectedSkill.value,
+                install: downloadedSkillIds.has(selectedSkill.value.id),
+            }
+        }
+    }
+
     function updateSkillInstallState(skillId: number, install: boolean) {
         skills.value = skills.value.map(skill => (
             skill.id === skillId
@@ -534,21 +664,66 @@
 
         try {
             const keyword = search.value.trim()
-            const response = await getSkills({
-                page: page.value,
-                page_size: pageSize,
-                tag_id: activeTagId.value ?? undefined,
-                search: keyword || undefined,
-            })
+            const [response, downloadedResponse] = await Promise.all([
+                getSkills({
+                    page: page.value,
+                    page_size: pageSize,
+                    tag_id: activeTagId.value ?? undefined,
+                    search: keyword || undefined,
+                }),
+                getDownloadedSkills().catch((error) => {
+                    if (isUnauthorizedError(error)) {
+                        return null
+                    }
+
+                    throw error
+                }),
+            ])
 
             skills.value = response.skills.map(toCardSkill)
             skillsTotal.value = response.total
+
+            if (downloadedResponse) {
+                downloadedSkills.value = downloadedResponse.map(toDownloadedSkillCard)
+                syncStoreSkillInstallState(downloadedResponse)
+            } else {
+                downloadedSkills.value = []
+                syncStoreSkillInstallState([])
+            }
         } catch (error) {
             skills.value = []
             skillsTotal.value = 0
             setApiMessage(`加载技能列表失败：${getErrorMessage(error)}`, 'error')
         } finally {
             loading.value = false
+        }
+    }
+
+    async function loadDownloadedSkills(silent = false) {
+        if (!silent) {
+            loading.value = true
+            apiMessage.value = ''
+        }
+
+        try {
+            const response = await getDownloadedSkills()
+            downloadedSkills.value = response.map(toDownloadedSkillCard)
+            syncStoreSkillInstallState(response)
+        } catch (error) {
+            if (!silent) {
+                downloadedSkills.value = []
+                syncStoreSkillInstallState([])
+                if (isUnauthorizedError(error)) {
+                    setApiMessage('请先登录后查看已下载技能', 'warning')
+                    return
+                }
+
+                setApiMessage(`加载已下载技能失败：${getErrorMessage(error)}`, 'error')
+            }
+        } finally {
+            if (!silent) {
+                loading.value = false
+            }
         }
     }
 
@@ -574,9 +749,15 @@
     async function loadCurrentTabData() {
         if (currentTab.value === 'store') {
             await loadStoreSkills()
-        } else {
-            await loadMySubmissionSkills()
+            return
         }
+
+        if (currentTab.value === 'downloaded') {
+            await loadDownloadedSkills()
+            return
+        }
+
+        await loadMySubmissionSkills()
     }
 
     async function checkSubmissionLimit() {
@@ -645,13 +826,28 @@
     }
 
     async function openDetail(skill: StoreActionSkill) {
+        const fromDownloadedTab = currentTab.value === 'downloaded'
+
         detailOpen.value = true
         detailLoading.value = true
         selectedSkill.value = null
 
         try {
-            selectedSkill.value = await getSkillDetail(skill.id)
+            const detail = fromDownloadedTab
+                ? toDownloadedSkillDetail(await getDownloadedSkillDetail(skill.id))
+                : await getSkillDetail(skill.id)
+            const downloadedSkillIds = new Set(downloadedSkills.value.map(item => item.id))
+            selectedSkill.value = {
+                ...detail,
+                install: downloadedSkillIds.has(detail.id),
+            }
         } catch (error) {
+            if (fromDownloadedTab) {
+                detailOpen.value = false
+                setApiMessage('该技能详情暂不可用，可能已从云端下架，但仍可直接卸载。', 'warning')
+                return
+            }
+
             setApiMessage(`加载技能详情失败：${getErrorMessage(error)}`, 'error')
         } finally {
             detailLoading.value = false
@@ -709,6 +905,7 @@
         try {
             const response = await triggerSkillDownload(skill.id)
             updateSkillInstallState(response.skill_id, true)
+            await loadDownloadedSkills(true)
             showActionSuccessDialog(response.message || `已下载：${skill.name}`)
             incrementDownloadCount(response.skill_id)
         } catch (error) {
@@ -728,6 +925,13 @@
         try {
             const response = await triggerSkillUninstall(skill.id)
             updateSkillInstallState(response.skill_id, false)
+            await loadDownloadedSkills(true)
+
+            if (currentTab.value === 'downloaded' && selectedSkill.value?.id === response.skill_id) {
+                detailOpen.value = false
+                selectedSkill.value = null
+            }
+
             showActionSuccessDialog(response.message || `已卸载：${skill.name}`)
         } catch (error) {
             setApiMessage(`卸载失败：${getErrorMessage(error)}`, 'error')
