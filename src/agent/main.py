@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 import fastapi
 from agent.calendar import start_calendar_sync
 from agent.config import get_config
+from agent.config_runtime import ConfigManager
 from agent.db.database import (
 	dispose_default_async_engine,
 	ensure_default_schema,
@@ -31,6 +32,7 @@ from agent.api.routine_events import router as routine_events_router
 from agent.rag.cloud_sync import RagCloudSyncService
 from agent.services.task_runtime import get_task_runtime
 from agent.services import NotificationService, SkillsAuthState, SkillsHubClient, SkillsLocalStore
+from agent.im.telegram.runtime import TelegramRuntime
 
 import aiosqlite
 from langgraph.store.sqlite import AsyncSqliteStore
@@ -48,7 +50,6 @@ graph = None
 @asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
 	global engine, async_session, graph
-	telegram_bot = None
 
 	engine = get_default_async_engine()
 	async_session = get_default_session_factory()
@@ -72,12 +73,12 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.ConversationRunner = ConversationRunner(graph, async_session)
 	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner)
 	await ensure_default_schema()
-	if get_config().telegram.token.strip():
-		from agent.im.telegram.bot import TelegramBot
-
-		telegram_bot = TelegramBot(async_session, graph, app.state.ConversationRunner)
-		await telegram_bot.start()
-	app.state.TelegramBot = telegram_bot
+	config_manager = ConfigManager()
+	telegram_runtime = TelegramRuntime(async_session, graph, app.state.ConversationRunner)
+	await telegram_runtime.start(get_config())
+	config_manager.subscribe(telegram_runtime)
+	app.state.ConfigManager = config_manager
+	app.state.TelegramRuntime = telegram_runtime
 	app.state.graph = graph
 	app.state.NotificationService = notification_service
 	configure_notification_service(notification_service)
@@ -97,8 +98,7 @@ async def lifespan(app: fastapi.FastAPI):
   
 	finally:
 		configure_notification_service(None)
-		if telegram_bot is not None:
-			await telegram_bot.stop()
+		await telegram_runtime.stop()
 		calendar_sync_task.cancel()
 		try:
 			await calendar_sync_task

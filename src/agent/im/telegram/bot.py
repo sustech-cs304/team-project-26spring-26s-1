@@ -14,7 +14,7 @@ from telegram.ext import Application, ApplicationBuilder, MessageHandler, filter
 
 from agent.api.conversation_models import CompletionResponseToolCall
 from agent.api.conversation_runner import ConversationRunner
-from agent.config import get_config
+from agent.config import TelegramConfig
 from agent.im.message_utils import render_tool_message, split_text_chunks
 from agent.im.session_controller import IMSessionController
 from agent.im.types import IMChatTarget
@@ -52,7 +52,14 @@ class _TelegramAssistantDraft:
 
 
 class TelegramBot(IMSessionController):
-    def __init__(self, session_factory, graph, runner: ConversationRunner):
+    def __init__(
+        self,
+        session_factory,
+        graph,
+        runner: ConversationRunner,
+        *,
+        telegram_config: TelegramConfig,
+    ):
         super().__init__(
             session_factory,
             graph,
@@ -60,6 +67,7 @@ class TelegramBot(IMSessionController):
             platform_key="telegram",
             platform_label="Telegram",
         )
+        self._config = telegram_config.model_copy(deep=True)
         self._application: Application | None = None
         self._account_id: str | None = None
         self._session_history: dict[tuple[str, str, str, str], _TelegramSessionHistory] = {}
@@ -67,23 +75,26 @@ class TelegramBot(IMSessionController):
 
     @property
     def token(self) -> str:
-        return get_config().telegram.token.strip()
+        return self._config.token.strip()
 
     @property
     def superuser_ids(self) -> set[str]:
         return {
             str(user_id).strip()
-            for user_id in get_config().telegram.superuser_ids
+            for user_id in self._config.superuser_ids
             if str(user_id).strip()
         }
 
     @property
     def command_trigger(self) -> str:
-        return get_config().telegram.command_trigger
+        return self._config.command_trigger
 
     @property
     def message_trigger(self) -> str:
-        return get_config().telegram.message_trigger
+        return self._config.message_trigger
+
+    def update_config(self, telegram_config: TelegramConfig):
+        self._config = telegram_config.model_copy(deep=True)
 
     async def start(self):
         if not self.token or self._application is not None:

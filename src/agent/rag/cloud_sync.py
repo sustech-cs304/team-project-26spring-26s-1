@@ -48,7 +48,6 @@ class RagCloudSyncStatus:
 
 class RagCloudSyncService:
     def __init__(self):
-        self._config = get_config()
         self._status = RagCloudSyncStatus()
         self._lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
@@ -119,7 +118,7 @@ class RagCloudSyncService:
             self._status.error = str(exc)
 
     async def _fetch_manifest(self) -> dict[str, Any]:
-        cloud_config = self._config.rag_cloud
+        cloud_config = get_config().rag_cloud
         if not cloud_config.base_url.strip():
             raise ValueError("rag_cloud.base_url is not configured.")
 
@@ -145,7 +144,7 @@ class RagCloudSyncService:
 
     def _prepare_cache_dir(self, knowledge_base_id: str, version: str) -> Path:
         cache_dir = (
-            Path(self._config.file.rag_path)
+            Path(get_config().file.rag_path)
             / "embeddings"
             / "cloud-cache"
             / knowledge_base_id
@@ -156,7 +155,7 @@ class RagCloudSyncService:
 
     async def _download_manifest_files(self, files: list[Any], cache_dir: Path) -> list[Path]:
         downloaded: list[Path] = []
-        cloud_config = self._config.rag_cloud
+        cloud_config = get_config().rag_cloud
         timeout = aiohttp.ClientTimeout(total=max(cloud_config.timeout_ms, 1000) / 1000)
         headers = {}
         if cloud_config.api_key:
@@ -203,9 +202,8 @@ class RagCloudSyncService:
             raise ValueError("Downloaded embedding files do not include any source_file values.")
 
         return await restore_from_embedding_array(
-            config=self._config,
+            config=get_config(),
             embedding_items=embedding_items,
             store_db=STORE_DB_PATH,
             overwrite_sources=overwrite_sources,
         )
-

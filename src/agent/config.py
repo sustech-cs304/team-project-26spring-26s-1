@@ -144,19 +144,29 @@ def get_config() -> AppConfig:
     return _config
 
 
+def set_config(config: AppConfig) -> AppConfig:
+    global _config
+    _config = config
+    return _config
+
+
+def build_patched_config(
+    delta: Mapping[str, Any],
+    base_config: AppConfig | None = None,
+) -> AppConfig:
+    current_config = get_config() if base_config is None else base_config
+    merged = _merge_config_dict(current_config.model_dump(), delta)
+    return AppConfig.model_validate(merged)
+
+
 def patch_config(delta: Mapping[str, Any]) -> AppConfig:
     """Apply a validated partial update to the live config."""
-    global _config
-    merged = _merge_config_dict(_config.model_dump(), delta)
-    _config = AppConfig.model_validate(merged)
-    return _config
+    return set_config(build_patched_config(delta))
 
 
 def reload_config(file_path: str = DEFAULT_CONFIG_PATH) -> AppConfig:
     """Reload the live config from disk."""
-    global _config
-    _config = load_config(file_path)
-    return _config
+    return set_config(load_config(file_path))
 
 
 def save_config(config_to_save: AppConfig | None = None, file_path: str = DEFAULT_CONFIG_PATH):

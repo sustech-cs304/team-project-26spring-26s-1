@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 import pydantic
-from fastapi import APIRouter, Body, status
+from fastapi import APIRouter, Body, Request, status
 from fastapi.responses import JSONResponse
 
-from agent.config import get_config, patch_config, save_config
+from agent.config import get_config
+from agent.config_runtime import ConfigManager
 
 router = APIRouter(tags=["config"])
 
@@ -49,18 +50,18 @@ async def api_get_config() -> dict[str, Any]:
     },
 )
 async def api_patch_config(
+    request: Request,
     delta: dict[str, Any] = Body(
         ...,
         description="需要merge进入config的字典",
     ),
 ) -> dict[str, Any] | JSONResponse:
+    config_manager: ConfigManager = request.app.state.ConfigManager
     try:
-        updated = patch_config(delta)
+        updated = await config_manager.patch(delta)
     except pydantic.ValidationError as exc:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"message": _build_validation_message(exc)},
         )
-
-    save_config(updated)
     return updated.model_dump()
