@@ -1,12 +1,12 @@
 <template>
-    <v-container fluid class="bg-background px-6 px-md-10 pt-10 pb-12" style="min-height: 100vh;">
-        <v-sheet class="mb-6 border-b" color="transparent">
+    <v-container fluid class="bg-background px-6 pt-4 px-md-10 pb-12" style="min-height: 100vh;">
+        <v-sheet class="mb-3 border-b" color="transparent">
             <div class="d-flex flex-wrap align-end justify-space-between ga-6">
                 <div>
                     <div class="d-flex align-center ga-4">
-                        <h1 class="text-h3 font-weight-black">Store</h1>
+                        <h1 class="text-h3 font-weight-black ma-0">Store</h1>
                     </div>
-                    <p class="text-body-2 mt-3 mb-0 text-medium-emphasis" style="max-width: 420px; line-height: 1.65">
+                    <p class="text-body-2 mb-0 text-medium-emphasis" style="max-width: 420px; line-height: 1">
                         探索适合你的 OpenCrab Skill
                     </p>
                 </div>
@@ -22,7 +22,7 @@
             </div>
         </v-sheet>
 
-        <v-sheet rounded="xl" class="mb-4 px-4 py-3" style="background: transparent">
+        <v-sheet rounded="xl" class="mb-2 px-4 py-2" style="background: transparent">
             <div class="d-flex flex-wrap align-center ga-3">
                 <v-tabs v-model="currentTab" color="primary" class="flex-grow-0">
                     <v-tab value="store">技能商店</v-tab>
@@ -69,7 +69,7 @@
         <v-sheet
             v-if="currentTab === 'store'"
             rounded="xl"
-            class="mb-6 px-4 py-4"
+            class="mb-2 px-4 py-2"
             style="background: transparent"
         >
             <div class="d-flex flex-wrap ga-3">
@@ -354,11 +354,10 @@
     )
 
     const filteredMySkills = computed(() => {
-        const visibleSkills = mySkills.value.filter(skill => skill.status !== 'archived')
         const keyword = search.value.trim().toLowerCase()
-        if (!keyword) return visibleSkills
+        if (!keyword) return mySkills.value
 
-        return visibleSkills.filter((skill) => {
+        return mySkills.value.filter((skill) => {
             return skill.name.toLowerCase().includes(keyword)
                 || skill.description.toLowerCase().includes(keyword)
                 || skill.tags.some(tag => tag.name.toLowerCase().includes(keyword))
@@ -486,7 +485,7 @@
     function toCardSkill(skill: StoreSkillSummary): StoreSkillCard {
         return {
             ...skill,
-            tagNames: skill.tags.length ? skill.tags.map(tag => tag.name) : ['UNTAGGED'],
+            tagNames: skill.tags.map(tag => tag.name),
         }
     }
 

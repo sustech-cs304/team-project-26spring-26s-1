@@ -123,7 +123,7 @@ export async function uploadSkill(file: File, tagIds: number[] = []): Promise<Up
 }
 
 export function deleteMySkill(skillId: number): Promise<DeleteSkillResponse> {
-  return storeRequest.delete<DeleteSkillResponse>(`/skills/${skillId}`)
+  return storeRequest.delete<DeleteSkillResponse>(`/skill/${skillId}/delete`)
 }
 
 export async function triggerSkillDownload(skillId: number): Promise<StoreSkillActionResponse> {

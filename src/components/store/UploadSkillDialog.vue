@@ -36,7 +36,8 @@
                     chips
                     variant="outlined"
                     density="comfortable"
-                    hide-details
+                    :hint="`最多选择 ${MAX_SELECTED_TAGS} 个标签`"
+                    persistent-hint
                 />
             </v-card-text>
 
@@ -77,6 +78,7 @@
     const selectedTagIds = ref<number[]>([])
     const validationError = ref('')
     const validating = ref(false)
+    const MAX_SELECTED_TAGS = 3
 
     const normalizedFile = computed(() => {
         const file = Array.isArray(selectedFile.value) ? selectedFile.value[0] : selectedFile.value
@@ -104,6 +106,12 @@
         validationError.value = ''
     })
 
+    watch(selectedTagIds, (tagIds) => {
+        if (tagIds.length > MAX_SELECTED_TAGS) {
+            selectedTagIds.value = tagIds.slice(0, MAX_SELECTED_TAGS)
+        }
+    })
+
     function resetForm() {
         selectedFile.value = null
         selectedTagIds.value = []
@@ -129,7 +137,7 @@
             await validateSkillMarkdownFile(normalizedFile.value)
             emit('submit', {
                 file: normalizedFile.value,
-                tagIds: selectedTagIds.value,
+                tagIds: selectedTagIds.value.slice(0, MAX_SELECTED_TAGS),
             })
         } catch (error) {
             validationError.value = error instanceof Error ? error.message : '文件校验失败'
