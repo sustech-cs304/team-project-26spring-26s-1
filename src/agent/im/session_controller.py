@@ -8,11 +8,15 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from agent.api.conversation_models import CompletionResponseDelta, CompletionResponseToolCall
+from agent.api.conversation_models import (
+    CompletionResponseDelta,
+    CompletionResponseToolCall,
+    CompletionUserMessage,
+)
 from agent.api.conversation_runner import ConversationRunner
 from agent.api.conversation_service import delete_conversation
 
-from .message_utils import extract_paragraphs, render_tool_message
+from .message_utils import render_tool_message
 from .session_service import (
     get_im_permission,
     get_im_session_conversation_id,
@@ -101,6 +105,7 @@ class IMSessionController(ABC):
         target: IMChatTarget,
         message_text: str,
         is_superuser: bool,
+        source_message_ref: Any | None = None,
     ):
         command = self.parse_command(message_text)
         if command is not None:
@@ -109,7 +114,7 @@ class IMSessionController(ABC):
 
         message = self.extract_message_text(message_text)
         if message is not None:
-            await self.process_user_message(target, message, is_superuser)
+            await self.process_user_message(target, message, is_superuser, source_message_ref)
 
     def session_title(self, target: IMChatTarget) -> str:
         return f"{self.platform_label} {target.chat_type} {target.chat_id}"
@@ -122,7 +127,7 @@ class IMSessionController(ABC):
             self._session_locks[key] = lock
         return lock
 
-    def _start_task(self, coroutine):
+    def _start_task(self, coroutine) -> asyncio.Task[Any]:
         task = asyncio.create_task(coroutine)
         self._background_tasks.add(task)
 
@@ -139,6 +144,7 @@ class IMSessionController(ABC):
                     )
 
         task.add_done_callback(_cleanup)
+        return task
 
     async def process_command(
         self,
@@ -161,6 +167,7 @@ class IMSessionController(ABC):
         target: IMChatTarget,
         message_text: str,
         is_superuser: bool,
+        source_message_ref: Any | None = None,
     ):
         message = message_text.strip()
         if not message:
@@ -194,7 +201,7 @@ class IMSessionController(ABC):
                 )
                 return
 
-            self._start_task(self._run_conversation(target, conversation_id, message))
+            self._start_task(self._run_conversation(target, conversation_id, message, source_message_ref))
 
     async def _handle_command(
         self,
@@ -338,8 +345,14 @@ class IMSessionController(ABC):
 
         await self.send_text(target, "Current session was already gone.")
 
-    async def _run_conversation(self, target: IMChatTarget, conversation_id: str, message_text: str):
-        text_buffer = ""
+    async def _run_conversation(
+        self,
+        target: IMChatTarget,
+        conversation_id: str,
+        message_text: str,
+        source_message_ref: Any | None = None,
+    ):
+        current_assistant_message_id: str | None = None
 
         try:
             job = await self.runner.run(conversation_id, message_text)
@@ -347,35 +360,81 @@ class IMSessionController(ABC):
                 return
 
             async for event in self.runner.stream(conversation_id, need_history=False, job=job):
+                if isinstance(event, CompletionUserMessage):
+                    await self.register_user_message(target, event.message_id, source_message_ref)
+                    continue
+
                 if isinstance(event, CompletionResponseDelta):
                     if event.is_thinking:
                         continue
-                    text_buffer += event.delta
-                    paragraphs, text_buffer = extract_paragraphs(text_buffer)
-                    for paragraph in paragraphs:
-                        await self.send_text(target, paragraph)
+                    if (
+                        current_assistant_message_id is not None
+                        and event.message_id != current_assistant_message_id
+                    ):
+                        await self.finish_assistant_message(target, current_assistant_message_id)
+                        current_assistant_message_id = None
+
+                    current_assistant_message_id = event.message_id
+                    await self.append_assistant_delta(target, event.message_id, event.delta)
                     continue
 
                 if isinstance(event, CompletionResponseToolCall):
-                    paragraphs, text_buffer = extract_paragraphs(text_buffer, flush=True)
-                    for paragraph in paragraphs:
-                        await self.send_text(target, paragraph)
+                    if current_assistant_message_id is not None:
+                        await self.finish_assistant_message(target, current_assistant_message_id)
+                        current_assistant_message_id = None
 
                     await self.send_tool_message(target, event)
 
-            paragraphs, _ = extract_paragraphs(text_buffer, flush=True)
-            for paragraph in paragraphs:
-                await self.send_text(target, paragraph)
+            if current_assistant_message_id is not None:
+                await self.finish_assistant_message(target, current_assistant_message_id)
+                current_assistant_message_id = None
         except asyncio.CancelledError:
+            if current_assistant_message_id is not None:
+                self.cancel_assistant_message(target, current_assistant_message_id)
             raise
         except Exception as exc:
+            if current_assistant_message_id is not None:
+                with suppress(Exception):
+                    await self.finish_assistant_message(target, current_assistant_message_id)
             log.exception("%s conversation failed for %s: %s", self.platform_label, conversation_id, exc)
             with suppress(Exception):
                 await self.send_text(target, f"Request failed: {exc}")
 
+    async def register_user_message(
+        self,
+        target: IMChatTarget,
+        message_uuid: str,
+        source_message_ref: Any | None,
+    ):
+        return None
+
     async def send_tool_message(self, target: IMChatTarget, tool_call: CompletionResponseToolCall):
-        await self.send_text(target, render_tool_message(tool_call))
+        await self.send_text(target, render_tool_message(tool_call), message_uuid=tool_call.message_id)
 
     @abstractmethod
-    async def send_text(self, target: IMChatTarget, text: str):
+    async def append_assistant_delta(
+        self,
+        target: IMChatTarget,
+        message_uuid: str,
+        delta: str,
+    ):
+        raise NotImplementedError
+
+    @abstractmethod
+    async def finish_assistant_message(
+        self,
+        target: IMChatTarget,
+        message_uuid: str,
+    ):
+        raise NotImplementedError
+
+    def cancel_assistant_message(
+        self,
+        target: IMChatTarget,
+        message_uuid: str,
+    ):
+        return None
+
+    @abstractmethod
+    async def send_text(self, target: IMChatTarget, text: str, message_uuid: str | None = None):
         raise NotImplementedError

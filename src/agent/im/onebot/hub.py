@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 import logging
 from contextlib import suppress
 from typing import Any
@@ -6,15 +7,25 @@ from typing import Any
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from agent.api.conversation_models import CompletionResponseToolCall
 from agent.api.conversation_runner import ConversationRunner
 from agent.config import get_config
-from agent.im.message_utils import TOOL_FORWARD_THRESHOLD, render_tool_message
+from agent.im.message_utils import (
+    TOOL_FORWARD_THRESHOLD,
+    extract_paragraphs,
+    render_tool_message,
+)
 from agent.im.session_controller import IMSessionController
 from agent.im.types import IMChatTarget
 
 from .connection import OneBotApiError, OneBotConnection
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class _OneBotAssistantBuffer:
+    text: str = ""
 
 
 class OneBotHub(IMSessionController):
@@ -28,6 +39,7 @@ class OneBotHub(IMSessionController):
         )
         self._connections: dict[tuple[str, str], OneBotConnection] = {}
         self._connection_lock = asyncio.Lock()
+        self._assistant_buffers: dict[tuple[str, str, str, str, str], _OneBotAssistantBuffer] = {}
 
     @property
     def access_token(self) -> str:
@@ -175,7 +187,7 @@ class OneBotHub(IMSessionController):
                     chunks.append(text)
         return "".join(chunks)
 
-    async def send_tool_message(self, target: IMChatTarget, tool_call):
+    async def send_tool_message(self, target: IMChatTarget, tool_call: CompletionResponseToolCall):
         tool_message = render_tool_message(tool_call)
         if len(tool_message) <= TOOL_FORWARD_THRESHOLD:
             await self.send_text(target, tool_message)
@@ -183,12 +195,39 @@ class OneBotHub(IMSessionController):
 
         await self._send_forward_message(target, tool_message)
 
-    async def send_text(self, target: IMChatTarget, text: str):
+    async def append_assistant_delta(self, target: IMChatTarget, message_uuid: str, delta: str):
+        buffer = self._assistant_buffers.get(self._assistant_buffer_key(target, message_uuid))
+        if buffer is None:
+            buffer = _OneBotAssistantBuffer()
+            self._assistant_buffers[self._assistant_buffer_key(target, message_uuid)] = buffer
+
+        buffer.text += delta
+        paragraphs, buffer.text = extract_paragraphs(buffer.text)
+        for paragraph in paragraphs:
+            await self.send_text(target, paragraph, message_uuid=message_uuid)
+
+    async def finish_assistant_message(self, target: IMChatTarget, message_uuid: str):
+        key = self._assistant_buffer_key(target, message_uuid)
+        buffer = self._assistant_buffers.pop(key, None)
+        if buffer is None:
+            return
+
+        paragraphs, _ = extract_paragraphs(buffer.text, flush=True)
+        for paragraph in paragraphs:
+            await self.send_text(target, paragraph, message_uuid=message_uuid)
+
+    def cancel_assistant_message(self, target: IMChatTarget, message_uuid: str):
+        self._assistant_buffers.pop(self._assistant_buffer_key(target, message_uuid), None)
+
+    async def send_text(self, target: IMChatTarget, text: str, message_uuid: str | None = None):
         message = text.strip()
         if not message:
             return
 
         await self._send_message(target, message, auto_escape=True)
+
+    def _assistant_buffer_key(self, target: IMChatTarget, message_uuid: str) -> tuple[str, str, str, str, str]:
+        return (*target.session_key(), message_uuid)
 
     async def _send_forward_message(self, target: IMChatTarget, text: str):
         message = text.strip()
