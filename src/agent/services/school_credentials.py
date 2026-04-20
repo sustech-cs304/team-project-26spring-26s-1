@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Literal
 
 from agent.credentials_store import (
     EnvVaultAccessError,
@@ -20,6 +21,28 @@ _STUDENT_ID_RECORD_KEY = f"{_CREDENTIAL_SCOPE}:student_id"
 _PASSWORD_RECORD_KEY = f"{_CREDENTIAL_SCOPE}:password"
 
 log = logging.getLogger(__name__)
+
+CasConfigStorage = Literal["database", "runtime_fallback"]
+_runtime_shared_cas: tuple[str, str] | None = None
+
+
+def _set_runtime_shared_cas(student_id: str, password: str) -> None:
+    global _runtime_shared_cas
+    _runtime_shared_cas = (student_id, password)
+
+
+def _clear_runtime_shared_cas() -> None:
+    global _runtime_shared_cas
+    _runtime_shared_cas = None
+
+
+def _read_runtime_shared_cas() -> tuple[str, str]:
+    if _runtime_shared_cas is None:
+        return "", ""
+    student_id, password = _runtime_shared_cas
+    if not student_id or not password:
+        return "", ""
+    return student_id, password
 
 
 async def _write_db_shared_cas(student_id: str, password: str) -> None:
@@ -59,6 +82,10 @@ async def _read_db_shared_cas() -> tuple[str, str]:
 
 
 async def _read_shared_cas() -> tuple[str, str]:
+    runtime_u, runtime_p = _read_runtime_shared_cas()
+    if runtime_u and runtime_p:
+        return runtime_u, runtime_p
+
     shared_u, shared_p = await _read_db_shared_cas()
     if shared_u and shared_p:
         return shared_u, shared_p
@@ -88,10 +115,12 @@ async def set_school_cas_credentials(student_id: str | None, password: str | Non
         await clear_school_cas_credentials()
         return
     await _write_db_shared_cas(sid, pwd)
+    _clear_runtime_shared_cas()
 
 
 async def clear_school_cas_credentials() -> None:
     """Clear shared CAS from the database."""
+    _clear_runtime_shared_cas()
     try:
         await delete_credentials(
             _CREDENTIAL_TYPE,
@@ -115,8 +144,8 @@ async def get_school_cas_config() -> dict[str, str] | None:
 async def patch_school_cas_config(
     student_id: str | None = None,
     password: str | None = None,
-) -> None:
-    current_id, current_password = await _read_db_shared_cas()
+) -> CasConfigStorage:
+    current_id, current_password = await _read_shared_cas()
     next_id = current_id
     next_password = current_password
 
@@ -128,7 +157,18 @@ async def patch_school_cas_config(
     if not next_id or not next_password:
         raise ValueError("Both id and password are required after patch merge")
 
-    await _write_db_shared_cas(next_id, next_password)
+    try:
+        await _write_db_shared_cas(next_id, next_password)
+    except EnvVaultAccessError as exc:
+        log.warning(
+            "Failed to persist shared CAS to database; using runtime fallback: %s",
+            exc,
+        )
+        _set_runtime_shared_cas(next_id, next_password)
+        return "runtime_fallback"
+
+    _clear_runtime_shared_cas()
+    return "database"
 
 
 async def get_school_cas_credentials_status() -> dict:

@@ -57,7 +57,7 @@ async def patch_cas(
     body: CasConfigPatchRequest,
 ):
     try:
-        await school_credentials.patch_school_cas_config(
+        storage = await school_credentials.patch_school_cas_config(
             student_id=body.id,
             password=body.password,
         )
@@ -65,6 +65,13 @@ async def patch_cas(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except school_credentials.EnvVaultAccessError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if storage == "runtime_fallback":
+        return MessageResponse(
+            message=(
+                "CAS config updated in runtime fallback because the encrypted "
+                "credential store is unavailable."
+            )
+        )
     return MessageResponse(message="CAS config updated successfully.")
 
 
