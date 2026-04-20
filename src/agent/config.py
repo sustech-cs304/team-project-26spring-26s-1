@@ -68,15 +68,15 @@ class WebSearchConfig(BaseModel):
 class OneBotConfig(BaseModel):
     access_token: str = ""
     superuser_ids: list[str] = Field(default_factory=list)
-    command_trigger: str = ""
-    message_trigger: str = ""
+    command_trigger: str = "/agent"
+    message_trigger: str = "/"
 
 
 class TelegramConfig(BaseModel):
     token: str = ""
     superuser_ids: list[str] = Field(default_factory=list)
-    command_trigger: str = ""
-    message_trigger: str = ""
+    command_trigger: str = "/agent"
+    message_trigger: str = "/"
 
 class NotificationConfig(BaseModel):
     enabled: bool = True
@@ -173,4 +173,4 @@ def save_config(config_to_save: AppConfig | None = None, file_path: str = DEFAUL
     """Saves the Pydantic config object back to a YAML file."""
     current_config = get_config() if config_to_save is None else config_to_save
     with open(file_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(current_config.model_dump(), f, sort_keys=False)
+        yaml.safe_dump(current_config.model_dump(exclude_defaults=True), f, sort_keys=False)
