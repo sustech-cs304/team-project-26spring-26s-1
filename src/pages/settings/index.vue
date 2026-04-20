@@ -165,7 +165,7 @@
                                     variant="solo-filled" flat rounded="lg" hide-details="auto" rows="4"
                                     auto-grow placeholder="123456&#10;789012" />
                                 <div class="text-caption text-medium-emphasis mt-1">
-                                    Enter one numeric Telegram user ID per line. Commas are also supported.
+                                    Enter one Telegram user ID per line. Commas are also supported.
                                 </div>
                             </div>
 
@@ -576,31 +576,13 @@
     }
 
     function parseTelegramSuperuserIds(value: string) {
-        const entries = value
+        return value
             .split(/[\n,]+/)
             .map(item => item.trim())
             .filter(Boolean)
-
-        const parsedIds: number[] = []
-
-        for (const entry of entries) {
-            if (!/^\d+$/.test(entry)) {
-                return {
-                    error: `Invalid Telegram user ID: ${entry}`,
-                    value: null,
-                }
-            }
-
-            parsedIds.push(Number(entry))
-        }
-
-        return {
-            error: '',
-            value: parsedIds,
-        }
     }
 
-    function areNumberArraysEqual(left: number[], right: number[]) {
+    function areStringArraysEqual(left: string[], right: string[]) {
         return left.length === right.length && left.every((value, index) => value === right[index])
     }
 
@@ -696,26 +678,22 @@
         const snapshot = loadedConfig.value
         if (!snapshot) return null
 
-        const parsedIds = parseTelegramSuperuserIds(telegram.superuserIdsText)
-        if (!parsedIds.value) return parsedIds
-
         const telegramPatch: NonNullable<DeepPartial<AppConfig['telegram']>> = {}
         const nextToken = telegram.token.trim()
-        const nextSuperuserIds = parsedIds.value
+        const nextSuperuserIds = parseTelegramSuperuserIds(telegram.superuserIdsText)
         const currentTelegram = snapshot.telegram
 
         if (nextToken !== (currentTelegram?.token || '')) {
             telegramPatch.token = nextToken
         }
 
-        if (!areNumberArraysEqual(nextSuperuserIds, currentTelegram?.superuser_ids || [])) {
+        if (!areStringArraysEqual(nextSuperuserIds, currentTelegram?.superuser_ids || [])) {
             telegramPatch.superuser_ids = nextSuperuserIds
         }
 
         if (!Object.keys(telegramPatch).length) return null
 
         return {
-            error: '',
             value: {
                 telegram: telegramPatch,
             } satisfies DeepPartial<AppConfig>,
@@ -786,11 +764,6 @@
         const result = buildTelegramPatch()
         if (!result) {
             showNotice('No Telegram changes to save.', 'warning')
-            return
-        }
-
-        if (!result.value) {
-            showNotice(result.error || 'Telegram configuration is invalid.', 'error')
             return
         }
 

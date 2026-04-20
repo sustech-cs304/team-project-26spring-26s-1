@@ -55,7 +55,7 @@ export interface OneBotConfig {
 
 export interface TelegramConfig {
     token: string
-    superuser_ids: number[]
+    superuser_ids: string[]
 }
 
 export interface RagCloudConfig {
