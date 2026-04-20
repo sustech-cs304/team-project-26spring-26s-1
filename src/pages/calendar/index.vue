@@ -15,7 +15,9 @@
                             </v-btn>
                         </v-sheet>
                         <v-sheet style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;">
-                            <span v-for="h in miniHeaders" :key="h" style="font-size: 10px; text-align: center; color: rgba(var(--v-theme-on-surface), 0.5);">{{ h }}</span>
+                            <span v-for="h in miniHeaders" :key="h"
+                                style="font-size: 10px; text-align: center; color: rgba(var(--v-theme-on-surface), 0.5);">{{
+                                h }}</span>
                             <button v-for="c in cells" :key="`mini-${c.dateKey}`" class="mini-day-btn"
                                 :class="{ muted: !c.currentMonth, today: c.isToday, active: selectedCell?.dateKey === c.dateKey }"
                                 @click="onCellClick(c)">
@@ -28,8 +30,8 @@
                         <v-sheet class="text-caption text-medium-emphasis mb-2">Source</v-sheet>
                         <v-sheet class="d-flex flex-column ga-2">
                             <v-chip v-for="src in sourceOptions" :key="src.value" class="source-chip" size="small" label
-                                :variant="activeSource === src.value ? 'flat' : 'outlined'" :style="sourceChipStyle(src.value)"
-                                @click="toggleSourceSelection(src.value)">
+                                :variant="activeSource === src.value ? 'flat' : 'outlined'"
+                                :style="sourceChipStyle(src.value)" @click="toggleSourceSelection(src.value)">
                                 <v-sheet class="d-flex align-center w-100 ga-2">
                                     <v-sheet class="flex-shrink-0" width="4" rounded="pill"
                                         style="align-self: stretch; margin: 2px 0; background: var(--strip-accent);" />
@@ -38,7 +40,8 @@
                                         style="width: 22px; height: 22px; margin-left: auto; margin-right: -4px; color: rgba(var(--v-theme-on-surface), 0.62);"
                                         :aria-label="sourceHighlighted(src.value) ? 'Hide highlight' : 'Show highlight'"
                                         @click.stop="toggleSourceHighlight(src.value)">
-                                        <v-icon size="14">{{ sourceHighlighted(src.value) ? 'mdi-eye' : 'mdi-eye-off' }}</v-icon>
+                                        <v-icon size="14">{{ sourceHighlighted(src.value) ? 'mdi-eye' : 'mdi-eye-off'
+                                            }}</v-icon>
                                     </v-btn>
                                     <v-btn icon size="x-small" variant="text"
                                         style="width: 22px; height: 22px; margin-right: -4px; color: rgba(var(--v-theme-on-surface), 0.62);"
@@ -53,8 +56,7 @@
 
                 <CalendarEventPanel embedded :title="panelTitle" :subtitle="panelSubtitle" :events="panelEvents"
                     :selected-event-id="selectedEventId" :source-color-map="resolvedSourceColorMap"
-                    @select="onEventClick" @edit="openEdit" @delete="deleteEvent"
-                    @contextmenu="openEventContextMenu" />
+                    @select="onEventClick" @edit="openEdit" @delete="deleteEvent" @contextmenu="openEventContextMenu" />
             </v-sheet>
 
             <v-sheet class="flex-grow-1 d-flex flex-column min-width-0 min-height-0 overflow-hidden">
@@ -63,7 +65,8 @@
                         <v-btn size="small" variant="outlined" @click="goToday">Today</v-btn>
                         <v-btn icon size="small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
                             <v-icon size="14">{{ searchRailCollapsed ? 'mdi-dock-right' : 'mdi-dock-window' }}</v-icon>
-                            <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show search' : 'Hide search' }}</v-tooltip>
+                            <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show search' :
+                                'Hide search' }}</v-tooltip>
                         </v-btn>
                         <v-btn size="small" color="primary" @click="openCreate(selectedCell?.dateKey ?? todayKey)">
                             <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
@@ -75,7 +78,8 @@
                     style="overflow: hidden; position: relative;" @wheel.prevent="onCalendarWheel">
                     <CalendarGrid :cells="cells" :events="displayEvents" :highlighted-sources="highlightedSourceList"
                         :selected-cell="selectedCell" :source-color-map="resolvedSourceColorMap"
-                        @cell-click="onCellClick" @event-click="onEventClick" @event-context-menu="openEventContextMenu" />
+                        @cell-click="onCellClick" @event-click="onEventClick"
+                        @event-context-menu="openEventContextMenu" />
 
                     <v-card v-if="selectedEventDetail" class="event-details-card" rounded="lg" elevation="6">
                         <v-sheet class="d-flex align-center justify-space-between mb-2">
@@ -87,14 +91,29 @@
 
                         <v-sheet class="text-body-2 font-weight-bold mb-2">{{ selectedEventDetail.title }}</v-sheet>
 
-                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Source</span><span>{{ selectedEventDetail.source }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Color</span><span>{{ selectedEventDetail.color || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Start Time</span><span>{{ getEventStartTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">End Time</span><span>{{ getEventEndTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Time</span><span>{{ getEventDisplayTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Location</span><span>{{ selectedEventDetail.location || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Description</span><span>{{ selectedEventDetail.description || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Link</span>
+                        <v-sheet class="event-detail-row"><span
+                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Source</span><span>{{
+                                selectedEventDetail.source }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span
+                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Color</span><span>{{
+                                selectedEventDetail.color || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span
+                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Start
+                                Time</span><span>{{ getEventStartTime(selectedEventDetail) || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span
+                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">End
+                                Time</span><span>{{ getEventEndTime(selectedEventDetail) || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span
+                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Time</span><span>{{
+                                    getEventDisplayTime(selectedEventDetail) || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span
+                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Location</span><span>{{
+                                selectedEventDetail.location || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span
+                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Description</span><span>{{
+                                selectedEventDetail.description || '-' }}</span></v-sheet>
+                        <v-sheet class="event-detail-row"><span
+                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Link</span>
                             <a v-if="selectedEventDetail.link" class="event-detail-link"
                                 :href="selectedEventDetail.link" target="_blank" rel="noopener noreferrer">
                                 {{ selectedEventDetail.link }}
@@ -119,7 +138,8 @@
                     <v-btn size="x-small" variant="text" class="justify-start"
                         style="padding-left: 0; min-height: 24px; color: rgba(var(--v-theme-on-surface), 0.72);"
                         @click="showAdvanced = !showAdvanced">
-                        <v-icon size="14" class="mr-1">{{ showAdvanced ? 'mdi-chevron-down' : 'mdi-chevron-right' }}</v-icon>
+                        <v-icon size="14" class="mr-1">{{ showAdvanced ? 'mdi-chevron-down' : 'mdi-chevron-right'
+                            }}</v-icon>
                         Advanced
                     </v-btn>
 
@@ -127,10 +147,10 @@
                         <v-sheet v-show="showAdvanced" class="d-flex flex-column ga-2">
                             <v-select v-model="searchForm.source" :items="dialogSourceItems" label="Source"
                                 density="compact" variant="outlined" hide-details clearable />
-                            <v-text-field v-model="searchForm.startDate" label="Start Date" density="compact" variant="outlined"
-                                type="date" hide-details />
-                            <v-text-field v-model="searchForm.endDate" label="End Date" density="compact" variant="outlined"
-                                type="date" hide-details />
+                            <v-text-field v-model="searchForm.startDate" label="Start Date" density="compact"
+                                variant="outlined" type="date" hide-details />
+                            <v-text-field v-model="searchForm.endDate" label="End Date" density="compact"
+                                variant="outlined" type="date" hide-details />
                         </v-sheet>
                     </v-expand-transition>
 
@@ -139,21 +159,25 @@
                         <v-btn size="small" variant="outlined" @click="resetSearch">Reset</v-btn>
                     </v-sheet>
 
-                    <v-sheet class="text-caption text-medium-emphasis mt-2">{{ searchResults.length }} result{{ searchResults.length === 1 ? '' : 's' }}</v-sheet>
+                    <v-sheet class="text-caption text-medium-emphasis mt-2">{{ searchResults.length }} result{{
+                        searchResults.length === 1 ? '' : 's' }}</v-sheet>
                     <v-sheet v-if="searchError" class="text-caption text-error mt-1">{{ searchError }}</v-sheet>
 
                     <v-list v-if="searchResultEvents.length > 0" density="compact" class="search-result-list mt-2">
                         <v-list-item v-for="ev in searchResultEvents" :key="`search-${ev.id}`"
-                            :active="selectedEventId === ev.id" active-color="primary" rounded="lg" class="mb-1 px-2 py-2"
-                            @click="onEventClick(ev)">
+                            :active="selectedEventId === ev.id" active-color="primary" rounded="lg"
+                            class="mb-1 px-2 py-2" @click="onEventClick(ev)">
                             <template #prepend>
-                                <v-sheet width="4" rounded class="mr-3" :style="{ background: sourceColorHex(ev.source), minHeight: '40px' }" />
+                                <v-sheet width="4" rounded class="mr-3"
+                                    :style="{ background: sourceColorHex(ev.source), minHeight: '40px' }" />
                             </template>
                             <v-sheet class="flex-grow-1 min-width-0">
                                 <v-sheet class="d-flex align-center ga-2">
-                                    <v-sheet class="text-body-2 font-weight-medium text-truncate">{{ ev.title }}</v-sheet>
+                                    <v-sheet class="text-body-2 font-weight-medium text-truncate">{{ ev.title
+                                        }}</v-sheet>
                                 </v-sheet>
-                                <v-sheet class="text-caption text-medium-emphasis mt-1">{{ ev.date }} {{ getEventDisplayTime(ev) }}</v-sheet>
+                                <v-sheet class="text-caption text-medium-emphasis mt-1">{{ ev.date }} {{
+                                    getEventDisplayTime(ev) }}</v-sheet>
                             </v-sheet>
                         </v-list-item>
                     </v-list>
@@ -170,7 +194,8 @@
                 </v-card-text>
                 <v-card-actions class="justify-end px-4 pb-4">
                     <v-btn size="small" variant="outlined" @click="sourceColorDialogOpen = false">Cancel</v-btn>
-                    <v-btn size="small" color="primary" :loading="sourceColorSaving" @click="confirmSourceColor">Confirm</v-btn>
+                    <v-btn size="small" color="primary" :loading="sourceColorSaving"
+                        @click="confirmSourceColor">Confirm</v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>
@@ -186,7 +211,7 @@
         </v-menu>
 
         <CalendarEventDialog v-model="dialogOpen" :event="editingEvent" :default-date="dialogDefaultDate"
-            @submit="saveEvent" />
+            :default-color="createEventDefaultColor" @submit="saveEvent" />
     </v-sheet>
 </template>
 
@@ -384,6 +409,8 @@
         })
         return out
     })
+
+    const createEventDefaultColor = computed(() => sourceColorHex('user'))
 
     const showColorNotice = (message: string) => {
         colorNotice.value = message
@@ -641,7 +668,7 @@
         }, CALENDAR_SCROLL_REFRESH_DEBOUNCE_MS)
     }
 
-    const pollCalendarVisibleEvents = async () => {
+    const pollCalendarData = async () => {
         if (typeof window === 'undefined') return
         const pollingWindow = window as CalendarPollingWindow
         const now = Date.now()
@@ -654,7 +681,11 @@
 
         pollingWindow.__calendarIndexPollInFlight__ = true
         try {
+            await loadSources()
             await loadVisibleEvents(true)
+            if (activeSource.value) {
+                await loadSourceScopedEvents(activeSource.value, true)
+            }
             pollingWindow.__calendarIndexPollLastAt__ = Date.now()
         } finally {
             pollingWindow.__calendarIndexPollInFlight__ = false
@@ -682,7 +713,7 @@
         const pollingWindow = window as CalendarPollingWindow
         stopCalendarPolling()
         calendarPollTimer.value = window.setInterval(() => {
-            void pollCalendarVisibleEvents()
+            void pollCalendarData()
         }, CALENDAR_POLL_INTERVAL_MS)
 
         pollingWindow.__calendarIndexPollTimer__ = calendarPollTimer.value
@@ -920,7 +951,7 @@
                 : item
 
         events.value = events.value.map(mergeEvent)
-            sourceScopedEvents.value = sourceScopedEvents.value.map(mergeEvent)
+        sourceScopedEvents.value = sourceScopedEvents.value.map(mergeEvent)
     }
 
     const mergeEventPatch = (item: CalEvent): CalEvent => {

@@ -22,9 +22,11 @@
                             placeholder="Event title" hide-details autofocus class="flex-grow-1" />
                         <v-menu v-model="colorMenuOpen" :close-on-content-click="false" location="bottom end">
                             <template #activator="{ props: menuProps }">
-                                <v-btn type="button" v-bind="menuProps" variant="outlined" height="40" min-width="92" class="px-2 text-none d-flex align-center justify-space-between">
+                                <v-btn type="button" v-bind="menuProps" variant="outlined" height="40" min-width="92"
+                                    class="px-2 text-none d-flex align-center justify-space-between">
                                     <span class="text-caption text-medium-emphasis">Color</span>
-                                <v-sheet width="18" height="18" rounded="sm" border class="ms-2" :style="{ backgroundColor: form.color }"/>
+                                    <v-sheet width="18" height="18" rounded="sm" border class="ms-2"
+                                        :style="{ backgroundColor: form.color }" />
                                 </v-btn>
                             </template>
 
@@ -44,14 +46,15 @@
                     <div class="d-flex ga-2">
                         <v-text-field v-model="form.date" label="Date" density="compact" variant="outlined" type="date"
                             hide-details />
-                        <v-text-field v-model="form.startTime" label="Start Time (optional)" density="compact" variant="outlined"
-                            type="time" hide-details />
-                        <v-text-field v-model="form.endTime" label="End Time (optional)" density="compact" variant="outlined"
-                            type="time" hide-details />
+                        <v-text-field v-model="form.startTime" label="Start Time (optional)" density="compact"
+                            variant="outlined" type="time" hide-details />
+                        <v-text-field v-model="form.endTime" label="End Time (optional)" density="compact"
+                            variant="outlined" type="time" hide-details />
                     </div>
 
                     <div v-if="!isTimeRangeValid" class="d-flex">
-                        <v-chip color="error" variant="tonal" size="small" class="mt-1">End time must be later than start time</v-chip>
+                        <v-chip color="error" variant="tonal" size="small" class="mt-1">End time must be later than
+                            start time</v-chip>
                     </div>
 
                     <v-textarea v-model="form.description" label="Description (optional)" density="compact"
@@ -60,8 +63,8 @@
                     <v-text-field v-model="form.location" label="Location (optional)" density="compact"
                         variant="outlined" hide-details />
 
-                    <v-text-field v-model="form.link" label="Link (optional)" density="compact"
-                        variant="outlined" hide-details placeholder="https://..." />
+                    <v-text-field v-model="form.link" label="Link (optional)" density="compact" variant="outlined"
+                        hide-details placeholder="https://..." />
                 </div>
             </v-card-text>
 
@@ -95,6 +98,7 @@
         modelValue: boolean
         event?: CalEvent | null
         defaultDate?: string
+        defaultColor?: string
     }>()
 
     const emit = defineEmits<{
@@ -104,7 +108,7 @@
 
     const makeEmpty = (): EventForm => ({
         title: '',
-        color: '#2563eb',
+        color: props.defaultColor ?? '#2563eb',
         date: props.defaultDate ?? '',
         startTime: '12:00',
         endTime: '12:00',
