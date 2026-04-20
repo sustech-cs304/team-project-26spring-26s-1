@@ -53,6 +53,11 @@ export interface OneBotConfig {
     command_name: string
 }
 
+export interface TelegramConfig {
+    token: string
+    superuser_ids: number[]
+}
+
 export interface RagCloudConfig {
     base_url: string
     manifest_path: string
@@ -94,19 +99,20 @@ export interface AppConfig {
     webfetch: WebFetchConfig
     websearch: WebFetchConfig
     onebot: OneBotConfig
+    telegram?: TelegramConfig
     rag_cloud: RagCloudConfig
     skills_cloud: SkillsCloudConfig
     notification: NotificationConfig
     code_interpreter: CodeInterpreterConfig
 }
 
-export type DeepPartial<T> = {
-    [K in keyof T]?: T[K] extends Array<infer U>
-        ? Array<DeepPartial<U>>
-        : T[K] extends object
-            ? DeepPartial<T[K]>
-            : T[K]
-}
+export type DeepPartial<T> = T extends Array<infer U>
+    ? Array<DeepPartial<U>>
+    : T extends object
+        ? {
+            [K in keyof T]?: DeepPartial<T[K]>
+        }
+        : T
 
 export function getConfig(): Promise<AppConfig> {
     return http.get<AppConfig>('/get_config')

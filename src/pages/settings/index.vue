@@ -143,6 +143,38 @@
                                 Save OneBot Settings
                             </v-btn>
                         </div>
+
+                        <div v-else-if="activeTab === 'telegram'">
+                            <div class="text-subtitle-1 font-weight-bold mb-1">Telegram</div>
+                            <div class="text-caption text-medium-emphasis mb-6">
+                                Edit the backend-managed Telegram bot token and superuser list.
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Bot Token</div>
+                                <v-text-field v-model="telegram.token" density="compact" variant="solo-filled" flat
+                                    rounded="lg" hide-details="auto"
+                                    :type="visibility.telegramToken ? 'text' : 'password'"
+                                    :append-inner-icon="visibility.telegramToken ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                    @click:append-inner="visibility.telegramToken = !visibility.telegramToken" />
+                            </div>
+
+                            <div class="mb-5">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Superuser IDs</div>
+                                <v-textarea v-model="telegram.superuserIdsText" density="compact"
+                                    variant="solo-filled" flat rounded="lg" hide-details="auto" rows="4"
+                                    auto-grow placeholder="123456&#10;789012" />
+                                <div class="text-caption text-medium-emphasis mt-1">
+                                    Enter one numeric Telegram user ID per line. Commas are also supported.
+                                </div>
+                            </div>
+
+                            <v-divider class="mb-4" />
+                            <v-btn size="small" rounded="lg" variant="flat" color="primary"
+                                :loading="saving.telegram" @click="saveTelegramConfiguration">
+                                Save Telegram Settings
+                            </v-btn>
+                        </div>
                     </template>
 
                     <div v-else-if="activeTab === 'credentials'">
@@ -350,6 +382,7 @@
         | 'llm'
         | 'file'
         | 'onebot'
+        | 'telegram'
         | 'credentials'
         | 'appearance'
         | 'notifications'
@@ -375,6 +408,7 @@
         { id: 'llm', icon: 'mdi-brain', label: 'LLM Configuration' },
         { id: 'file', icon: 'mdi-file-outline', label: 'File' },
         { id: 'onebot', icon: 'mdi-robot-outline', label: 'OneBot' },
+        { id: 'telegram', icon: 'mdi-send-outline', label: 'Telegram' },
         { id: 'credentials', icon: 'mdi-shield-check', label: 'Credential Vault' },
         { id: 'appearance', icon: 'mdi-palette-outline', label: 'Appearance' },
         { id: 'notifications', icon: 'mdi-bell-outline', label: 'Notifications' },
@@ -406,6 +440,7 @@
         llm: false,
         file: false,
         onebot: false,
+        telegram: false,
         credentials: false,
     })
 
@@ -413,6 +448,7 @@
         llmApiKey: false,
         fileApiKey: false,
         onebotAccessToken: false,
+        telegramToken: false,
     })
 
     const llm = reactive({
@@ -430,6 +466,11 @@
         accessToken: '',
         superuserId: '',
         commandName: '',
+    })
+
+    const telegram = reactive({
+        token: '',
+        superuserIdsText: '',
     })
 
     const showPassword = ref(false)
@@ -502,7 +543,7 @@
     let recordTimer: ReturnType<typeof setTimeout> | null = null
 
     function isConfigTab(tab: SettingsTabId) {
-        return tab === 'llm' || tab === 'file' || tab === 'onebot'
+        return tab === 'llm' || tab === 'file' || tab === 'onebot' || tab === 'telegram'
     }
 
     function showNotice(text: string, color: NoticeColor = 'success') {
@@ -529,6 +570,38 @@
         onebot.accessToken = config.onebot?.access_token || ''
         onebot.superuserId = config.onebot?.superuser_id || ''
         onebot.commandName = config.onebot?.command_name || ''
+
+        telegram.token = config.telegram?.token || ''
+        telegram.superuserIdsText = (config.telegram?.superuser_ids || []).map(id => String(id)).join('\n')
+    }
+
+    function parseTelegramSuperuserIds(value: string) {
+        const entries = value
+            .split(/[\n,]+/)
+            .map(item => item.trim())
+            .filter(Boolean)
+
+        const parsedIds: number[] = []
+
+        for (const entry of entries) {
+            if (!/^\d+$/.test(entry)) {
+                return {
+                    error: `Invalid Telegram user ID: ${entry}`,
+                    value: null,
+                }
+            }
+
+            parsedIds.push(Number(entry))
+        }
+
+        return {
+            error: '',
+            value: parsedIds,
+        }
+    }
+
+    function areNumberArraysEqual(left: number[], right: number[]) {
+        return left.length === right.length && left.every((value, index) => value === right[index])
     }
 
     async function loadConfigData() {
@@ -619,6 +692,36 @@
         }
     }
 
+    function buildTelegramPatch() {
+        const snapshot = loadedConfig.value
+        if (!snapshot) return null
+
+        const parsedIds = parseTelegramSuperuserIds(telegram.superuserIdsText)
+        if (!parsedIds.value) return parsedIds
+
+        const telegramPatch: NonNullable<DeepPartial<AppConfig['telegram']>> = {}
+        const nextToken = telegram.token.trim()
+        const nextSuperuserIds = parsedIds.value
+        const currentTelegram = snapshot.telegram
+
+        if (nextToken !== (currentTelegram?.token || '')) {
+            telegramPatch.token = nextToken
+        }
+
+        if (!areNumberArraysEqual(nextSuperuserIds, currentTelegram?.superuser_ids || [])) {
+            telegramPatch.superuser_ids = nextSuperuserIds
+        }
+
+        if (!Object.keys(telegramPatch).length) return null
+
+        return {
+            error: '',
+            value: {
+                telegram: telegramPatch,
+            } satisfies DeepPartial<AppConfig>,
+        }
+    }
+
     async function saveLlmConfiguration() {
         const delta = buildLlmPatch()
         if (!delta) {
@@ -676,6 +779,31 @@
             showNotice(getErrorMessage(error, 'Failed to save OneBot configuration.'), 'error')
         } finally {
             saving.onebot = false
+        }
+    }
+
+    async function saveTelegramConfiguration() {
+        const result = buildTelegramPatch()
+        if (!result) {
+            showNotice('No Telegram changes to save.', 'warning')
+            return
+        }
+
+        if (!result.value) {
+            showNotice(result.error || 'Telegram configuration is invalid.', 'error')
+            return
+        }
+
+        saving.telegram = true
+
+        try {
+            const config = await patchConfig(result.value)
+            applyConfig(config)
+            showNotice('Telegram configuration saved.')
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save Telegram configuration.'), 'error')
+        } finally {
+            saving.telegram = false
         }
     }
 
