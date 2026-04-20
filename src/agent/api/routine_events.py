@@ -1,6 +1,6 @@
 """Schedule / routine HTTP API — color and source behavior aligned with ``Downloads/routine.py``.
 
-- Event color is stored in ``routine.color``; response ``data[].color`` is the event color (not the source color).
+- Event color is stored in ``routine.color``; when it is null/empty, responses use the source color.
 - Default calendar source title is ``user`` (``DEFAULT_SOURCE_TITLE``); creates/updates attach to that source.
 - On startup, ``ensure_routine_calendar_schema`` adds ``color`` if missing, ensures default source, backfills ``source_id``.
 """
@@ -81,13 +81,19 @@ def _validate_optional_hex_color(v: Optional[str]) -> Optional[str]:
     return s
 
 
-def _normalize_color_value(s: str) -> str:
+def _normalize_optional_color_value(value: object) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
     if not s:
-        return DEFAULT_EVENT_COLOR
-    s = s.strip()
+        return None
     if _HEX_COLOR_PATTERN.match(s):
         return s
-    return DEFAULT_EVENT_COLOR
+    return None
+
+
+def _normalize_color_value(value: object, fallback: str = DEFAULT_EVENT_COLOR) -> str:
+    return _normalize_optional_color_value(value) or fallback
 
 
 def _local_now() -> datetime:
@@ -177,7 +183,7 @@ class RoutineQueryRequest(BaseModel):
 
 
 class Sources(BaseModel):
-    color: str = "#808080"
+    color: str = DEFAULT_SOURCE_COLOR
     id: int = 0
     is_visible: bool = True
     title: str = "routine"
@@ -191,7 +197,7 @@ class RoutineDatum(BaseModel):
     description: str
     location: str = ""
     link: str = ""
-    color: str = "#3b82f6"
+    color: str = DEFAULT_EVENT_COLOR
     inform_type: InformType = "none"
     source: Sources = Sources()
 
@@ -243,14 +249,17 @@ def _inform_way_to_type(need_inform: bool, inform_way: int) -> InformType:
 
 def _routine_to_datum(r: RoutineEvent) -> RoutineDatum:
     if r.source:
+        source_color = _normalize_color_value(r.source.color, DEFAULT_SOURCE_COLOR)
         src = Sources(
             id=r.source.id,
             title=r.source.title,
-            color=_normalize_color_value(r.source.color),
+            color=source_color,
             is_visible=r.source.is_visible,
         )
     else:
+        source_color = DEFAULT_SOURCE_COLOR
         src = Sources()
+    color = _normalize_optional_color_value(r.color) or source_color
     return RoutineDatum(
         id=r.id,
         start_time=r.time_,
@@ -259,7 +268,7 @@ def _routine_to_datum(r: RoutineEvent) -> RoutineDatum:
         description=r.detail,
         location="",
         link="",
-        color=_normalize_color_value(r.color),
+        color=color,
         inform_type=_inform_way_to_type(r.need_inform, r.inform_way),
         source=src,
     )
@@ -321,14 +330,9 @@ async def _ensure_routine_color_column(db: AsyncSession) -> None:
     if "color" not in columns:
         await db.execute(
             text(
-                f"ALTER TABLE routine ADD COLUMN color VARCHAR NOT NULL DEFAULT '{DEFAULT_EVENT_COLOR}'"
+                "ALTER TABLE routine ADD COLUMN color VARCHAR DEFAULT NULL"
             )
         )
-    await db.execute(
-        update(RoutineEvent)
-        .where(or_(RoutineEvent.color.is_(None), RoutineEvent.color == ""))
-        .values(color=DEFAULT_EVENT_COLOR)
-    )
 
 
 async def _ensure_routine_end_time_column(db: AsyncSession) -> None:
@@ -376,7 +380,7 @@ async def _create_one(body: RoutineCreateRequest, db: AsyncSession) -> RoutineEv
         end_time_=body.end_time if body.end_time is not None else (body.start_time if body.start_time is not None else 0),
         event_name=body.title or "",
         detail=body.description or "",
-        color=_normalize_color_value(body.color or DEFAULT_EVENT_COLOR),
+        color=_normalize_optional_color_value(body.color),
         need_inform=need_inform,
         inform_way=inform_way,
         source_id=source_id,
@@ -388,6 +392,7 @@ async def _create_one(body: RoutineCreateRequest, db: AsyncSession) -> RoutineEv
 async def _apply_update(routine: RoutineEvent, body: RoutineUpdateRequest, db: AsyncSession) -> None:
     update_data = body.model_dump(exclude_none=True)
     update_data.pop("id", None)
+    update_data.pop("color", None)
     if "start_time" in update_data:
         routine.time_ = update_data["start_time"]
         if "end_time" not in update_data:
@@ -398,8 +403,8 @@ async def _apply_update(routine: RoutineEvent, body: RoutineUpdateRequest, db: A
         routine.event_name = update_data["title"] or ""
     if "description" in update_data:
         routine.detail = update_data["description"] or ""
-    if "color" in update_data:
-        routine.color = _normalize_color_value(update_data["color"] or DEFAULT_EVENT_COLOR)
+    if "color" in body.model_fields_set:
+        routine.color = _normalize_optional_color_value(body.color)
     if "inform_type" in update_data:
         need_inform, inform_way = _inform_type_to_way(update_data["inform_type"])
         routine.need_inform = need_inform
@@ -595,7 +600,7 @@ def _source_to_dict(s: RoutineSource) -> dict:
     return {
         "id": s.id,
         "title": s.title,
-        "color": _normalize_color_value(s.color),
+        "color": _normalize_color_value(s.color, DEFAULT_SOURCE_COLOR),
         "is_visible": s.is_visible,
     }
 
@@ -624,7 +629,7 @@ async def _replace_source_routines(
             end_time_=end_time_,
             event_name=str(item.get("event_name") or ""),
             detail=str(item.get("detail") or ""),
-            color=_normalize_color_value(str(item.get("color") or DEFAULT_EVENT_COLOR)),
+            color=_normalize_optional_color_value(item.get("color")),
             need_inform=False,
             inform_way=0,
             source_id=source.id,
@@ -804,19 +809,13 @@ def _bb_payload_to_events(payload: object, start: datetime, end: datetime) -> li
             or item.get("subject")
             or ""
         )
-        color = (
-            item.get("borderColor")
-            or item.get("color")
-            or item.get("backgroundColor")
-            or BB_SOURCE_COLOR
-        )
         events.append(
             {
                 "time_": ts,
                 "end_time_": end_ts,
                 "event_name": str(title),
                 "detail": _build_bb_event_detail(item),
-                "color": str(color),
+                "color": None,
             }
         )
     return events
@@ -1080,7 +1079,7 @@ def _tis_item_to_events(
                 "end_time_": end_ts,
                 "event_name": str(title),
                 "detail": detail,
-                "color": TIS_SOURCE_COLOR,
+                "color": None,
             }]
         return []
 
@@ -1119,7 +1118,7 @@ def _tis_item_to_events(
                 "end_time_": end_ts,
                 "event_name": str(title),
                 "detail": detail,
-                "color": TIS_SOURCE_COLOR,
+                "color": None,
             }
         )
     return events

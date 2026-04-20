@@ -216,7 +216,7 @@ class RoutineSource(Base):
 
 
 class RoutineEvent(Base):
-    """One schedule row; ``time_`` is Unix seconds; ``color`` is event display color (see Downloads ``routine.py``)."""
+    """One schedule row; ``time_`` is Unix seconds; ``color`` can override the source display color."""
 
     __tablename__ = "routine"
 
@@ -225,7 +225,7 @@ class RoutineEvent(Base):
     end_time_: Mapped[int] = mapped_column(Integer, nullable=False)
     event_name: Mapped[str] = mapped_column(String(1024), nullable=False)
     detail: Mapped[str] = mapped_column(Text, nullable=False)
-    color: Mapped[str] = mapped_column(String(32), nullable=False, default="#3b82f6")
+    color: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
     need_inform: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     inform_way: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     source_id: Mapped[int | None] = mapped_column(ForeignKey("source.id"), nullable=True, default=None)
