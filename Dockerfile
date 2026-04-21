@@ -28,8 +28,12 @@ RUN set -eux; \
     fi; \
     rm -rf /var/lib/apt/lists/*
 
-COPY . .
+COPY . /opt/opencrab
 
-RUN uv sync
+RUN cd /opt/opencrab && \
+    uv virtualenv && \
+    . .venv/bin/activate && \
+    uv pip install .
 
-ENTRYPOINT ["uv", "run", "uvicorn", "src.agent.main:app", "--host", "0.0.0.0"]
+ENTRYPOINT ["bash", "-c" ,". /opt/opencrab/.venv/bin/activate && \
+                            uv run uvicorn agent.main:app --host 0.0.0.0"]

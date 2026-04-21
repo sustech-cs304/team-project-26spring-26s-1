@@ -19,4 +19,4 @@ jobs:
         run: docker rm -f opencrab || true
       
       - name: run container
-        run: docker run -d --name opencrab -p 8000:8000 -e HTTPS_PROXY=http://192.168.10.1:7890 -e AGENT_ENV_VAULT_MASTER_KEY=tmpkey -v /home/xciphand/config.yaml:/app/config.yaml opencrab:latest
+        run: docker run -d --name opencrab -p 8000:8000 -e HTTPS_PROXY=http://192.168.10.1:7890 -e AGENT_ENV_VAULT_MASTER_KEY=tmpkey -v /home/xciphand/agent_data:/app opencrab:latest
