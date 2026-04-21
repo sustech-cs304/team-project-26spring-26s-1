@@ -1,13 +1,9 @@
 use std::fs;
-use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Mutex,
-};
+use std::sync::Mutex;
 use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -30,13 +26,9 @@ const BACKEND_RUNTIME_DIR: &str = "backend";
 const BACKEND_CONFIG_FILE: &str = "config.yaml";
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: u16 = 8000;
-const BACKEND_SHUTDOWN_PATH: &str = "/internal/shutdown";
-const BACKEND_SHUTDOWN_HEADER: &str = "X-Backend-Shutdown-Token";
 const BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
 const BACKEND_STARTUP_TIMEOUT: Duration = Duration::from_secs(4);
-const BACKEND_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(4);
 const BACKEND_POLL_INTERVAL: Duration = Duration::from_millis(120);
-static BACKEND_TOKEN_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
 struct ShortcutThrottle {
@@ -75,7 +67,6 @@ struct BackendProcessState {
 struct ManagedBackendProcess {
     pid: u32,
     child: CommandChild,
-    shutdown_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,30 +168,8 @@ fn wait_for_backend_ready(timeout: Duration) -> bool {
     is_backend_reachable()
 }
 
-fn wait_for_backend_stop(timeout: Duration) -> bool {
-    let start = Instant::now();
-
-    while start.elapsed() < timeout {
-        if !is_backend_reachable() {
-            return true;
-        }
-        sleep(BACKEND_POLL_INTERVAL);
-    }
-
-    !is_backend_reachable()
-}
-
 fn decode_backend_output(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).trim_end().to_string()
-}
-
-fn generate_backend_shutdown_token() -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let counter = BACKEND_TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("{now:x}-{:x}-{:x}", std::process::id(), counter)
 }
 
 fn sync_file(source: &Path, target: &Path) -> Result<(), String> {
@@ -296,39 +265,6 @@ fn clear_backend_process_if_pid(app: &AppHandle, pid: u32) {
     }
 }
 
-fn request_backend_shutdown(shutdown_token: &str) -> Result<(), String> {
-    let mut stream = TcpStream::connect_timeout(&backend_socket_addr(), BACKEND_CONNECT_TIMEOUT)
-        .map_err(|error| format!("failed to connect to backend shutdown endpoint: {error}"))?;
-
-    let _ = stream.set_read_timeout(Some(BACKEND_SHUTDOWN_TIMEOUT));
-    let _ = stream.set_write_timeout(Some(BACKEND_SHUTDOWN_TIMEOUT));
-
-    let request = format!(
-        "POST {BACKEND_SHUTDOWN_PATH} HTTP/1.1\r\nHost: {BACKEND_HOST}:{BACKEND_PORT}\r\n{BACKEND_SHUTDOWN_HEADER}: {shutdown_token}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-    );
-
-    stream
-        .write_all(request.as_bytes())
-        .map_err(|error| format!("failed to write backend shutdown request: {error}"))?;
-    stream
-        .flush()
-        .map_err(|error| format!("failed to flush backend shutdown request: {error}"))?;
-
-    let mut response = String::new();
-    stream
-        .read_to_string(&mut response)
-        .map_err(|error| format!("failed to read backend shutdown response: {error}"))?;
-
-    let status_line = response.lines().next().unwrap_or_default();
-    if status_line.contains(" 200 ") || status_line.contains(" 202 ") {
-        return Ok(());
-    }
-
-    Err(format!(
-        "backend shutdown endpoint returned unexpected response: {status_line}"
-    ))
-}
-
 fn force_stop_backend_process(process: ManagedBackendProcess) -> Result<(), String> {
     process
         .child
@@ -344,27 +280,8 @@ fn stop_backend_sidecar(app: &AppHandle) {
 
     if let Some(process) = process {
         let pid = process.pid;
-        let shutdown_token = process.shutdown_token.clone();
-
-        match request_backend_shutdown(&shutdown_token) {
-            Ok(()) => {
-                if !wait_for_backend_stop(BACKEND_SHUTDOWN_TIMEOUT) {
-                    log::warn!(
-                        "agent-backend[{pid}] did not stop after graceful shutdown request; falling back to child kill"
-                    );
-                    if let Err(error) = force_stop_backend_process(process) {
-                        log::warn!("failed to stop agent-backend[{pid}]: {error}");
-                    }
-                }
-            }
-            Err(error) => {
-                log::warn!(
-                    "failed to request graceful shutdown for agent-backend[{pid}]: {error}; falling back to child kill"
-                );
-                if let Err(kill_error) = force_stop_backend_process(process) {
-                    log::warn!("failed to stop agent-backend[{pid}]: {kill_error}");
-                }
-            }
+        if let Err(error) = force_stop_backend_process(process) {
+            log::warn!("failed to stop agent-backend[{pid}]: {error}");
         }
     }
 }
@@ -391,7 +308,6 @@ fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
     }
 
     let runtime_dir = ensure_backend_runtime_dir(app)?;
-    let shutdown_token = generate_backend_shutdown_token();
 
     let command = app
         .shell()
@@ -399,13 +315,10 @@ fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| format!("failed to resolve backend sidecar: {error}"))?
         .current_dir(&runtime_dir)
         .args(vec![
-            "agent.main:app".to_string(),
             "--host".to_string(),
             BACKEND_HOST.to_string(),
             "--port".to_string(),
             BACKEND_PORT.to_string(),
-            "--shutdown-token".to_string(),
-            shutdown_token.clone(),
         ]);
 
     let (mut events, child) = command
@@ -421,19 +334,11 @@ fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
             .map_err(|_| "failed to store backend process".to_string())?;
 
         if guard.is_some() {
-            let _ = force_stop_backend_process(ManagedBackendProcess {
-                pid,
-                child,
-                shutdown_token,
-            });
+            let _ = force_stop_backend_process(ManagedBackendProcess { pid, child });
             return Ok(());
         }
 
-        *guard = Some(ManagedBackendProcess {
-            pid,
-            child,
-            shutdown_token,
-        });
+        *guard = Some(ManagedBackendProcess { pid, child });
     }
 
     let app_handle = app.clone();

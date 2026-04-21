@@ -33,7 +33,6 @@
           "name": "binaries/agent-backend",
           "sidecar": true,
           "args": [
-            "agent.main:app",
             "--host",
             {
               "validator": "\\S+"
