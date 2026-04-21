@@ -106,7 +106,6 @@ export function getTags(): Promise<StoreTag[]> {
   return storeRequest.get<StoreTag[]>('/tags')
 }
 
-export function getMySkills(): Promise<StoreMySkill[]>
 export function getMySkills(): Promise<StoreMySkill[]> {
   return storeRequest.get<StoreMySkill[]>('/skills/me')
 }

@@ -98,6 +98,17 @@
                 density="comfortable"
             >
                 {{ apiMessage }}
+
+                <template v-if="showLoginAction" #append>
+                    <v-btn
+                        color="white"
+                        size="median"
+                        variant="text"
+                        @click="goToLogin"
+                    >
+                        去登录
+                    </v-btn>
+                </template>
             </v-alert>
 
             <v-progress-linear
@@ -343,6 +354,7 @@
 <script setup lang="ts">
     import { computed, onMounted, ref, watch } from 'vue'
     import type { AxiosError } from 'axios'
+    import { useRouter } from 'vue-router'
     import MySubmissionDetailDialog from '@/components/store/MySubmissionDetailDialog.vue'
     import SkillCard from '@/components/store/SkillCard.vue'
     import SkillDetailDialog from '@/components/store/SkillDetailDialog.vue'
@@ -360,6 +372,7 @@
         uploadSkill,
     } from '@/api/store'
     import { useAuthStore } from '@/stores/auth'
+    import { LOGIN_PATH } from '@/utils/authSession'
     import type {
         LocalDownloadedSkill,
         LocalDownloadedSkillDetail,
@@ -412,7 +425,9 @@
     const actionSkillId = ref<number | null>(null)
     const actionMode = ref<'install' | 'remove' | null>(null)
     const deletingSubmissionId = ref<number | null>(null)
+    const showLoginAction = ref(false)
     const authStore = useAuthStore()
+    const router = useRouter()
 
     const detailActionLoading = computed(() =>
         selectedSkill.value !== null && actionSkillId.value === selectedSkill.value.id,
@@ -488,6 +503,7 @@
 
     watch(currentTab, async (tab) => {
         apiMessage.value = ''
+        showLoginAction.value = false
 
         if (tab === 'store') {
             if (page.value !== 1) {
@@ -549,6 +565,15 @@
     function setApiMessage(message: string, type: typeof apiMessageType.value = 'info') {
         apiMessage.value = message
         apiMessageType.value = type
+    }
+
+    function goToLogin() {
+        router.push({
+            path: LOGIN_PATH,
+            query: {
+                returnTo: '/store',
+            },
+        })
     }
 
     function showDownloadErrorDialog(message: string) {
@@ -671,13 +696,7 @@
                     tag_id: activeTagId.value ?? undefined,
                     search: keyword || undefined,
                 }),
-                getDownloadedSkills().catch((error) => {
-                    if (isUnauthorizedError(error)) {
-                        return null
-                    }
-
-                    throw error
-                }),
+                getDownloadedSkills(),
             ])
 
             skills.value = response.skills.map(toCardSkill)
@@ -713,11 +732,6 @@
             if (!silent) {
                 downloadedSkills.value = []
                 syncStoreSkillInstallState([])
-                if (isUnauthorizedError(error)) {
-                    setApiMessage('请先登录后查看已下载技能', 'warning')
-                    return
-                }
-
                 setApiMessage(`加载已下载技能失败：${getErrorMessage(error)}`, 'error')
             }
         } finally {
@@ -730,6 +744,7 @@
     async function loadMySubmissionSkills() {
         loading.value = true
         apiMessage.value = ''
+        showLoginAction.value = false
 
         try {
             mySkills.value = await getMySkills()
@@ -737,6 +752,7 @@
             mySkills.value = []
             if (isUnauthorizedError(error)) {
                 setApiMessage('请先登录后查看投稿记录', 'warning')
+                showLoginAction.value = true
                 return
             }
 
@@ -761,9 +777,11 @@
     }
 
     async function checkSubmissionLimit() {
+        showLoginAction.value = false
         const authenticated = await authStore.ensureAuthenticated()
         if (!authenticated) {
             setApiMessage('请先登录后再上传技能', 'warning')
+            showLoginAction.value = true
             return false
         }
 
@@ -772,6 +790,7 @@
         } catch (error) {
             if (isUnauthorizedError(error)) {
                 setApiMessage('请先登录后再上传技能', 'warning')
+                showLoginAction.value = true
                 return false
             }
 
@@ -842,12 +861,6 @@
                 install: downloadedSkillIds.has(detail.id),
             }
         } catch (error) {
-            if (fromDownloadedTab) {
-                detailOpen.value = false
-                setApiMessage('该技能详情暂不可用，可能已从云端下架，但仍可直接卸载。', 'warning')
-                return
-            }
-
             setApiMessage(`加载技能详情失败：${getErrorMessage(error)}`, 'error')
         } finally {
             detailLoading.value = false

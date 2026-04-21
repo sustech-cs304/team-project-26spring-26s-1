@@ -6,35 +6,16 @@
 
 import { setupLayouts } from 'virtual:generated-layouts'
 // Composables
-import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
 import { isOnboardingCompleted } from '@/composables/useOnboardingConfig'
-import { useAuthStore } from '@/stores/auth'
-import { buildLoginRoute } from '@/utils/authSession'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: setupLayouts(routes),
 })
 
-function isProtectedStoreRoute(to: RouteLocationNormalized): boolean {
-  return to.path === '/store'
-}
-
-router.beforeEach(async (to) => {
-  if (isProtectedStoreRoute(to)) {
-    const authStore = useAuthStore()
-    try {
-      const authenticated = await authStore.ensureAuthenticated()
-      if (!authenticated) {
-        return buildLoginRoute(to.fullPath)
-      }
-    } catch (error) {
-      console.error('Auth check failed before navigation:', error)
-      return true
-    }
-  }
-
+router.beforeEach((to) => {
   if (import.meta.env.DEV) return true
 
   const publicPrefixes = ['/onboarding', '/auth']
