@@ -29,6 +29,22 @@ class SkillsLocalStore:
         self._root_path = Path(root_path)
         self._lock = asyncio.Lock()
 
+    async def list_downloaded_skills(self) -> list[LocalSkill]:
+        async with self._session_factory() as session:
+            session: AsyncSession
+            result = await session.execute(
+                select(LocalSkill).order_by(LocalSkill.updated_at.desc())
+            )
+            return list(result.scalars().all())
+
+    async def get_downloaded_skill_by_id(self, cloud_skill_id: int) -> LocalSkill | None:
+        async with self._session_factory() as session:
+            session: AsyncSession
+            result = await session.execute(
+                select(LocalSkill).where(LocalSkill.cloud_skill_id == cloud_skill_id).limit(1)
+            )
+            return result.scalars().first()
+
     async def save_downloaded_skill(
         self,
         *,

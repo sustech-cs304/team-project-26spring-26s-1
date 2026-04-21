@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 
 from agent.api.skills_models import (
+    DownloadedLocalSkillDetailResponse,
+    DownloadedLocalSkillResponse,
     LoginRequest,
     MessageResponse,
     RegisterCaptchaRequest,
@@ -140,6 +143,53 @@ async def list_skills(
 @router.get("/skills/me")
 async def list_my_skills(request: Request) -> Any:
     return await _request_with_token(request, "GET", "/api/skills/me")
+
+
+@router.get("/skills/downloaded", response_model=list[DownloadedLocalSkillResponse])
+async def list_downloaded_skills(request: Request) -> list[DownloadedLocalSkillResponse]:
+    skills = await _skills_local_store(request).list_downloaded_skills()
+    return [
+        DownloadedLocalSkillResponse(
+            cloud_skill_id=skill.cloud_skill_id,
+            name=skill.name,
+            description=skill.description,
+            markdown_path=skill.markdown_path,
+        )
+        for skill in skills
+    ]
+
+
+@router.get("/skills/downloaded/{skill_id}", response_model=DownloadedLocalSkillDetailResponse)
+async def get_downloaded_skill_detail(
+    request: Request,
+    skill_id: int,
+) -> DownloadedLocalSkillDetailResponse:
+    skill = await _skills_local_store(request).get_downloaded_skill_by_id(skill_id)
+    if skill is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Downloaded skill not found.")
+
+    markdown_path = Path(skill.markdown_path)
+    if not markdown_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Downloaded skill file not found.",
+        )
+
+    try:
+        markdown_content = markdown_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read downloaded skill file: {error}",
+        ) from error
+
+    return DownloadedLocalSkillDetailResponse(
+        cloud_skill_id=skill.cloud_skill_id,
+        name=skill.name,
+        description=skill.description,
+        markdown_path=skill.markdown_path,
+        markdown_content=markdown_content,
+    )
 
 
 @router.get("/skills/{skill_id}")
