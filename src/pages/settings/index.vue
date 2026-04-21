@@ -24,9 +24,6 @@
             <v-sheet color="transparent" class="flex-grow-1 overflow-y-auto">
                 <v-container max-width="672" class="pa-6">
                     <template v-if="isConfigTab(activeTab)">
-                        <v-alert rounded="lg" variant="tonal" type="info" class="mb-6">
-                            These changes are applied immediately to the running backend and persisted to `config.yaml`.
-                        </v-alert>
 
                         <div v-if="loadingConfig" class="d-flex justify-center py-16">
                             <v-progress-circular indeterminate color="primary" />
