@@ -50,6 +50,10 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 # ============== 密码与邮箱验证 ==============
 
 
+def utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def hash_password(password: str) -> str:
     return sha256((PASSWORD_SALT + password).encode()).hexdigest()
 
@@ -243,13 +247,13 @@ def send_verification_email(email: str, code: str):
             status_code=500, detail=f"Failed to send email: {e}")
 
 
-def send_notification_email_safe(email: str, content: str):
-    """后台发送通知邮件，失败时吞掉异常，避免影响主流程"""
-    try:
-        from send_verify import send_verification_email
-        send_verification_email(email, content)
-    except Exception:
-        pass
+# def send_notification_email_safe(email: str, content: str):
+#     """后台发送通知邮件，失败时吞掉异常，避免影响主流程"""
+#     try:
+#         from send_verify import send_verification_email
+#         send_verification_email(email, content)
+#     except Exception:
+#         pass
 
 # ============== 技能格式校验 ==============
 
@@ -378,14 +382,15 @@ async def send_captcha(body: RegisterCaptchaData, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail="仅支持 .edu.cn 邮箱")
 
     # 检查频率
-    fifteen_min_ago = datetime.now() - timedelta(minutes=15)
+    now = utc_now_naive()
+    fifteen_min_ago = now - timedelta(minutes=15)
     existing = db.query(EmailVerification).filter(
         EmailVerification.email == email,
         EmailVerification.created_at > fifteen_min_ago
     ).first()
 
     if existing:
-        if existing.created_at > datetime.now() - timedelta(minutes=1):
+        if existing.created_at > now - timedelta(minutes=1):
             raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
         db.delete(existing)
 
@@ -406,7 +411,7 @@ async def register(body: RegisterData, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="密码需6-16位，包含字母和数字")
 
     # 验证验证码
-    fifteen_min_ago = datetime.now() - timedelta(minutes=15)
+    fifteen_min_ago = utc_now_naive() - timedelta(minutes=15)
     verification = db.query(EmailVerification).filter(
         EmailVerification.email == body.email,
         EmailVerification.code == body.verificationCode,
@@ -674,7 +679,7 @@ async def get_dashboard(user: User = Depends(get_current_admin), db: Session = D
     total_downloads = db.query(func.sum(Skill.download_count)).scalar() or 0
 
     # 本周新增
-    week_ago = datetime.now() - timedelta(days=7)
+    week_ago = utc_now_naive() - timedelta(days=7)
     week_new = db.query(Skill).filter(
         Skill.status == "approved",
         Skill.created_at > week_ago
@@ -737,13 +742,13 @@ async def approve_skill(
     db.commit()
 
     # 后台发送邮件通知，不阻塞接口返回
-    u = db.query(User).filter(User.id == skill.user_id).first()
-    if u:
-        background_tasks.add_task(
-            send_notification_email_safe,
-            u.email,
-            f"您的技能「{skill.name}」已通过审核并上架！"
-        )
+    # u = db.query(User).filter(User.id == skill.user_id).first()
+    # if u:
+    #     background_tasks.add_task(
+    #         send_notification_email_safe,
+    #         u.email,
+    #         f"您的技能「{skill.name}」已通过审核并上架！"
+    #     )
 
     return {"message": "已批准", "skill_id": skill_id}
 
@@ -769,13 +774,13 @@ async def reject_skill(
     db.commit()
 
     # 后台发送邮件通知，不阻塞接口返回
-    u = db.query(User).filter(User.id == skill.user_id).first()
-    if u:
-        background_tasks.add_task(
-            send_notification_email_safe,
-            u.email,
-            f"您的技能「{skill.name}」未通过审核。原因: {body.reason}"
-        )
+    # u = db.query(User).filter(User.id == skill.user_id).first()
+    # if u:
+    #     background_tasks.add_task(
+    #         send_notification_email_safe,
+    #         u.email,
+    #         f"您的技能「{skill.name}」未通过审核。原因: {body.reason}"
+    #     )
 
     return {"message": "已拒绝", "skill_id": skill_id}
 
