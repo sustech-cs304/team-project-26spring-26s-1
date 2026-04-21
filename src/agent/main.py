@@ -116,6 +116,19 @@ app = fastapi.FastAPI(lifespan=lifespan)
 async def request_validation_exception_handler(_: fastapi.Request, __: RequestValidationError):
 	return JSONResponse(status_code=400, content={"message": "Invalid request parameters"})
 
+
+@app.post("/internal/shutdown")
+async def shutdown_backend(
+	request: fastapi.Request,
+	background_tasks: fastapi.BackgroundTasks,
+):
+	server = getattr(request.app.state, "uvicorn_server", None)
+	if server is None:
+		raise fastapi.HTTPException(status_code=503, detail="Shutdown unavailable")
+
+	background_tasks.add_task(setattr, server, "should_exit", True)
+	return {"status": "shutting_down"}
+
 app.add_middleware(
 	CORSMiddleware,
     allow_credentials=True, 
@@ -134,3 +147,22 @@ app.include_router(routine_events_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+
+
+def main() -> int:
+	import argparse
+	import uvicorn
+
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--host", default="127.0.0.1")
+	parser.add_argument("--port", default=8000, type=int)
+	args = parser.parse_args()
+	config = uvicorn.Config(app, host=args.host, port=args.port)
+	server = uvicorn.Server(config)
+	app.state.uvicorn_server = server
+	server.run()
+	return 0
+
+
+if __name__ == "__main__":
+	raise SystemExit(main())
