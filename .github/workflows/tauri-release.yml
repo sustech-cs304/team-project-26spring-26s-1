@@ -102,26 +102,7 @@ jobs:
 
       - name: Build backend sidecar
         working-directory: backend
-        run: |
-          $uvicornMain = (uv run python -c "import importlib, inspect, pathlib; m = importlib.import_module('uvicorn.main'); print(pathlib.Path(inspect.getfile(m)).resolve())").Trim()
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to resolve uvicorn.main path."
-          }
-
-          if (-not (Test-Path $uvicornMain)) {
-            throw "Resolved uvicorn.main path does not exist: $uvicornMain"
-          }
-
-          uv run --with pyinstaller pyinstaller `
-            --onefile `
-            --name agent-backend `
-            --paths src `
-            --exclude-module tests `
-            --hidden-import agent.main `
-            --collect-submodules agent `
-            --collect-data agent `
-            $uvicornMain
+        run: uv run --with pyinstaller pyinstaller --noconfirm --clean agent-backend.spec
 
       - name: Stage sidecar for Tauri
         run: |
