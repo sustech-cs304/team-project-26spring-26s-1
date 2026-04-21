@@ -113,28 +113,26 @@
                         <div v-else-if="activeTab === 'onebot'">
                             <div class="text-subtitle-1 font-weight-bold mb-1">OneBot</div>
                             <div class="text-caption text-medium-emphasis mb-6">
-                                Edit all backend-managed OneBot keys.
+                                Edit the backend-managed OneBot token and superuser list.
                             </div>
 
                             <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Access Token</div>
-                                <v-text-field v-model="onebot.accessToken" density="compact" variant="solo-filled"
-                                    flat rounded="lg" hide-details="auto"
-                                    :type="visibility.onebotAccessToken ? 'text' : 'password'"
-                                    :append-inner-icon="visibility.onebotAccessToken ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-                                    @click:append-inner="visibility.onebotAccessToken = !visibility.onebotAccessToken" />
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Bot Token</div>
+                                <v-text-field v-model="onebot.token" density="compact" variant="solo-filled" flat
+                                    rounded="lg" hide-details="auto"
+                                    :type="visibility.onebotToken ? 'text' : 'password'"
+                                    :append-inner-icon="visibility.onebotToken ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                    @click:append-inner="visibility.onebotToken = !visibility.onebotToken" />
                             </div>
 
                             <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Superuser ID</div>
-                                <v-text-field v-model="onebot.superuserId" density="compact" variant="solo-filled"
-                                    flat rounded="lg" hide-details="auto" />
-                            </div>
-
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Command Name</div>
-                                <v-text-field v-model="onebot.commandName" density="compact" variant="solo-filled"
-                                    flat rounded="lg" hide-details="auto" />
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Superuser IDs</div>
+                                <v-textarea v-model="onebot.superuserIdsText" density="compact"
+                                    variant="solo-filled" flat rounded="lg" hide-details="auto" rows="4"
+                                    auto-grow placeholder="123456&#10;789012" />
+                                <div class="text-caption text-medium-emphasis mt-1">
+                                    Enter one OneBot superuser ID per line. Commas are also supported.
+                                </div>
                             </div>
 
                             <v-divider class="mb-4" />
@@ -447,7 +445,7 @@
     const visibility = reactive({
         llmApiKey: false,
         fileApiKey: false,
-        onebotAccessToken: false,
+        onebotToken: false,
         telegramToken: false,
     })
 
@@ -463,9 +461,8 @@
     })
 
     const onebot = reactive({
-        accessToken: '',
-        superuserId: '',
-        commandName: '',
+        token: '',
+        superuserIdsText: '',
     })
 
     const telegram = reactive({
@@ -567,15 +564,14 @@
 
         fileConfig.mineruApiKey = config.file?.mineru?.api_key || ''
 
-        onebot.accessToken = config.onebot?.access_token || ''
-        onebot.superuserId = config.onebot?.superuser_id || ''
-        onebot.commandName = config.onebot?.command_name || ''
+        onebot.token = config.onebot?.token || ''
+        onebot.superuserIdsText = (config.onebot?.superuser_ids || []).map(id => String(id)).join('\n')
 
         telegram.token = config.telegram?.token || ''
         telegram.superuserIdsText = (config.telegram?.superuser_ids || []).map(id => String(id)).join('\n')
     }
 
-    function parseTelegramSuperuserIds(value: string) {
+    function parseSuperuserIds(value: string) {
         return value
             .split(/[\n,]+/)
             .map(item => item.trim())
@@ -651,20 +647,15 @@
         if (!snapshot) return null
 
         const onebotPatch: DeepPartial<AppConfig['onebot']> = {}
-        const nextAccessToken = onebot.accessToken.trim()
-        const nextSuperuserId = onebot.superuserId.trim()
-        const nextCommandName = onebot.commandName.trim()
+        const nextToken = onebot.token.trim()
+        const nextSuperuserIds = parseSuperuserIds(onebot.superuserIdsText)
 
-        if (nextAccessToken !== snapshot.onebot.access_token) {
-            onebotPatch.access_token = nextAccessToken
+        if (nextToken !== snapshot.onebot.token) {
+            onebotPatch.token = nextToken
         }
 
-        if (nextSuperuserId !== snapshot.onebot.superuser_id) {
-            onebotPatch.superuser_id = nextSuperuserId
-        }
-
-        if (nextCommandName !== snapshot.onebot.command_name) {
-            onebotPatch.command_name = nextCommandName
+        if (!areStringArraysEqual(nextSuperuserIds, snapshot.onebot.superuser_ids || [])) {
+            onebotPatch.superuser_ids = nextSuperuserIds
         }
 
         if (!Object.keys(onebotPatch).length) return null
@@ -680,7 +671,7 @@
 
         const telegramPatch: NonNullable<DeepPartial<AppConfig['telegram']>> = {}
         const nextToken = telegram.token.trim()
-        const nextSuperuserIds = parseTelegramSuperuserIds(telegram.superuserIdsText)
+        const nextSuperuserIds = parseSuperuserIds(telegram.superuserIdsText)
         const currentTelegram = snapshot.telegram
 
         if (nextToken !== (currentTelegram?.token || '')) {

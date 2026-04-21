@@ -48,9 +48,8 @@ export interface WebFetchConfig {
 }
 
 export interface OneBotConfig {
-    access_token: string
-    superuser_id: string
-    command_name: string
+    token: string
+    superuser_ids: string[]
 }
 
 export interface TelegramConfig {
