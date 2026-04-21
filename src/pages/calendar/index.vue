@@ -222,7 +222,6 @@
     import {
         createCalendarEvent,
         deleteCalendarEvent,
-        getCalendarEventById,
         getCalendarEvents,
         getCalendarSources,
         searchCalendarEvents,
@@ -310,7 +309,6 @@
     const dialogOpen = ref(false)
     const editingEvent = ref<CalEvent | null>(null)
     const dialogDefaultDate = ref('')
-    const pendingEventPatches = ref<Record<number, { form: Omit<CalEvent, 'id'>; expiresAt: number }>>({})
     const eventContextMenuOpen = ref(false)
     const eventContextMenuEvent = ref<CalEvent | null>(null)
     const eventContextMenuX = ref(0)
@@ -554,7 +552,7 @@
                 searchResults.value = []
                 return false
             }
-            searchResults.value = applyPendingEventPatches(await searchCalendarEvents(query))
+            searchResults.value = await searchCalendarEvents(query)
             return true
         } catch (error) {
             if (!silent) {
@@ -597,7 +595,7 @@
             })
             if (requestToken !== sourceEventsRequestToken) return
 
-            sourceScopedEvents.value = applyPendingEventPatches(rows).filter(item => item.source === normalizedSource)
+            sourceScopedEvents.value = rows.filter(item => item.source === normalizedSource)
         } catch (error) {
             if (requestToken !== sourceEventsRequestToken) return
 
@@ -633,7 +631,7 @@
                 end,
             })
             if (requestToken !== visibleEventsRequestToken) return
-            events.value = applyPendingEventPatches(rows)
+            events.value = rows
         } catch (error) {
             if (requestToken !== visibleEventsRequestToken) return
             console.error(error)
@@ -940,74 +938,28 @@
         openEdit(targetEvent)
     }
 
-    const applyEventFormToCollections = (eventId: number, form: Omit<CalEvent, 'id'>) => {
-        const mergeEvent = (item: CalEvent): CalEvent =>
-            item.id === eventId
-                ? {
-                    ...item,
-                    ...form,
-                    id: eventId,
-                }
-                : item
-
-        events.value = events.value.map(mergeEvent)
-        sourceScopedEvents.value = sourceScopedEvents.value.map(mergeEvent)
-    }
-
-    const mergeEventPatch = (item: CalEvent): CalEvent => {
-        const patch = pendingEventPatches.value[item.id]
-        if (!patch) return item
-        if (patch.expiresAt <= Date.now()) {
-            delete pendingEventPatches.value[item.id]
-            return item
-        }
-        return {
-            ...item,
-            ...patch.form,
-            id: item.id,
-        }
-    }
-
-    const applyPendingEventPatches = (items: CalEvent[]) => items.map(mergeEventPatch)
-
-    const replaceEventInCollections = (nextEvent: CalEvent) => {
-        const normalizedEvent = mergeEventPatch(nextEvent)
-        const replaceEvent = (item: CalEvent): CalEvent => item.id === normalizedEvent.id ? normalizedEvent : item
-        events.value = events.value.map(replaceEvent)
-        sourceScopedEvents.value = sourceScopedEvents.value.map(replaceEvent)
-    }
-
-    const matchesEventPatch = (event: CalEvent, form: Omit<CalEvent, 'id'>) =>
-        event.title === form.title
-        && event.date === form.date
-        && (event.startTime ?? '') === (form.startTime ?? '')
-        && (event.endTime ?? '') === (form.endTime ?? '')
-        && (event.description ?? '') === (form.description ?? '')
-        && (event.location ?? '') === (form.location ?? '')
-        && (event.link ?? '') === (form.link ?? '')
-        && (event.color ?? '') === (form.color ?? '')
-
-    const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-    const PATCH_TTL_MS = 10000
-
-    const reconcileUpdatedEvent = async (eventId: number, form: Omit<CalEvent, 'id'>) => {
-        for (const delay of [150, 400, 900, 1500, 2500, 4000]) {
-            await wait(delay)
-            const latest = await getCalendarEventById(eventId)
-            if (!latest) continue
-            if (!matchesEventPatch(latest, form)) continue
-            delete pendingEventPatches.value[eventId]
-            replaceEventInCollections(latest)
-            return
-        }
-        delete pendingEventPatches.value[eventId]
-        await loadVisibleEvents(true)
-    }
-
     const refreshCalendarData = async () => {
         await loadVisibleEvents(true)
         if (activeSource.value) {
             await loadSourceScopedEvents(activeSource.value, true)
+        }
+    }
+
+    const refreshFromAllEventsOnce = async () => {
+        const allEvents = await searchCalendarEvents({
+            start_time: ALL_EVENTS_START_TIME,
+            end_time: ALL_EVENTS_END_TIME,
+        })
+
+        const start = visibleStart.value
+        const end = visibleEnd.value
+        events.value = allEvents.filter(event => {
+            const eventEnd = event.endDate ?? event.date
+            return eventEnd >= start && event.date <= end
+        })
+
+        if (activeSource.value) {
+            sourceScopedEvents.value = allEvents.filter(event => event.source === activeSource.value)
         }
     }
 
@@ -1017,13 +969,8 @@
         try {
             if (editingEvent.value) {
                 const editingId = editingEvent.value.id
-                pendingEventPatches.value[editingId] = {
-                    form: { ...form },
-                    expiresAt: Date.now() + PATCH_TTL_MS,
-                }
-                applyEventFormToCollections(editingId, form)
                 await updateCalendarEvent(editingId, form)
-                void reconcileUpdatedEvent(editingId, form)
+                await refreshFromAllEventsOnce()
                 dialogOpen.value = false
                 editingEvent.value = null
                 return
@@ -1035,7 +982,6 @@
             dialogOpen.value = false
             editingEvent.value = null
         } catch (error) {
-            if (editingEvent.value) delete pendingEventPatches.value[editingEvent.value.id]
             events.value = previousEvents
             searchResults.value = previousSearchResults
             console.error(error)
