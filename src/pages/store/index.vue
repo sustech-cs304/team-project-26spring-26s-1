@@ -309,7 +309,6 @@
         triggerSkillUninstall,
         uploadSkill,
     } from '@/api/store'
-    import { useAuthStore } from '@/stores/auth'
     import type { StoreMySkill, StoreSkillDetail, StoreSkillSummary, StoreTag } from '@/types/store'
 
     type StoreSkillCard = StoreSkillSummary & {
@@ -347,7 +346,6 @@
     const actionSkillId = ref<number | null>(null)
     const actionMode = ref<'install' | 'remove' | null>(null)
     const deletingSubmissionId = ref<number | null>(null)
-    const authStore = useAuthStore()
 
     const detailActionLoading = computed(() =>
         selectedSkill.value !== null && actionSkillId.value === selectedSkill.value.id,
@@ -580,12 +578,6 @@
     }
 
     async function checkSubmissionLimit() {
-        const authenticated = await authStore.ensureAuthenticated()
-        if (!authenticated) {
-            setApiMessage('请先登录后再上传技能', 'warning')
-            return false
-        }
-
         try {
             mySkills.value = await getMySkills()
         } catch (error) {

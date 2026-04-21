@@ -1,17 +1,5 @@
 <template>
     <v-container fluid class="d-flex flex-column h-100 pa-0">
-        <v-sheet class="px-6 py-4 border-b flex-shrink-0" color="transparent">
-            <div class="d-flex align-center ga-3">
-                <v-icon size="20" color="primary">mdi-cog-outline</v-icon>
-                <div>
-                    <div class="text-h6 font-weight-bold">Global Settings</div>
-                    <div class="text-caption text-medium-emphasis">
-                        Manage runtime config while keeping your local preferences together.
-                    </div>
-                </div>
-            </div>
-        </v-sheet>
-
         <div class="d-flex flex-grow-1 overflow-hidden">
             <v-sheet class="flex-shrink-0 overflow-y-auto border-e" color="transparent" width="220">
                 <v-list density="compact" class="pa-2" nav>
