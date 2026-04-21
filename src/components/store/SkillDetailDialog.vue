@@ -35,8 +35,8 @@
                 </div>
             </v-sheet>
 
-            <div class="px-6 px-md-8 pt-4 pb-0">
-                <div v-if="skill" class="d-flex flex-wrap ga-2 mb-4">
+            <div class="px-6 px-md-8 pt-2 pb-0">
+                <div v-if="skill" class="d-flex flex-wrap ga-2">
                     <span
                         v-for="tag in skill.tags"
                         :key="tag.id"
@@ -51,13 +51,6 @@
                 <v-skeleton-loader v-if="loading" type="article, article, article" />
 
                 <template v-else-if="skill">
-                    <v-sheet
-                        v-if="skill.description"
-                        class="text-body-1 mb-6"
-                        style="line-height: 1.75; color: rgba(var(--v-theme-on-surface), 0.78);"
-                    >
-                        {{ skill.description }}
-                    </v-sheet>
 
                     <v-sheet style="border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); border-radius: 18px; padding: 20px;">
                         <MarkdownRenderer :content="skill.markdown_content || '暂无详情内容。'" />

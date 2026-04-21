@@ -16,12 +16,3 @@ export function normalizeReturnTo(value: unknown, fallback = '/'): string {
     return fallback
   }
 }
-
-export function buildLoginRoute(returnTo: string) {
-  return {
-    path: LOGIN_PATH,
-    query: {
-      returnTo,
-    },
-  }
-}

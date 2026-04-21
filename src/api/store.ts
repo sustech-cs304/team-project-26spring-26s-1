@@ -5,6 +5,8 @@ import type {
   AdminDashboardResponse,
   AdminPendingSkill,
   AdminSkillActionResponse,
+  LocalDownloadedSkill,
+  LocalDownloadedSkillDetail,
   StoreMySkill,
   StoreSkillDetail,
   StoreSkillListResponse,
@@ -106,6 +108,14 @@ export function getTags(): Promise<StoreTag[]> {
 
 export function getMySkills(): Promise<StoreMySkill[]> {
   return storeRequest.get<StoreMySkill[]>('/skills/me')
+}
+
+export function getDownloadedSkills(): Promise<LocalDownloadedSkill[]> {
+  return storeRequest.get<LocalDownloadedSkill[]>('/skills/downloaded')
+}
+
+export function getDownloadedSkillDetail(skillId: number): Promise<LocalDownloadedSkillDetail> {
+  return storeRequest.get<LocalDownloadedSkillDetail>(`/skills/downloaded/${skillId}`)
 }
 
 export async function uploadSkill(file: File, tagIds: number[] = []): Promise<UploadSkillResponse> {
