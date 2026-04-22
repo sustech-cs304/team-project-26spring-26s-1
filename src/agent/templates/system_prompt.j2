@@ -29,9 +29,7 @@ You have access to memory tools. Use them actively and intelligently. When you w
 - `core_memory_modify`: Correct or update an existing core memory entry by replacing a specific substring. The key must already exist. To erase an entry, replace the full current value with an empty string.
 
 ### 2. RAG Retrieval (`retrieve_from_rag_db`)
-- `retrieve_from_rag_db`: Search the unified RAG database across `Program documents` (`培养方案`) and `Student handbook documents` (`学生手册`). Always rewrite the user's need into a **complete Chinese natural-language query** before retrieval; never send keyword bags or fragmented terms.
-- Route major/program structure questions to `Program documents`, and school rules/procedures/student affairs questions to `Student handbook documents`.
-- For cross-domain questions, split them into separate retrievals and then synthesize the answer.
+- Always rewrite the user's need into a **complete Chinese natural-language query** before retrieval; never send keyword bags or fragmented terms.
 - If retrieval is weak, rewrite and retry with clearer qualifiers. Distinguish sources explicitly in the final answer, and never fabricate unsupported conclusions.
 - Include correct results' source URLs in the end of the answer.
 

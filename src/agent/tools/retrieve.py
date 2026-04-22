@@ -225,9 +225,11 @@ def _format_retrieve_results(results) -> str:
         source_url = metadata.get("source_url")
         lines.append(
             (
-                f"{idx}. score={score_text} semantic={semantic_text} rerank={rerank_text} "
-                f"source_url={source_url} "
-                f"source={source_file} chunk={chunk_index} key={item.key}\n{text}"
+                f"{idx}. "
+                # f"score={score_text} semantic={semantic_text} rerank={rerank_text} "
+                f"source={source_file} "
+                f"source_url={source_url}"
+                # f"chunk={chunk_index} key={item.key}\n{text}"
             )
         )
     return "\n\n".join(lines)
@@ -235,7 +237,12 @@ def _format_retrieve_results(results) -> str:
 
 @tool
 async def retrieve_from_rag_db(runtime: ToolRuntime, query: str, top_k: int = 5) -> str:
-    """Run semantic retrieval, rerank results with configured reranker, and return top-k chunks."""
+    """
+    - Search the unified RAG database across `Program documents` (`培养方案`) and `Student handbook documents` (`学生手册`).
+    - Run semantic retrieval results and return descending top-k chunks.
+    """
+    # - Route major/program structure questions to `Program documents`, and school rules/procedures/student affairs questions to `Student handbook documents`.
+    # - For cross-domain questions, split them into separate retrievals and then synthesize the answer.
     try:
         if not query or not query.strip():
             return "Error: Query must not be empty."
