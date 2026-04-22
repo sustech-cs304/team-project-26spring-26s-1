@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 import fastapi
-from agent.calendar import start_calendar_sync
+from agent.calendar import CalendarSyncRuntime
 from agent.config import get_config
 from agent.config_runtime import ConfigManager
 from agent.db.database import (
@@ -76,9 +76,13 @@ async def lifespan(app: fastapi.FastAPI):
 	config_manager = ConfigManager()
 	telegram_runtime = TelegramRuntime(async_session, graph, app.state.ConversationRunner)
 	await telegram_runtime.start(get_config())
+	calendar_sync_runtime = CalendarSyncRuntime(async_session)
+	await calendar_sync_runtime.start()
 	config_manager.subscribe(telegram_runtime)
+	config_manager.subscribe(calendar_sync_runtime)
 	app.state.ConfigManager = config_manager
 	app.state.TelegramRuntime = telegram_runtime
+	app.state.CalendarSyncRuntime = calendar_sync_runtime
 	app.state.graph = graph
 	app.state.NotificationService = notification_service
 	configure_notification_service(notification_service)
@@ -86,8 +90,6 @@ async def lifespan(app: fastapi.FastAPI):
 	app.state.skills_hub_client = skills_hub_client
 	app.state.skills_auth_state = skills_auth_state
 	app.state.skills_local_store = skills_local_store
-
-	calendar_sync_task = await start_calendar_sync(async_session)
 
 	task_runtime = get_task_runtime()
 	await task_runtime.start_scheduler(interval_s=60.0)
@@ -99,11 +101,7 @@ async def lifespan(app: fastapi.FastAPI):
 	finally:
 		configure_notification_service(None)
 		await telegram_runtime.stop()
-		calendar_sync_task.cancel()
-		try:
-			await calendar_sync_task
-		except asyncio.CancelledError:
-			pass
+		await calendar_sync_runtime.stop()
 		await task_runtime.aclose()
 		log.info("Task scheduler stopped")
 		await dispose_default_async_engine()

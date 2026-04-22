@@ -6,9 +6,12 @@ username/password pair in the local database for both BB and TIS.
 ``/settings/bb/credentials`` and ``/settings/tis/credentials`` behave the same.
 """
 
-import pydantic
-from fastapi import APIRouter, HTTPException
+from typing import Literal
 
+import pydantic
+from fastapi import APIRouter, HTTPException, Request
+
+from agent.config_runtime import ConfigManager, SchoolCasConfigChange
 from agent.services import school_credentials
 
 router = APIRouter(tags=["settings"])
@@ -45,6 +48,29 @@ class MessageResponse(pydantic.BaseModel):
     message: str
 
 
+async def _notify_school_cas_config_changed(
+    request: Request,
+    *,
+    action: Literal["patch"],
+    password_updated: bool,
+    storage: str | None = None,
+) -> None:
+    config_manager: ConfigManager | None = getattr(request.app.state, "ConfigManager", None)
+    if config_manager is None:
+        return
+
+    status = await school_credentials.get_school_cas_credentials_status()
+    await config_manager.notify_school_cas_config_changed(
+        SchoolCasConfigChange(
+            action=action,
+            configured=bool(status["runtime_configured"]),
+            student_id=status["student_id"],
+            password_updated=password_updated,
+            storage=storage,
+        )
+    )
+
+
 @router.get("/settings/tis/credentials", response_model=TisCredentialsGetResponse)
 async def get_tis_credentials_status():
     """Return whether shared CAS credentials are set (password is never returned)."""
@@ -54,6 +80,7 @@ async def get_tis_credentials_status():
 
 @router.patch("/patch_cas", response_model=MessageResponse)
 async def patch_cas(
+    request: Request,
     body: CasConfigPatchRequest,
 ):
     try:
@@ -65,6 +92,13 @@ async def patch_cas(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except school_credentials.EnvVaultAccessError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if body.id is not None or body.password is not None:
+        await _notify_school_cas_config_changed(
+            request,
+            action="patch",
+            password_updated=body.password is not None,
+            storage=storage,
+        )
     if storage == "runtime_fallback":
         return MessageResponse(
             message=(
