@@ -31,7 +31,13 @@ from agent.api.school_settings import router as school_settings_router
 from agent.api.routine_events import router as routine_events_router
 from agent.rag.cloud_sync import RagCloudSyncService
 from agent.services.task_runtime import get_task_runtime
-from agent.services import NotificationService, SkillsAuthState, SkillsHubClient, SkillsLocalStore
+from agent.services import (
+	MCPLifespanManager,
+	NotificationService,
+	SkillsAuthState,
+	SkillsHubClient,
+	SkillsLocalStore,
+)
 from agent.im.telegram.runtime import TelegramRuntime
 
 import aiosqlite
@@ -58,8 +64,9 @@ async def lifespan(app: fastapi.FastAPI):
 	store = AsyncSqliteStore(store_conn)
 	checkpointer_conn = await aiosqlite.connect("agent_checkpoints.db", isolation_level=None)
 	checkpointer = AsyncSqliteSaver(checkpointer_conn)
+	mcp_manager = MCPLifespanManager(get_config())
  
-	graph = await create_graph(store=store, checkpointer=checkpointer)
+	graph = await create_graph(store=store, checkpointer=checkpointer, mcp_manager=mcp_manager)
 	notification_service = NotificationService(asyncio.get_running_loop())
 	skills_hub_client = SkillsHubClient()
 	skills_auth_state = SkillsAuthState()
@@ -77,7 +84,9 @@ async def lifespan(app: fastapi.FastAPI):
 	telegram_runtime = TelegramRuntime(async_session, graph, app.state.ConversationRunner)
 	await telegram_runtime.start(get_config())
 	config_manager.subscribe(telegram_runtime)
+	config_manager.subscribe(mcp_manager)
 	app.state.ConfigManager = config_manager
+	app.state.MCPLifespanManager = mcp_manager
 	app.state.TelegramRuntime = telegram_runtime
 	app.state.graph = graph
 	app.state.NotificationService = notification_service
@@ -99,6 +108,7 @@ async def lifespan(app: fastapi.FastAPI):
 	finally:
 		configure_notification_service(None)
 		await telegram_runtime.stop()
+		await mcp_manager.aclose()
 		calendar_sync_task.cancel()
 		try:
 			await calendar_sync_task

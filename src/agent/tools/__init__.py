@@ -54,4 +54,5 @@ tools = [
     read_installed_skills,
 ]
 
+internal_tool_names = frozenset(tool.name for tool in tools)
 tool_node = ToolNode(tools=tools)

@@ -40,6 +40,8 @@ message_type_adapter = TypeAdapter(AnyMessage)
 TITLE_GENERATION_TIMEOUT_SECONDS = 60
 MAIN_MODEL_NODE_NAME = "chat"
 TOOL_NODE_NAME = "tool_node"
+MCP_TOOL_NODE_NAME = "mcp_tool_node"
+TOOL_NODE_NAMES = {TOOL_NODE_NAME, MCP_TOOL_NODE_NAME}
 USER_INPUT_NODE_NAME = "user_input"
 
 class _ConversationJobState:
@@ -426,7 +428,7 @@ class ConversationRunner:
                             deltas = self.parser.parse_event(event, message_uuid)
                         
                         if isinstance(current_message, ToolMessage):
-                            if node_name != TOOL_NODE_NAME:
+                            if node_name not in TOOL_NODE_NAMES:
                                 continue
                             tool_call_request_message = await db_utils.db_get_message_by_langchain_id(
                                 self.session_factory,

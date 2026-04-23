@@ -104,6 +104,12 @@ class SkillsCloudConfig(BaseModel):
     delete_submission_path: str = ""
     local_store_path: str = "./workspace/skills"
 
+
+class MCPConfig(BaseModel):
+    url: str
+    token: str | None = None
+    enabled_by_default: bool = False
+
 class AppConfig(BaseModel):
     api: ApiConfig
     file: FileConfig
@@ -115,6 +121,7 @@ class AppConfig(BaseModel):
     skills_cloud: SkillsCloudConfig = Field(default_factory=SkillsCloudConfig)
     notification: NotificationConfig = Field(default_factory=NotificationConfig)
     code_interpreter: CodeInterpreterConfig = Field(default_factory=CodeInterpreterConfig)
+    mcp: dict[str, MCPConfig] = Field(default_factory=dict)
 
 
 DEFAULT_CONFIG_PATH = "config.yaml"
@@ -233,6 +240,15 @@ _config = load_config()
 
 def get_config() -> AppConfig:
     return _config
+
+
+def get_default_enabled_mcp_names(config: AppConfig | None = None) -> list[str]:
+    current_config = get_config() if config is None else config
+    return [
+        name
+        for name, server_config in current_config.mcp.items()
+        if server_config.enabled_by_default
+    ]
 
 
 def set_config(config: AppConfig) -> AppConfig:
