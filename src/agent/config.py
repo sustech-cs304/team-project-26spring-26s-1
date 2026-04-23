@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, Literal
+from collections.abc import Mapping, MutableMapping
+from types import UnionType
+from typing import Any, Literal, Union, get_args, get_origin
 
 import yaml
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -119,11 +120,101 @@ class AppConfig(BaseModel):
 DEFAULT_CONFIG_PATH = "config.yaml"
 
 
-def _merge_config_dict(base: dict[str, Any], delta: Mapping[str, Any]) -> dict[str, Any]:
+_DICT_ORIGINS = {dict, Mapping, MutableMapping}
+_UNION_ORIGINS = {Union, UnionType}
+
+
+def _is_dict_annotation(annotation: Any) -> bool:
+    origin = get_origin(annotation)
+    if origin in _UNION_ORIGINS:
+        return any(
+            _is_dict_annotation(arg)
+            for arg in get_args(annotation)
+            if arg is not type(None)
+        )
+    return annotation in _DICT_ORIGINS or origin in _DICT_ORIGINS
+
+
+def _model_type_from_annotation(annotation: Any) -> type[BaseModel] | None:
+    origin = get_origin(annotation)
+    if origin in _UNION_ORIGINS:
+        for arg in get_args(annotation):
+            model_type = _model_type_from_annotation(arg)
+            if model_type is not None:
+                return model_type
+        return None
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    return None
+
+
+def _dict_value_model_type(annotation: Any) -> type[BaseModel] | None:
+    origin = get_origin(annotation)
+    if origin in _UNION_ORIGINS:
+        for arg in get_args(annotation):
+            model_type = _dict_value_model_type(arg)
+            if model_type is not None:
+                return model_type
+        return None
+    if origin not in _DICT_ORIGINS:
+        return None
+    args = get_args(annotation)
+    if len(args) != 2:
+        return None
+    return _model_type_from_annotation(args[1])
+
+
+def _field_annotation(model_type: type[BaseModel] | None, key: str) -> Any:
+    if model_type is None:
+        return None
+    field = model_type.model_fields.get(key)
+    if field is None:
+        return None
+    return field.annotation
+
+
+def _merge_dict_field(
+    base: dict[str, Any],
+    delta: Mapping[str, Any],
+    value_model_type: type[BaseModel] | None,
+) -> dict[str, Any]:
     merged = dict(base)
     for key, value in delta.items():
+        if value is None:
+            merged.pop(key, None)
+            continue
         if isinstance(value, Mapping) and isinstance(merged.get(key), dict):
-            merged[key] = _merge_config_dict(merged[key], value)
+            merged[key] = _merge_config_dict(merged[key], value, value_model_type)
+            continue
+        merged[key] = value
+    return merged
+
+
+def _merge_config_dict(
+    base: dict[str, Any],
+    delta: Mapping[str, Any],
+    model_type: type[BaseModel] | None = None,
+) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in delta.items():
+        annotation = _field_annotation(model_type, key)
+        if (
+            _is_dict_annotation(annotation)
+            and isinstance(value, Mapping)
+            and isinstance(merged.get(key), dict)
+        ):
+            merged[key] = _merge_dict_field(
+                merged[key],
+                value,
+                _dict_value_model_type(annotation),
+            )
+            continue
+        if isinstance(value, Mapping) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_config_dict(
+                merged[key],
+                value,
+                _model_type_from_annotation(annotation),
+            )
             continue
         merged[key] = value
     return merged
@@ -155,7 +246,7 @@ def build_patched_config(
     base_config: AppConfig | None = None,
 ) -> AppConfig:
     current_config = get_config() if base_config is None else base_config
-    merged = _merge_config_dict(current_config.model_dump(), delta)
+    merged = _merge_config_dict(current_config.model_dump(), delta, AppConfig)
     return AppConfig.model_validate(merged)
 
 
