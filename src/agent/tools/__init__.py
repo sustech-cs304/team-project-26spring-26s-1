@@ -29,6 +29,7 @@ from .web_tools import webfetch, websearch
 from .quiz_card import quiz_card
 from .retrieve import retrieve_from_rag_db
 from .skills_tools import read_installed_skills
+from .subagent import create_subagent
 
 tools = [
     get_calendar_events,
@@ -52,6 +53,7 @@ tools = [
     websearch,
     retrieve_from_rag_db,
     read_installed_skills,
+    create_subagent,
 ]
 
 internal_tool_names = frozenset(tool.name for tool in tools)

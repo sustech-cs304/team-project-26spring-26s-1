@@ -1,12 +1,16 @@
+from collections.abc import Mapping
+
 from langchain.messages import SystemMessage
 from langchain.tools import BaseTool
 from langchain_anthropic import ChatAnthropic
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwen
 from langgraph.runtime import Runtime
 from typing import Any
 
 from agent.config import LLMEndpointConfig, get_config, jinja_env
+from agent.core.runnable_config import runnable_config_bool
 from agent.core.state import AgentState
 from agent.services.mcp_lifespan import MCPLifespanManager
 from agent.tools import internal_tool_names
@@ -64,7 +68,23 @@ class ConfiguredModel:
             self._model_signature = signature
         return self._model
 
-    async def invoke_node(self, state: AgentState, runtime: Runtime) -> AgentState:
+    def _hide_from_subagent(self, tool: BaseTool) -> bool:
+        metadata = getattr(tool, "metadata", None)
+        if isinstance(metadata, Mapping) and metadata.get("hide_from_subagent") is True:
+            return True
+
+        extras = getattr(tool, "extras", None)
+        if isinstance(extras, Mapping) and extras.get("hide_from_subagent") is True:
+            return True
+
+        return False
+
+    async def invoke_node(
+        self,
+        state: AgentState,
+        runtime: Runtime,
+        config: RunnableConfig,
+    ) -> AgentState:
         store = runtime.store
 
         core_memory_entries: list[tuple[str, str]] = []
@@ -92,7 +112,19 @@ class ConfiguredModel:
                 raise ValueError(
                     f"MCP tool '{tool.name}' conflicts with an internal tool name"
                 )
-        if self._tools or mcp_tools:
-            model = model.bind_tools(self._tools + mcp_tools)
+        tools = self._tools
+        if runnable_config_bool(config, "subagent"):
+            tools = [
+                tool
+                for tool in tools
+                if not self._hide_from_subagent(tool)
+            ]
+            mcp_tools = [
+                tool
+                for tool in mcp_tools
+                if not self._hide_from_subagent(tool)
+            ]
+        if tools or mcp_tools:
+            model = model.bind_tools(tools + mcp_tools)
         response = await model.ainvoke([system_prompt_message] + state["messages"])
         return {"messages": [response]} if response else state

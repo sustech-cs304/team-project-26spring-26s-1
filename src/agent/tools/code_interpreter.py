@@ -6,6 +6,7 @@ import tempfile
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from langchain.tools import tool
+from langchain_core.runnables import RunnableConfig
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
@@ -14,6 +15,7 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from agent.core.state import ResumePayload
+from agent.core.runnable_config import runnable_config_bool
 from agent.config import get_config
 from agent.tools import ToolArtifact
 
@@ -210,9 +212,9 @@ async def _run_script(code: str, language: str, timeout_s: float) -> str:
     return _truncate_output(output)
 
 
-async def security_review_node(state: CodeInterpreterGraph):
-    config = get_config()
-    utility_config = config.api.utility
+async def security_review_node(state: CodeInterpreterGraph, config: RunnableConfig):
+    app_config = get_config()
+    utility_config = app_config.api.utility
     language_model = ChatOpenAI(
         model=utility_config.model,
         api_key=cast(Any, utility_config.api_key),
@@ -225,14 +227,16 @@ async def security_review_node(state: CodeInterpreterGraph):
     }
     if _is_risk_level_allowed(
         review["threat_level"],
-        config.code_interpreter.auto_approve_max_risk_level,
+        app_config.code_interpreter.auto_approve_max_risk_level,
     ):
         result["user_feedback"] = "approve"
+    elif runnable_config_bool(config, "non_interactive"):
+        result["user_feedback"] = "skip"
     return result
 
 
 def auto_approval_route(state: CodeInterpreterGraph) -> Literal["feedback", "execution"]:
-    if state.get("user_feedback") == "approve":
+    if state.get("user_feedback") in {"approve", "skip", "reject"}:
         return "execution"
     return "feedback"
 
