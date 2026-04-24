@@ -50,6 +50,12 @@ LANGUAGE_FILE_SUFFIXES = {
     "javascript": ".js",
 }
 SUPPORTED_LANGUAGES = tuple(LANGUAGE_FILE_SUFFIXES)
+RISK_LEVEL_VALUES = {
+    "Low": 0,
+    "Medium": 1,
+    "High": 2,
+}
+RiskLevel = Literal["Low", "Medium", "High"]
 
 
 class CodeInterpreterInput(BaseModel):
@@ -68,16 +74,17 @@ class CodeInterpreterInput(BaseModel):
 
 class ReviewOutput(TypedDict):
     review: str
-    threat_level: Literal["Low", "Medium", "High"]
+    threat_level: RiskLevel
+
 
 class CodeInterpreterGraph(TypedDict):
     code: str
     language: str
     timeout_s: float
     tool_call_id: str
-    review_output: ReviewOutput
-    user_feedback: Literal["approve", "skip", "reject"]
-    execution_result: str
+    review_output: NotRequired[ReviewOutput]
+    user_feedback: NotRequired[Literal["approve", "skip", "reject"]]
+    execution_result: NotRequired[str]
     break_agent_loop: NotRequired[bool]
 
 
@@ -107,6 +114,10 @@ def _build_command(language: str, script_path: str) -> list[str]:
     if language == "javascript":
         return ["node", script_path]
     raise ValueError(f"Unsupported language: {language}")
+
+
+def _is_risk_level_allowed(threat_level: RiskLevel, max_risk_level: RiskLevel) -> bool:
+    return RISK_LEVEL_VALUES[threat_level] <= RISK_LEVEL_VALUES[max_risk_level]
 
 
 async def _read_output(stream: asyncio.StreamReader | None) -> bytes:
@@ -200,7 +211,8 @@ async def _run_script(code: str, language: str, timeout_s: float) -> str:
 
 
 async def security_review_node(state: CodeInterpreterGraph):
-    utility_config = get_config().api.utility
+    config = get_config()
+    utility_config = config.api.utility
     language_model = ChatOpenAI(
         model=utility_config.model,
         api_key=cast(Any, utility_config.api_key),
@@ -208,10 +220,23 @@ async def security_review_node(state: CodeInterpreterGraph):
     )
     structured_llm = REVIEW_PROMPT_TEMPLATE | language_model.with_structured_output(ReviewOutput)
     review = await structured_llm.ainvoke({"language": state["language"], "code": state["code"]})
-    return {
+    result: dict[str, Any] = {
         "review_output": review
     }
-    
+    if _is_risk_level_allowed(
+        review["threat_level"],
+        config.code_interpreter.auto_approve_max_risk_level,
+    ):
+        result["user_feedback"] = "approve"
+    return result
+
+
+def auto_approval_route(state: CodeInterpreterGraph) -> Literal["feedback", "execution"]:
+    if state.get("user_feedback") == "approve":
+        return "execution"
+    return "feedback"
+
+
 async def feedback_node(state: CodeInterpreterGraph):
     resume_payload: ResumePayload = interrupt({
         "message": f"Agent wants to execute code. Risk assessment: {state['review_output']['threat_level']}.",
@@ -266,7 +291,14 @@ _workflow.add_node("feedback", feedback_node)
 _workflow.add_node("execution", execution_node)
 
 _workflow.add_edge(START, "security_review")
-_workflow.add_edge("security_review", "feedback")
+_workflow.add_conditional_edges(
+    "security_review",
+    auto_approval_route,
+    {
+        "feedback": "feedback",
+        "execution": "execution",
+    },
+)
 _workflow.add_edge("feedback", "execution")
 _workflow.add_edge("execution", END)
 

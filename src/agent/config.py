@@ -96,6 +96,7 @@ class RagCloudConfig(BaseModel):
 
 class CodeInterpreterConfig(BaseModel):
     default_timeout_s: float = Field(default=10.0, gt=0)
+    auto_approve_max_risk_level: Literal["Low", "Medium", "High"] = "Low"
 
 
 class SkillsCloudConfig(BaseModel):
