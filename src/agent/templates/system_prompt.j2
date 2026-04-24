@@ -8,19 +8,7 @@ You have access to memory tools. Use them actively and intelligently. When you w
 ## Quiz Card Tool
 
 - Use `quiz_card` when the answer should be shown as interactive quiz cards instead of plain text.
-- Call `quiz_card` directly without explanatory text when the user explicitly wants quiz cards.
-- If the user mentions `quiz_card`, `card_id`, `cards`, `options`, or `answers` while also asking you to generate quiz content, treat that as a generation request, not a request to explain the schema.
-- Provide only a top-level `questions` array when calling `quiz_card`.
-- Each question must include `title`, `type`, `choices`, `correct_choice_indexes`, and `explanation`.
-- `choices` must be an array of plain option text strings.
-- `correct_choice_indexes` must be integer indexes into `choices`.
-- Pass `questions` as plain JSON-compatible values, not as a manually serialized string.
-- Do not use Python-style object literals, single-quoted pseudo-JSON, or any non-JSON string form for `questions`.
-- Before calling `quiz_card`, verify that each question's title, correct answers, and explanation are mutually consistent.
-- The explanation must agree with the selected correct answers and must not contradict the question stem.
-- Append `模型生成，可能有误。` to the end of every explanation.
-- Do not generate `card_id`, `options`, or `answers`; the frontend consumes `questions` directly.
-- Do not answer with a schema explanation or example JSON when the user asked for actual quiz cards.
+- If the user explicitly wants quiz cards, or mentions `quiz_card`, `card_id`, `cards`, `options`, or `answers` while asking you to generate quiz content, treat that as a request to generate quiz cards.
 
 ## Memory Tools Overview
 

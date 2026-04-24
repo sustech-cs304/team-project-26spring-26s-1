@@ -66,11 +66,16 @@ async def quiz_card(questions: list[QuizQuestion]) -> tuple[str, ToolArtifact]:
       - `explanation`: explanation string
 
     Important:
+    - Call `quiz_card` directly without explanatory text when the user explicitly wants quiz cards
     - Do not generate `card_id`, `options`, or `answers`
     - Provide `questions` as plain JSON-compatible values, not as a manually serialized string
     - Do not wrap `questions` in Python-style object literals or single-quoted pseudo-JSON
+    - `choices` must be an array of plain option text strings
+    - `correct_choice_indexes` must be integer indexes into `choices`
     - Make sure each question's title, correct answers, and explanation are consistent
+    - The explanation must agree with the selected correct answers and must not contradict the question stem
     - The explanation must match the correct answers and must end with `模型生成，可能有误。`
+    - Do not answer with a schema explanation or example JSON when the user asked for actual quiz cards
     - Do not output normal explanatory text before or after calling this tool
     """
     return _build_result(questions)
