@@ -7,11 +7,15 @@ username/password pair in the local database for both BB and TIS.
 """
 
 import pydantic
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
+from agent.api.routine_events import BB_SOURCE_TITLE, TIS_SOURCE_TITLE
+from agent.calendar.init import _sync_calendar_sources_once
 from agent.services import school_credentials
 
 router = APIRouter(tags=["settings"])
+
+_CAS_REFRESH_SOURCES = (BB_SOURCE_TITLE, TIS_SOURCE_TITLE)
 
 
 class TisCredentialsBody(pydantic.BaseModel):
@@ -45,6 +49,17 @@ class MessageResponse(pydantic.BaseModel):
     message: str
 
 
+def _refresh_calendar_sources_after_cas_update(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> None:
+    background_tasks.add_task(
+        _sync_calendar_sources_once,
+        request.app.state.async_session,
+        _CAS_REFRESH_SOURCES,
+    )
+
+
 @router.get("/settings/tis/credentials", response_model=TisCredentialsGetResponse)
 async def get_tis_credentials_status():
     """Return whether shared CAS credentials are set (password is never returned)."""
@@ -55,6 +70,8 @@ async def get_tis_credentials_status():
 @router.patch("/patch_cas", response_model=MessageResponse)
 async def patch_cas(
     body: CasConfigPatchRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
 ):
     try:
         storage = await school_credentials.patch_school_cas_config(
@@ -65,6 +82,7 @@ async def patch_cas(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except school_credentials.EnvVaultAccessError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _refresh_calendar_sources_after_cas_update(request, background_tasks)
     if storage == "runtime_fallback":
         return MessageResponse(
             message=(
@@ -76,9 +94,14 @@ async def patch_cas(
 
 
 @router.put("/settings/tis/credentials", response_model=TisCredentialsPutResponse)
-async def put_tis_credentials(body: TisCredentialsBody):
+async def put_tis_credentials(
+    body: TisCredentialsBody,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
     """Store shared CAS in the database for BB/TIS tool resolution."""
     await school_credentials.set_school_cas_credentials(body.student_id, body.password)
+    _refresh_calendar_sources_after_cas_update(request, background_tasks)
     return TisCredentialsPutResponse(student_id=body.student_id.strip())
 
 
@@ -108,9 +131,14 @@ async def get_bb_credentials_status():
 
 
 @router.put("/settings/bb/credentials", response_model=BbCredentialsPutResponse)
-async def put_bb_credentials(body: TisCredentialsBody):
+async def put_bb_credentials(
+    body: TisCredentialsBody,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
     """Save shared SUSTech CAS in Global Settings; BB and TIS tools read the same pair."""
     await school_credentials.set_school_cas_credentials(body.student_id, body.password)
+    _refresh_calendar_sources_after_cas_update(request, background_tasks)
     return BbCredentialsPutResponse(student_id=body.student_id.strip())
 
 
