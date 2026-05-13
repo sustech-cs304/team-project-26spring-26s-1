@@ -1,34 +1,40 @@
 use std::fs;
+use std::io::{BufRead, BufReader, Read};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::thread;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
+    path::BaseDirectory,
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, RunEvent,
 };
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 use tauri_plugin_opener::OpenerExt;
-use tauri_plugin_shell::{
-    process::{CommandChild, CommandEvent},
-    ShellExt,
-};
 
 const DEEPLINK_EVENT: &str = "app://deeplink";
 const NOTIFICATION_EVENT: &str = "app://notification-request";
-const BACKEND_SIDECAR: &str = "agent-backend";
+
 const BACKEND_RUNTIME_DIR: &str = "backend";
 const BACKEND_CONFIG_FILE: &str = "config.yaml";
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: u16 = 8000;
 const BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_millis(200);
-const BACKEND_STARTUP_TIMEOUT: Duration = Duration::from_secs(4);
+const BACKEND_STARTUP_TIMEOUT: Duration = Duration::from_secs(12);
 const BACKEND_POLL_INTERVAL: Duration = Duration::from_millis(120);
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Default)]
 struct ShortcutThrottle {
@@ -66,7 +72,7 @@ struct BackendProcessState {
 
 struct ManagedBackendProcess {
     pid: u32,
-    child: CommandChild,
+    child: Child,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,14 +174,19 @@ fn wait_for_backend_ready(timeout: Duration) -> bool {
     is_backend_reachable()
 }
 
-fn decode_backend_output(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).trim_end().to_string()
+fn sync_file_if_missing(source: &Path, target: &Path) -> Result<(), String> {
+    if target.exists() {
+        return Ok(());
+    }
+
+    sync_file(source, target)
 }
 
 fn sync_file(source: &Path, target: &Path) -> Result<(), String> {
     let parent = target
         .parent()
         .ok_or_else(|| format!("target path has no parent: {}", target.display()))?;
+
     fs::create_dir_all(parent).map_err(|error| {
         format!(
             "failed to create parent directory {}: {error}",
@@ -194,43 +205,107 @@ fn sync_file(source: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn backend_dev_seed_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("backend")
+#[cfg(target_os = "windows")]
+fn python_candidates(resource_dir: &Path) -> Vec<PathBuf> {
+    let runtime = resource_dir.join("python-runtime");
+    vec![
+        runtime.join("python.exe"),
+        runtime.join("Scripts").join("python.exe"),
+        runtime.join(".venv").join("Scripts").join("python.exe"),
+    ]
 }
 
-fn resolve_backend_config_source() -> Result<PathBuf, String> {
-    let exe_path = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve app executable: {error}"))?;
-    let install_dir = exe_path.parent().ok_or_else(|| {
-        format!(
-            "app executable has no parent directory: {}",
-            exe_path.display()
-        )
-    })?;
+#[cfg(not(target_os = "windows"))]
+fn python_candidates(resource_dir: &Path) -> Vec<PathBuf> {
+    let runtime = resource_dir.join("python-runtime");
+    vec![
+        runtime.join("bin").join("python"),
+        runtime.join("python"),
+        runtime.join(".venv").join("bin").join("python"),
+    ]
+}
 
-    let installed_config = install_dir.join(BACKEND_CONFIG_FILE);
-    if installed_config.exists() {
-        return Ok(installed_config);
-    }
+fn resolve_python_executable(resource_dir: &Path) -> Result<PathBuf, String> {
+    let candidates = python_candidates(resource_dir);
 
-    if cfg!(debug_assertions) {
-        let dev_path = backend_dev_seed_dir().join(BACKEND_CONFIG_FILE);
-        if dev_path.exists() {
-            return Ok(dev_path);
+    for path in &candidates {
+        if path.exists() {
+            return Ok(path.clone());
         }
     }
 
     Err(format!(
-        "missing {} beside the installed app executable ({})",
-        BACKEND_CONFIG_FILE,
-        install_dir.display()
+        "missing python executable; checked: {}",
+        candidates
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
     ))
 }
 
-fn ensure_backend_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
+fn has_backend_resources(resource_dir: &Path) -> bool {
+    resolve_python_executable(resource_dir).is_ok()
+}
+
+fn resolve_backend_resource_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let mut candidates = Vec::new();
+
+    if let Ok(path) = app.path().resolve("", BaseDirectory::Resource) {
+        candidates.push(path.clone());
+        candidates.push(path.join("resources"));
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(manifest_dir.join("resources"));
+    candidates.push(manifest_dir.join("..").join("src-tauri").join("resources"));
+
+    for path in &candidates {
+        if has_backend_resources(path) {
+            return Ok(path.clone());
+        }
+    }
+
+    Err(format!(
+        "missing backend resources; checked: {}",
+        candidates
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+fn app_exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+}
+
+fn app_exe_config_path() -> Option<PathBuf> {
+    app_exe_dir()
+        .map(|dir| dir.join(BACKEND_CONFIG_FILE))
+        .filter(|path| path.exists())
+}
+
+fn resolve_backend_config_source(app: &AppHandle, resource_dir: &Path) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Some(path) = app_exe_config_path() {
+        candidates.push(path);
+    }
+
+    if let Ok(path) = app.path().resolve(BACKEND_CONFIG_FILE, BaseDirectory::Resource) {
+        candidates.push(path);
+    }
+
+    candidates.push(resource_dir.join(BACKEND_CONFIG_FILE));
+    candidates.push(resource_dir.join("config.default.yaml"));
+
+    candidates.into_iter().find(|path| path.exists())
+}
+
+fn ensure_backend_runtime_dir(app: &AppHandle, resource_dir: &Path) -> Result<PathBuf, String> {
     let runtime_dir = app
         .path()
         .app_local_data_dir()
@@ -246,30 +321,41 @@ fn ensure_backend_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
         runtime_dir.join("workspace").join("skills").as_path(),
         runtime_dir.join("runs").as_path(),
         runtime_dir.join("cron").as_path(),
+        runtime_dir.join("logs").as_path(),
+        runtime_dir.join("cache").as_path(),
     ] {
         fs::create_dir_all(dir)
             .map_err(|error| format!("failed to create {}: {error}", dir.display()))?;
     }
 
-    let config_source = resolve_backend_config_source()?;
-    sync_file(&config_source, &runtime_dir.join(BACKEND_CONFIG_FILE))?;
+    let target_config = runtime_dir.join(BACKEND_CONFIG_FILE);
+
+    if let Some(config_source) = app_exe_config_path() {
+        sync_file(&config_source, &target_config)?;
+    } else if let Some(config_source) = resolve_backend_config_source(app, resource_dir) {
+        sync_file_if_missing(&config_source, &target_config)?;
+    } else {
+        return Err(format!(
+            "missing {}; place it next to the app executable before starting the backend",
+            BACKEND_CONFIG_FILE
+        ));
+    }
 
     Ok(runtime_dir)
 }
 
-fn clear_backend_process_if_pid(app: &AppHandle, pid: u32) {
-    if let Ok(mut guard) = app.state::<BackendProcessState>().process.lock() {
-        if guard.as_ref().map(|process| process.pid) == Some(pid) {
-            *guard = None;
-        }
+fn force_stop_backend_process(mut process: ManagedBackendProcess) -> Result<(), String> {
+    if let Ok(Some(_status)) = process.child.try_wait() {
+        return Ok(());
     }
-}
 
-fn force_stop_backend_process(process: ManagedBackendProcess) -> Result<(), String> {
     process
         .child
         .kill()
-        .map_err(|error| format!("failed to stop agent-backend[{}]: {error}", process.pid))
+        .map_err(|error| format!("failed to stop agent-backend[{}]: {error}", process.pid))?;
+
+    let _ = process.child.wait();
+    Ok(())
 }
 
 fn stop_backend_sidecar(app: &AppHandle) {
@@ -286,6 +372,76 @@ fn stop_backend_sidecar(app: &AppHandle) {
     }
 }
 
+fn spawn_backend_output_logger<R>(reader: R, pid: u32, is_stderr: bool)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let reader = BufReader::new(reader);
+
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    let line = line.trim_end().to_string();
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    if is_stderr {
+                        log::warn!("agent-backend[{pid}] stderr: {line}");
+                    } else {
+                        log::info!("agent-backend[{pid}]: {line}");
+                    }
+                }
+                Err(error) => {
+                    log::warn!("agent-backend[{pid}] output read error: {error}");
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn spawn_backend_exit_watcher(app: AppHandle, pid: u32) {
+    thread::spawn(move || loop {
+        sleep(Duration::from_millis(500));
+
+        let should_stop = {
+            let backend_state = app.state::<BackendProcessState>();
+            let mut guard = match backend_state.process.lock() {
+                Ok(guard) => guard,
+                Err(_) => return,
+            };
+
+            let Some(process) = guard.as_mut() else {
+                return;
+            };
+
+            if process.pid != pid {
+                return;
+            }
+
+            match process.child.try_wait() {
+                Ok(Some(status)) => {
+                    log::warn!("agent-backend[{pid}] exited with status {status}");
+                    *guard = None;
+                    true
+                }
+                Ok(None) => false,
+                Err(error) => {
+                    log::warn!("agent-backend[{pid}] exit watcher error: {error}");
+                    *guard = None;
+                    true
+                }
+            }
+        };
+
+        if should_stop {
+            break;
+        }
+    });
+}
+
 fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
     {
         let backend_state = app.state::<BackendProcessState>();
@@ -300,31 +456,55 @@ fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
 
     if is_backend_reachable() {
         log::info!(
-            "agent-backend already reachable on http://{}:{}; skipping sidecar startup",
+            "agent-backend already reachable on http://{}:{}; skipping startup",
             BACKEND_HOST,
             BACKEND_PORT
         );
         return Ok(());
     }
 
-    let runtime_dir = ensure_backend_runtime_dir(app)?;
+    let resource_dir = resolve_backend_resource_dir(app)?;
+    let runtime_dir = ensure_backend_runtime_dir(app, &resource_dir)?;
+    let python = resolve_python_executable(&resource_dir)?;
 
-    let command = app
-        .shell()
-        .sidecar(BACKEND_SIDECAR)
-        .map_err(|error| format!("failed to resolve backend sidecar: {error}"))?
+    log::info!("starting agent-backend with python: {}", python.display());
+    log::info!("agent-backend module: agent.main");
+    log::info!("agent-backend working dir: {}", runtime_dir.display());
+    log::info!("agent-backend resource dir: {}", resource_dir.display());
+
+    let mut command = Command::new(&python);
+    command
+        .arg("-m")
+        .arg("agent.main")
+        .arg("--host")
+        .arg(BACKEND_HOST)
+        .arg("--port")
+        .arg(BACKEND_PORT.to_string())
         .current_dir(&runtime_dir)
-        .args(vec![
-            "--host".to_string(),
-            BACKEND_HOST.to_string(),
-            "--port".to_string(),
-            BACKEND_PORT.to_string(),
-        ]);
+        .env("PYTHONUNBUFFERED", "1")
+        .env("PYTHONUTF8", "1")
+        .env("PYTHONNOUSERSITE", "1")
+        .env("AGENT_DATA_DIR", &runtime_dir)
+        .env("AGENT_RESOURCE_DIR", &resource_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-    let (mut events, child) = command
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = command
         .spawn()
-        .map_err(|error| format!("failed to spawn backend sidecar: {error}"))?;
-    let pid = child.pid();
+        .map_err(|error| format!("failed to spawn python backend: {error}"))?;
+
+    let pid = child.id();
+
+    if let Some(stdout) = child.stdout.take() {
+        spawn_backend_output_logger(stdout, pid, false);
+    }
+
+    if let Some(stderr) = child.stderr.take() {
+        spawn_backend_output_logger(stderr, pid, true);
+    }
 
     {
         let backend_state = app.state::<BackendProcessState>();
@@ -341,38 +521,7 @@ fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
         *guard = Some(ManagedBackendProcess { pid, child });
     }
 
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = events.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    let line = decode_backend_output(&line);
-                    if !line.is_empty() {
-                        log::info!("agent-backend[{pid}]: {line}");
-                    }
-                }
-                CommandEvent::Stderr(line) => {
-                    let line = decode_backend_output(&line);
-                    if !line.is_empty() {
-                        log::warn!("agent-backend[{pid}] stderr: {line}");
-                    }
-                }
-                CommandEvent::Error(error) => {
-                    log::warn!("agent-backend[{pid}] event error: {error}");
-                }
-                CommandEvent::Terminated(payload) => {
-                    match payload.code {
-                        Some(code) => log::warn!("agent-backend[{pid}] exited with code {code}"),
-                        None => log::warn!("agent-backend[{pid}] exited"),
-                    }
-                    clear_backend_process_if_pid(&app_handle, pid);
-                }
-                _ => {}
-            }
-        }
-
-        clear_backend_process_if_pid(&app_handle, pid);
-    });
+    spawn_backend_exit_watcher(app.clone(), pid);
 
     if wait_for_backend_ready(BACKEND_STARTUP_TIMEOUT) {
         log::info!(
@@ -474,7 +623,6 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             maybe_handle_cli_deeplink(app, &argv, "protocol");
         }))
@@ -493,9 +641,9 @@ pub fn run() {
             }
 
             if let Err(err) = start_backend_sidecar(app.handle()) {
-                log::warn!("backend sidecar autostart disabled: {err}");
+                log::warn!("backend autostart disabled: {err}");
                 if cfg!(debug_assertions) {
-                    eprintln!("backend sidecar autostart disabled: {err}");
+                    eprintln!("backend autostart disabled: {err}");
                 }
             }
 
