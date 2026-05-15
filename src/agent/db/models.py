@@ -31,7 +31,7 @@ class Message(Base):
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     seq: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    checkpoint_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rollback_checkpoint_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     langchain_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     

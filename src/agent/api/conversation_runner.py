@@ -165,8 +165,7 @@ class ConversationRunner:
                 conversation.time_last_used = dt.datetime.now(dt.timezone.utc)
                 await session.commit()
 
-            resume_checkpoint_id: str | None = None
-            fallback_checkpoint_id: str | None = None
+            rollback_checkpoint_id: str | None = None
             if restart_message_id:
                 async with self.session_factory() as session:
                     session : AsyncSession
@@ -179,21 +178,7 @@ class ConversationRunner:
                         if restart_message is None:
                             raise ValueError(f"Restart message {restart_message_id} not found in conversation {conversation_id}")
 
-                        previous_checkpoint_message = (await session.execute(
-                            select(db_models.Message)
-                                .where(db_models.Message.conversation_id == conversation_id)
-                                .where(db_models.Message.seq < restart_message.seq)
-                                .where(db_models.Message.checkpoint_id.is_not(None))
-                                .order_by(db_models.Message.seq.desc())
-                                .limit(1)
-                        )).scalar()
-
-                        resume_checkpoint_id = restart_message.checkpoint_id
-                        fallback_checkpoint_id = (
-                            previous_checkpoint_message.checkpoint_id
-                            if previous_checkpoint_message is not None
-                            else None
-                        )
+                        rollback_checkpoint_id = restart_message.rollback_checkpoint_id
 
                         # erase resume_message and everything after it
                         await session.execute(
@@ -202,25 +187,15 @@ class ConversationRunner:
                                 .where(db_models.Message.seq >= restart_message.seq)
                         )
 
-                if resume_checkpoint_id:
-                    conn = self.graph.checkpointer.conn
-                    await conn.execute(
-                        "DELETE FROM checkpoints WHERE thread_id = ? AND checkpoint_id >= ?",
-                        (conversation_id, resume_checkpoint_id)
-                    )
-                    await conn.execute(
-                        "DELETE FROM writes WHERE thread_id = ? AND checkpoint_id >= ?",
-                        (conversation_id, resume_checkpoint_id)
-                    )
-                elif fallback_checkpoint_id:
+                if rollback_checkpoint_id:
                     conn = self.graph.checkpointer.conn
                     await conn.execute(
                         "DELETE FROM checkpoints WHERE thread_id = ? AND checkpoint_id > ?",
-                        (conversation_id, fallback_checkpoint_id)
+                        (conversation_id, rollback_checkpoint_id)
                     )
                     await conn.execute(
                         "DELETE FROM writes WHERE thread_id = ? AND checkpoint_id > ?",
-                        (conversation_id, fallback_checkpoint_id)
+                        (conversation_id, rollback_checkpoint_id)
                     )
                 else:
                     await self.graph.checkpointer.adelete_thread(conversation_id)
@@ -237,9 +212,19 @@ class ConversationRunner:
             bound_attachments: list[PendingMessageAttachmentRef] = []
             attachment_ids: list[str] = []
             human_message = HumanMessage(role="user", content=user_message)
+
+            def _checkpoint_id_from_config(config_value: object) -> str | None:
+                if not isinstance(config_value, dict):
+                    return None
+                configurable = config_value.get("configurable", {})
+                if not isinstance(configurable, dict):
+                    return None
+                checkpoint_id = configurable.get("checkpoint_id")
+                return str(checkpoint_id) if checkpoint_id else None
             
-            async def _ensure_thread_waiting_for_resume():
+            async def _ensure_thread_waiting_for_resume() -> str | None:
                 needs_prime = True
+                snapshot = None
                 try:
                     snapshot = await self.graph.aget_state(config)
                     needs_prime = len(snapshot.next) == 0
@@ -248,8 +233,11 @@ class ConversationRunner:
 
                 if needs_prime:
                     await self.graph.ainvoke({}, config, version="v2")
+                    snapshot = await self.graph.aget_state(config)
 
-            async def _persist_stream_message(message: AnyMessage) -> str | None:
+                return _checkpoint_id_from_config(getattr(snapshot, "config", None))
+
+            async def _persist_stream_message(message: AnyMessage, message_rollback_checkpoint_id: str | None) -> str | None:
                 if isinstance(message, HumanMessage):
                     return await db_utils.db_update_message(
                         self.session_factory,
@@ -258,6 +246,7 @@ class ConversationRunner:
                         langchain_id=message.id,
                         content=human_message.model_dump_json(),
                         attachments=attachment_ids,
+                        rollback_checkpoint_id=message_rollback_checkpoint_id,
                     )
 
                 if isinstance(message, AIMessage):
@@ -270,56 +259,13 @@ class ConversationRunner:
                         langchain_id=message.id,
                         content=message.model_dump_json(),
                         attachments=[],
+                        rollback_checkpoint_id=message_rollback_checkpoint_id,
                     )
 
                 return None
 
-            async def _backfill_root_checkpoint_messages(checkpoint_id: str):
-                try:
-                    checkpoint_snapshot = await self.graph.aget_state({
-                        "configurable": {
-                            "thread_id": conversation_id,
-                            "checkpoint_id": checkpoint_id,
-                        }
-                    })
-                    checkpoint_values = cast(dict[str, Any], checkpoint_snapshot.values or {})
-                    checkpoint_messages = cast(list[AnyMessage], checkpoint_values.get("messages", []))
-                    checkpoint_langchain_ids: list[str] = []
-
-                    for checkpoint_message in checkpoint_messages:
-                        if isinstance(checkpoint_message, ToolMessage):
-                            if checkpoint_message.tool_call_id:
-                                checkpoint_langchain_ids.append(checkpoint_message.tool_call_id)
-                            continue
-                        if isinstance(checkpoint_message, (HumanMessage, AIMessage)) and checkpoint_message.id:
-                            checkpoint_langchain_ids.append(checkpoint_message.id)
-
-                    pending_messages = await db_utils.db_get_pending_messages_by_langchain_ids(
-                        self.session_factory,
-                        conversation_id,
-                        checkpoint_langchain_ids,
-                    )
-                    message_ids_to_finalize: list[str] = []
-                    for langchain_id in checkpoint_langchain_ids:
-                        message_row = pending_messages.get(langchain_id)
-                        if message_row is not None:
-                            message_ids_to_finalize.append(message_row.id)
-
-                    if message_ids_to_finalize:
-                        await db_utils.db_set_message_checkpoints(
-                            self.session_factory,
-                            message_ids_to_finalize,
-                            checkpoint_id,
-                        )
-                except Exception as exc:
-                    log.exception(
-                        "Failed to backfill message checkpoints: conversation_id=%s, checkpoint_id=%s, error=%s",
-                        conversation_id,
-                        checkpoint_id,
-                        exc,
-                    )
-
-            await _persist_stream_message(human_message)
+            latest_root_checkpoint_id = await _ensure_thread_waiting_for_resume()
+            await _persist_stream_message(human_message, latest_root_checkpoint_id)
             if attachments:
                 try:
                     bound_attachments = await bind_pending_message_attachments(
@@ -346,7 +292,6 @@ class ConversationRunner:
                 "attachment_content": attachment_content
             }
             
-            await _ensure_thread_waiting_for_resume()
             self.title_task_manager.request_title_generation(
                 conversation_id,
                 conversation.title,
@@ -361,23 +306,14 @@ class ConversationRunner:
             )
 
             async def _persist_partial_ai_message(current_message: AnyMessage | None):
-                if not isinstance(current_message, AIMessage):
+                if not isinstance(current_message, AIMessage) or not current_message.id:
                     return
 
                 try:
-                    message_row = await db_utils.db_get_message_by_langchain_id(
-                        self.session_factory,
-                        conversation_id=conversation_id,
-                        langchain_id=current_message.id
-                    )
-                    if message_row and message_row.checkpoint_id:
-                        return
-
-                    new_config = await self.graph.aupdate_state(
+                    await self.graph.aupdate_state(
                         config,
                         {"messages": [current_message]}
                     )
-                    checkpoint = new_config["configurable"]["checkpoint_id"]
                     await db_utils.db_update_message(
                         self.session_factory,
                         conversation_id=conversation_id,
@@ -385,7 +321,7 @@ class ConversationRunner:
                         langchain_id=current_message.id,
                         content=current_message.model_dump_json(),
                         attachments=[],
-                        checkpoint_id=checkpoint
+                        rollback_checkpoint_id=latest_root_checkpoint_id,
                     )
                 except Exception as exc:
                     log.exception(
@@ -405,8 +341,17 @@ class ConversationRunner:
             raise
                 
         async def _run(job: _ConversationJobState):
+            nonlocal latest_root_checkpoint_id
             current_message: AnyMessage | None = None
             current_message_node: str | None = None
+            message_rollback_checkpoints: dict[str, str | None] = {
+                user_message_id: latest_root_checkpoint_id,
+            }
+
+            def _rollback_checkpoint_for_message(message_key: str) -> str | None:
+                if message_key not in message_rollback_checkpoints:
+                    message_rollback_checkpoints[message_key] = latest_root_checkpoint_id
+                return message_rollback_checkpoints[message_key]
                         
             try:
                 async for event in gen:
@@ -420,7 +365,7 @@ class ConversationRunner:
                         checkpoint = checkpoint_runtime.get("checkpoint_id")
                         checkpoint_ns = checkpoint_runtime.get("checkpoint_ns", "")
                         if checkpoint and not checkpoint_ns:
-                            await _backfill_root_checkpoint_messages(checkpoint)
+                            latest_root_checkpoint_id = str(checkpoint)
                     elif event["type"] == "messages":
                         message_data = cast(tuple[AnyMessage, dict[str, Any]], event["data"])
                         message_chunk, message_meta = message_data
@@ -433,13 +378,21 @@ class ConversationRunner:
                         if isinstance(current_message, HumanMessage):
                             if node_name != USER_INPUT_NODE_NAME:
                                 continue
-                            await _persist_stream_message(current_message)
+                            await _persist_stream_message(
+                                current_message,
+                                _rollback_checkpoint_for_message(user_message_id),
+                            )
                             continue # persist raw user message, not the injected attachment content
 
                         if isinstance(current_message, AIMessage):
                             if node_name != MAIN_MODEL_NODE_NAME:
                                 continue
-                            message_uuid = await _persist_stream_message(current_message)
+                            if not current_message.id:
+                                continue
+                            message_uuid = await _persist_stream_message(
+                                current_message,
+                                _rollback_checkpoint_for_message(current_message.id),
+                            )
                             if message_uuid is None:
                                 continue
                             deltas = self.parser.parse_event(event, message_uuid)
@@ -477,7 +430,7 @@ class ConversationRunner:
                         if chat_update:
                             log.debug("Received chat update: %s", chat_update)
                             for msg in cast(list[AnyMessage], chat_update.get("messages", [])):
-                                if not isinstance(msg, AIMessage):
+                                if not isinstance(msg, AIMessage) or not msg.id:
                                     continue
                                 await db_utils.db_update_message(
                                     self.session_factory,
@@ -486,6 +439,7 @@ class ConversationRunner:
                                     langchain_id = msg.id,
                                     content = msg.model_dump_json(),
                                     attachments = [],
+                                    rollback_checkpoint_id = _rollback_checkpoint_for_message(msg.id),
                                 )
                                 
                                 for tool_call in msg.tool_calls:
@@ -511,6 +465,7 @@ class ConversationRunner:
                                         langchain_id = tool_call['id'],
                                         content = tool_message.model_dump_json(),
                                         attachments = [],
+                                        rollback_checkpoint_id = _rollback_checkpoint_for_message(tool_call['id']),
                                     )
                                     deltas.extend(self.parser.parse_message_delta(tool_message, tool_message_id))
                     elif event["type"] == "values":
