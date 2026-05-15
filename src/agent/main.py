@@ -170,7 +170,10 @@ def main() -> int:
 	config = uvicorn.Config(app, host=args.host, port=args.port)
 	server = uvicorn.Server(config)
 	app.state.uvicorn_server = server
-	server.run()
+	try:
+		server.run()
+	except KeyboardInterrupt:
+		return 0
 	return 0
 
 
