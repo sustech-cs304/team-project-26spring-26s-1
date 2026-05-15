@@ -12,7 +12,6 @@ from agent.db.models import Conversation
 from agent.api.conversation_runner import ConversationRunner
 from agent.api.conversation_service import (
     create_conversation as create_conversation_record,
-    delete_conversation as delete_conversation_record,
     search_conversations as search_conversations_record,
 )
 
@@ -147,11 +146,8 @@ async def cancel_conversation(request: Request, conversation_id: str):
 
 @router.delete("/conversation/{conversation_id}")
 async def delete_conversation(request: Request, conversation_id: str, restart_message_id: str | None = None):
-    deleted = await delete_conversation_record(
-        request.app.state.async_session,
-        request.app.state.graph,
-        conversation_id,
-    )
+    runner: ConversationRunner = request.app.state.ConversationRunner
+    deleted = await runner.delete_conversation(conversation_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
         

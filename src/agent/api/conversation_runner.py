@@ -25,6 +25,7 @@ from agent.api.conversation_models import (
     CompletionResponseHistory,
     CompletionUserMessage,
 )
+from agent.api.conversation_service import delete_conversation as delete_conversation_record
 from agent.api.title_generator import ConversationTitleGenerator
 from agent.core.state import ResumePayload
 from agent.file_utils.utils import (
@@ -48,7 +49,9 @@ class _ConversationJobState:
     def __init__(self):
         self.history = []
         self.cond = asyncio.Condition()
-        self.task : asyncio.Task = None # type: ignore
+        self.task: asyncio.Task[None] | None = None
+        self.run_task: asyncio.Task[Any] | None = None
+        self.delete_requested = False
         self.user_message_id = ""
 
 
@@ -83,6 +86,11 @@ class TitleTaskManager:
         current_task = asyncio.current_task()
         if self._tasks.get(conversation_id) is current_task:
             self._tasks.pop(conversation_id, None)
+
+    def cancel(self, conversation_id: str):
+        task = self._tasks.pop(conversation_id, None)
+        if task and not task.done():
+            task.cancel()
 
     async def _conversation_needs_title(self, conversation_id: str) -> bool:
         conversation = await db_utils.db_get_conversation(self.session_factory, conversation_id)
@@ -139,7 +147,9 @@ class ConversationRunner:
             return
         
         if conversation_id not in self._conversation_jobs:
-            self._conversation_jobs[conversation_id] = _ConversationJobState()
+            job = _ConversationJobState()
+            job.run_task = asyncio.current_task()
+            self._conversation_jobs[conversation_id] = job
         else:
             raise ValueError(f"Conversation {conversation_id} is already running")
         
@@ -222,7 +232,8 @@ class ConversationRunner:
             }
 
             user_message_id = str(uuid4())
-            self._conversation_jobs[conversation_id].user_message_id = user_message_id
+            job = self._conversation_jobs[conversation_id]
+            job.user_message_id = user_message_id
             bound_attachments: list[PendingMessageAttachmentRef] = []
             attachment_ids: list[str] = []
             human_message = HumanMessage(role="user", content=user_message)
@@ -383,6 +394,12 @@ class ConversationRunner:
                         exc,
                     )
 
+        except asyncio.CancelledError:
+            job = self._conversation_jobs.pop(conversation_id, None)
+            if job is not None:
+                async with job.cond:
+                    job.cond.notify_all()
+            raise
         except Exception:
             self._conversation_jobs.pop(conversation_id, None)
             raise
@@ -537,7 +554,7 @@ class ConversationRunner:
                             job.cond.notify_all()
                 
             except asyncio.CancelledError:
-                if current_message_node == MAIN_MODEL_NODE_NAME:
+                if not job.delete_requested and current_message_node == MAIN_MODEL_NODE_NAME:
                     await _persist_partial_ai_message(current_message)
             except Exception as exc:
                 if not is_langchain_network_failure(exc):
@@ -562,8 +579,10 @@ class ConversationRunner:
                     job.cond.notify_all()
                 self._conversation_jobs.pop(conversation_id, None)
         
-        self._conversation_jobs[conversation_id].task = asyncio.create_task(_run(self._conversation_jobs[conversation_id]))
-        return self._conversation_jobs[conversation_id]
+        job = self._conversation_jobs[conversation_id]
+        job.run_task = None
+        job.task = asyncio.create_task(_run(job))
+        return job
         
     async def stream(self, conversation_id : str, need_history: bool, job: _ConversationJobState | None = None):
         if need_history:
@@ -627,7 +646,7 @@ class ConversationRunner:
                     while idx < len(active_job.history):
                         yield active_job.history[idx]
                         idx += 1
-                    if active_job.task.done() and idx >= len(active_job.history):
+                    if active_job.task and active_job.task.done() and idx >= len(active_job.history):
                         break
                     try:
                         await asyncio.wait_for(active_job.cond.wait(), timeout=2)
@@ -645,13 +664,36 @@ class ConversationRunner:
                     )
 
     async def cancel(self, conversation_id : str):
+        await self._stop_running_conversation(conversation_id)
+
+    async def delete_conversation(self, conversation_id: str) -> bool:
         if conversation_id in self._conversation_jobs:
-            job = self._conversation_jobs[conversation_id]
-            if job.task:
-                job.task.cancel()
-            
-            for i in range(10*10):
-                if conversation_id not in self._conversation_jobs:
-                    return
-                await asyncio.sleep(0.1)
-            raise ValueError(f"Failed to cancel conversation {conversation_id}")
+            self._conversation_jobs[conversation_id].delete_requested = True
+
+        await self._stop_running_conversation(conversation_id)
+        self.title_task_manager.cancel(conversation_id)
+        return await delete_conversation_record(
+            self.session_factory,
+            self.graph,
+            conversation_id,
+        )
+
+    async def _stop_running_conversation(self, conversation_id: str):
+        job = self._conversation_jobs.get(conversation_id)
+        if job is None:
+            return
+
+        current_task = asyncio.current_task()
+        tasks_to_cancel = [
+            task
+            for task in (job.task, job.run_task)
+            if task is not None and task is not current_task and not task.done()
+        ]
+        for task in tasks_to_cancel:
+            task.cancel()
+
+        for i in range(10*10):
+            if conversation_id not in self._conversation_jobs:
+                return
+            await asyncio.sleep(0.1)
+        raise ValueError(f"Failed to cancel conversation {conversation_id}")

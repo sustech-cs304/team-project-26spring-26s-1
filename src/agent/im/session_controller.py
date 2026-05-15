@@ -14,7 +14,6 @@ from agent.api.conversation_models import (
     CompletionUserMessage,
 )
 from agent.api.conversation_runner import ConversationRunner
-from agent.api.conversation_service import delete_conversation
 
 from .message_utils import render_tool_message
 from .session_service import (
@@ -335,10 +334,7 @@ class IMSessionController(ABC):
             await self.send_text(target, "No session to drop.")
             return
 
-        if self.runner.is_running(conversation_id):
-            await self.runner.cancel(conversation_id)
-
-        deleted = await delete_conversation(self.session_factory, self.graph, conversation_id)
+        deleted = await self.runner.delete_conversation(conversation_id)
         if deleted:
             await self.send_text(target, "Current session dropped. Your next message will start a new session.")
             return
