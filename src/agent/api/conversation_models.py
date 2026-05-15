@@ -46,10 +46,6 @@ class CompletionResponseToolCall(ToolMessage):
     message_id: str
     _event_type: ClassVar[str] = "tool_call"
 
-class CompletionResponseError(pydantic.BaseModel):
-    error_message: str
-    _event_type: ClassVar[str] = "error"
-
 class CompletionEventKeepAlive(pydantic.BaseModel):
     _event_type: Literal["keep_alive"]= "keep_alive"
 

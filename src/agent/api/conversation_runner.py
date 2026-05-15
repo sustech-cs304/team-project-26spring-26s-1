@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 import agent.db.models as db_models
 import agent.db.utils as db_utils
 from agent.api.conversation_models import (
-    CompletionResponseError,
     CompletionResponseHistory,
     CompletionUserMessage,
 )
@@ -221,6 +220,18 @@ class ConversationRunner:
                     return None
                 checkpoint_id = configurable.get("checkpoint_id")
                 return str(checkpoint_id) if checkpoint_id else None
+
+            async def _get_current_checkpoint_id() -> str | None:
+                try:
+                    snapshot = await self.graph.aget_state(config)
+                    return _checkpoint_id_from_config(getattr(snapshot, "config", None))
+                except Exception as exc:
+                    log.exception(
+                        "Failed to read current checkpoint: conversation_id=%s, error=%s",
+                        conversation_id,
+                        exc,
+                    )
+                    return None
             
             async def _ensure_thread_waiting_for_resume() -> str | None:
                 needs_prime = True
@@ -305,15 +316,16 @@ class ConversationRunner:
                 stream_mode=["messages","checkpoints","updates", "values"]
             )
 
-            async def _persist_partial_ai_message(current_message: AnyMessage | None):
+            async def _persist_partial_ai_message(current_message: AnyMessage | None) -> str | None:
                 if not isinstance(current_message, AIMessage) or not current_message.id:
-                    return
+                    return None
 
                 try:
-                    await self.graph.aupdate_state(
+                    checkpoint_config = await self.graph.aupdate_state(
                         config,
                         {"messages": [current_message]}
                     )
+                    checkpoint_id = _checkpoint_id_from_config(checkpoint_config)
                     await db_utils.db_update_message(
                         self.session_factory,
                         conversation_id=conversation_id,
@@ -323,12 +335,39 @@ class ConversationRunner:
                         attachments=[],
                         rollback_checkpoint_id=latest_root_checkpoint_id,
                     )
+                    return checkpoint_id
                 except Exception as exc:
                     log.exception(
                         "Failed to persist partial assistant message: conversation_id=%s, error=%s",
                         conversation_id,
                         exc,
                     )
+                    return None
+
+            async def _persist_error_ai_message(
+                error_message: str,
+                rollback_checkpoint_id: str | None,
+            ) -> tuple[str, AIMessage] | None:
+                message = AIMessage(content=error_message)
+                message_id = str(uuid4())
+                try:
+                    persisted_message_id = await db_utils.db_update_message(
+                        self.session_factory,
+                        conversation_id=conversation_id,
+                        message_id=message_id,
+                        langchain_id=None,
+                        content=message.model_dump_json(),
+                        attachments=[],
+                        rollback_checkpoint_id=rollback_checkpoint_id,
+                    )
+                    return persisted_message_id, message
+                except Exception as exc:
+                    log.exception(
+                        "Failed to persist stream error assistant message: conversation_id=%s, error=%s",
+                        conversation_id,
+                        exc,
+                    )
+                    return None
 
         except asyncio.CancelledError:
             job = self._conversation_jobs.pop(conversation_id, None)
@@ -513,21 +552,33 @@ class ConversationRunner:
                     await _persist_partial_ai_message(current_message)
             except Exception as exc:
                 error_name, error_description = describe_exception(exc)
+                error_message = f"{error_name}: {error_description}"
                 log.warning(
                     "Error while streaming conversation: conversation_id=%s, error_type=%s, error=%s",
                     conversation_id,
                     error_name,
                     exc,
                 )
+                error_rollback_checkpoint_id = latest_root_checkpoint_id
                 if current_message_node == MAIN_MODEL_NODE_NAME:
-                    await _persist_partial_ai_message(current_message)
-                async with job.cond:
-                    job.history.append(
-                        CompletionResponseError(
-                            error_message=f"{error_name}: {error_description}"
-                        )
-                    )
-                    job.cond.notify_all()
+                    partial_checkpoint_id = await _persist_partial_ai_message(current_message)
+                    if partial_checkpoint_id:
+                        error_rollback_checkpoint_id = partial_checkpoint_id
+                if error_rollback_checkpoint_id is None:
+                    error_rollback_checkpoint_id = await _get_current_checkpoint_id()
+
+                persisted_error = await _persist_error_ai_message(
+                    error_message,
+                    error_rollback_checkpoint_id,
+                )
+                if persisted_error is not None:
+                    message_id, error_ai_message = persisted_error
+                    deltas = self.parser.parse_message_delta(error_ai_message, message_id)
+                    if deltas:
+                        async with job.cond:
+                            for delta in deltas:
+                                job.history.append(delta)
+                            job.cond.notify_all()
             finally:
                 async with job.cond:
                     job.cond.notify_all()
