@@ -1,95 +1,111 @@
+# OpenCrab Frontend
 
-# Vuetify 4 + Tauri Desktop App
+This branch contains the OpenCrab desktop client built with Vue 3, TypeScript, Vuetify, Vite, and Tauri 2.
 
-This repository contains a desktop application built with [Vuetify 4](https://vuetifyjs.com/) (Vue 3 UI framework) and [Tauri](https://tauri.app/) (cross-platform desktop application framework).
+The frontend is only one part of OpenCrab. For a complete local run, start the backend from the [`backend-new`](https://github.com/sustech-cs304/team-project-26spring-26s-1/tree/backend-new) branch first.
 
-This setup allows you to build highly responsive, modern desktop applications using web technologies while leveraging a lightweight, native Rust backend.
+## Prerequisites
 
-## 📦 Prerequisites
+- Node.js 22 or newer
+- npm
+- Rust stable, installed through `rustup`
+- OS build tools required by Tauri:
+  - Windows: Microsoft C++ Build Tools
+  - macOS: Xcode Command Line Tools
+  - Linux: WebKitGTK and common build packages
+- A running OpenCrab backend on `http://127.0.0.1:8000`
 
-Before you begin, ensure you have the following installed on your machine:
+## Install
 
-1. **Node.js** (v18 or higher recommended)
-2. **Rust** (Install via [rustup](https://rustup.rs/))
-3. **OS-Specific Build Tools**:
-* **Windows**: Visual Studio C++ Build Tools.
-* **macOS**: Xcode Command Line Tools (`xcode-select --install`).
-* **Linux**: WebKit2GTK, build-essential, curl, wget, etc. (Check Tauri Linux setup guide).
-
-
-
-## 📂 Project Structure
-
-* `/src`: Contains the Vue 3 + Vuetify 4 frontend codebase.
-* `/src-tauri`: Contains the Rust backend code, Tauri configurations, and platform-specific assets (icons, etc.).
-* `vite.config.js` / `vite.config.ts`: Frontend bundler configuration.
-* `src-tauri/tauri.conf.json`: Core configuration for the Tauri desktop window and build settings.
-
-## 🚀 Getting Started
-
-1. **Clone the repository** (if applicable) and navigate to the project root.
-2. **Install frontend dependencies**:
 ```bash
-npm install
-
+npm ci
 ```
 
+## Backend Dependency
 
-*(Note: If you use `yarn` or `pnpm`, swap out the npm commands accordingly.)*
+Run the backend from a checkout of the `backend-new` branch before starting the client:
 
-## 🛠️ Development Workflow
+```bash
+uv run python -m agent.main --host 127.0.0.1 --port 8000
+```
 
-To start the development server. This command will automatically spin up the Vite development server (for Vuetify) and open the native Tauri desktop window.
+The frontend expects these backend defaults:
+
+- API base URL: `http://127.0.0.1:8000/api`
+- WebSocket base URL: `ws://127.0.0.1:8000`
+- FastAPI docs, for backend inspection: `http://127.0.0.1:8000/docs`
+
+The Skills Hub admin service from `skillshub-admin` is optional. Start it only when testing skill upload, review, approval, or download flows.
+
+## Run Web Client
+
+```bash
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+By default, the frontend calls the local backend at `http://127.0.0.1:8000/api`.
+
+## Run Tauri Desktop Client
+
+Start the backend first, then run:
 
 ```bash
 npx tauri dev
-
 ```
 
-*Note: The first time you run this, it will take some time as Rust downloads and compiles the backend crates.*
+For development, running the backend manually is the most reliable path. Packaged builds can start a bundled Python backend runtime when the release workflow stages `python-runtime` and backend resources.
 
-### Important Configuration Sync
+## Environment Variables
 
-If you change your frontend dev server port (default is usually `3000` or `5173`), ensure you update the `build.devPath` in your `src-tauri/tauri.conf.json` to match:
+Use these variables to point the client to another backend:
 
-```json
-"build": {
-  "beforeDevCommand": "npm run dev",
-  "beforeBuildCommand": "npm run build",
-  "devPath": "http://localhost:3000", 
-  "distDir": "../dist"
-}
-
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
+VITE_WS_BASE_URL=ws://127.0.0.1:8000
 ```
 
-## 🏗️ Building for Production
+Windows PowerShell:
 
-To package your application into a native executable (e.g., `.exe` for Windows, `.dmg` / `.app` for macOS, `.AppImage` / `.deb` for Linux):
+```powershell
+$env:VITE_API_BASE_URL="http://127.0.0.1:8000/api"
+$env:VITE_WS_BASE_URL="ws://127.0.0.1:8000"
+npm run dev
+```
+
+## Build
+
+Build web assets:
+
+```bash
+npm run build
+```
+
+Build a local Tauri package:
 
 ```bash
 npx tauri build
-
 ```
 
-This command will:
+Build artifacts are written under `src-tauri/target/`.
 
-1. Run the frontend build command (`npm run build` by default) to compile the Vuetify project into the `dist` folder.
-2. Compile the Rust backend in release mode.
-3. Bundle everything into an installer and executable located in `src-tauri/target/release/bundle/`.
+## Useful Scripts
 
-## 📜 Available NPM Scripts
+- `npm run dev`: start the Vite dev server on port `3000`.
+- `npm run build`: type-check and build frontend assets.
+- `npm run preview`: preview the production web build.
+- `npx tauri dev`: run the desktop app in development.
+- `npx tauri build`: build a desktop package.
 
-For convenience, you can add these scripts to your `package.json`:
+## Main Client Areas
 
-```json
-"scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "tauri": "tauri",
-  "app:dev": "tauri dev",
-  "app:build": "tauri build"
-}
-
-```
-
-Then you can simply run `npm run app:dev` or `npm run app:build`.
+- Chat: streaming agent conversations, attachments, tool-call display, and human-in-the-loop cards.
+- Calendar: custom events, imported routines, source controls, and reminders.
+- Tasks: scheduled automations, manual triggers, run history, and logs.
+- Skills: browse, download, upload, and uninstall reusable agent skills.
+- Settings and onboarding: model endpoints, campus credentials, notifications, and runtime preferences.
