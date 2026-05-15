@@ -1,0 +1,89 @@
+name: Code Metrics
+
+on:
+  workflow_dispatch:
+    inputs:
+      frontend_ref:
+        description: Frontend branch, tag, or SHA to analyze
+        required: false
+        default: frontend
+        type: string
+      backend_ref:
+        description: Backend branch, tag, or SHA to analyze
+        required: false
+        default: backend-new
+        type: string
+  push:
+    branches:
+      - main
+      - frontend
+      - backend-new
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  FRONTEND_REF: ${{ github.event.inputs.frontend_ref || 'frontend' }}
+  BACKEND_REF: ${{ github.event.inputs.backend_ref || 'backend-new' }}
+
+jobs:
+  metrics:
+    name: Generate code metrics
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout metrics scripts
+        uses: actions/checkout@v4
+        with:
+          path: metrics-ci
+          fetch-depth: 1
+
+      - name: Checkout frontend source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.FRONTEND_REF }}
+          path: frontend
+          fetch-depth: 0
+
+      - name: Checkout backend source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BACKEND_REF }}
+          path: backend
+          fetch-depth: 0
+
+      - name: Show selected refs
+        run: |
+          echo "frontend ref: $FRONTEND_REF"
+          echo "backend ref: $BACKEND_REF"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install metrics tools
+        run: python -m pip install --upgrade pip lizard tomli
+
+      - name: Generate metrics report
+        run: |
+          python metrics-ci/.github/scripts/code_metrics.py \
+            --project frontend=frontend \
+            --project backend=backend \
+            --output-dir metrics-report
+
+      - name: Write job summary
+        run: cat metrics-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload metrics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-metrics
+          path: metrics-report/
+          if-no-files-found: error
+          retention-days: 30
