@@ -21,11 +21,11 @@
 
     const expanded = ref(!props.autoCollapse)
 
-    watch(() => props.autoCollapse, (next, prev) => {
-        if (next && !prev) {
+    watch([() => props.autoCollapse, () => props.isActive], ([autoCollapse, isActive]) => {
+        if (autoCollapse && !isActive) {
             expanded.value = false
         }
-    })
+    }, { immediate: true })
 
 </script>
 

@@ -1,6 +1,6 @@
 <template>
-    <v-layout class="rounded rounded-md border">
-        <v-app-bar ref="appBarRef" height="32">
+    <v-layout class="h-100 overflow-hidden rounded-md border">
+        <v-app-bar ref="appBarRef" height="32" :elevation="0">
             <svg class="ml-2" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32">
                 <g fill="none">
                     <path fill="#ca0b4a"
@@ -28,8 +28,8 @@
         </v-app-bar>
 
         <v-navigation-drawer permanent rail rail-width="42">
+            <v-divider />
             <v-list nav class="px-0 flex-grow-1 py-0">
-                <v-divider class="pb-2"></v-divider>
                 <nav-icon-item title="Home" icon="mdi-home" to="/" />
                 <nav-icon-item title="Chat" icon="mdi-message-outline"
                     v-bind="route.path.startsWith('/c/') ? {} : { to: '/c/' }" />
@@ -45,13 +45,7 @@
             </template>
         </v-navigation-drawer>
 
-        <!-- <v-navigation-drawer location="right">
-            <v-list nav>
-                <v-list-item title="Drawer right" link></v-list-item>
-            </v-list>
-        </v-navigation-drawer> -->
-
-        <v-main>
+        <v-main class="h-100 overflow-hidden">
             <router-view />
         </v-main>
     </v-layout>

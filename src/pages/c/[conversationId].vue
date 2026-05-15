@@ -23,9 +23,9 @@
                             </v-sheet>
                             <!-- 展示模式 -->
                             <div v-else class="d-flex flex-column align-end">
-                                <v-sheet v-if="msg.content" rounded="lg" class="px-3 py-2" style="cursor: pointer;"
+                                <v-sheet v-if="msg.content" rounded="lg" class="user-message-bubble px-3" style="cursor: pointer;"
                                     :color="cardColor" @click="startEdit(i, msg.content)">
-                                    <MarkdownRenderer :content="msg.content" />
+                                    <MarkdownRenderer :content="msg.content" inline />
                                 </v-sheet>
                                 <UserMessageAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
                             </div>
@@ -73,7 +73,7 @@
                         <v-tooltip text="重试" location="bottom">
                             <template v-slot:activator="{ props }">
                                 <v-btn v-bind="props" icon="mdi-reload" size="x-small" variant="text"
-                                    active-color="primary" @click="retryTurn(i)" :disabled="loading" />
+                                    @click="retryTurn(i)" :disabled="loading" />
                             </template>
                         </v-tooltip>
                         <v-tooltip text="Copy" location="bottom">
@@ -382,10 +382,29 @@
     interface TurnInfo {
         start: number
         end: number
-        hasAssistantContent: boolean
-        assistantCombinedContent: string
+        hasOutput: boolean
+        copyContent: string
         userMsg?: ChatMessage
     }
+
+    const formatChoiceLabel = (choiceIndex: number) => String.fromCharCode(65 + choiceIndex)
+
+    const formatQuizCardsForCopy = (cards: QuizToolCard[]): string => cards.flatMap((card) =>
+        card.quizzes.map((quiz, index) => {
+            const choices = quiz.choices
+                .map((choice, choiceIndex) => `${formatChoiceLabel(choiceIndex)}. ${choice}`)
+                .join('\n')
+            const answers = quiz.correct_choice_indexes.map(formatChoiceLabel).join(', ')
+
+            return [
+                `Quiz ${index + 1}: ${quiz.title}`,
+                quiz.description,
+                choices,
+                `正确答案：${answers}`,
+                `解析：${quiz.explanation}`,
+            ].filter(Boolean).join('\n')
+        })
+    ).join('\n\n')
 
     const getTurnInfo = (index: number): TurnInfo | null => {
         if (!messages.length) return null
@@ -410,13 +429,20 @@
             if (msg?.role === 'assistant' && msg.content.trim()) {
                 chunks.push(msg.content.trim())
             }
+            if (msg?.role === 'tools') {
+                const quizContent = msg.quizCards?.length ? formatQuizCardsForCopy(msg.quizCards) : ''
+                const toolContent = quizContent || msg.toolCall?.tool_response || ''
+                if (toolContent.trim()) {
+                    chunks.push(toolContent.trim())
+                }
+            }
         }
         const userMsg = messages[start]?.role === 'user' ? messages[start] : undefined
         return {
             start,
             end,
-            hasAssistantContent: chunks.length > 0,
-            assistantCombinedContent: chunks.join('\n\n'),
+            hasOutput: chunks.length > 0,
+            copyContent: chunks.join('\n\n'),
             userMsg,
         }
     }
@@ -424,13 +450,13 @@
     /** 轮级操作栏可见性。 */
     const shouldShowTurnActions = (index: number): boolean => {
         const info = getTurnInfo(index)
-        return !!info && info.end === index && info.hasAssistantContent
+        return !!info && info.end === index && info.hasOutput
     }
 
     const copyTurnAssistantContent = (index: number) => {
         const info = getTurnInfo(index)
-        if (!info?.assistantCombinedContent) return
-        void copyText(info.assistantCombinedContent)
+        if (!info?.copyContent) return
+        void copyText(info.copyContent)
     }
 
     // ── 用户消息编辑 ──
@@ -830,3 +856,21 @@
         })
     }
 </script>
+
+<style scoped>
+    .user-message-bubble {
+        display: flex;
+        align-items: center;
+        min-height: 40px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.25rem;
+        letter-spacing: 0;
+    }
+
+    .user-message-bubble :deep(.md-body) {
+        font-size: inherit;
+        font-weight: inherit;
+        line-height: inherit;
+    }
+</style>

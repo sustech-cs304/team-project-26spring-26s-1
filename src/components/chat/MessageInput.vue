@@ -1,11 +1,13 @@
 <template>
     <div class="w-100">
-        <v-sheet rounded="xl" color="surface" elevation="1" class="px-4  pb-2" style="cursor: text;"
-            @click="focusTextarea">
-            <FilePreview v-if="attachments.length" v-model="attachments" class="pt-4 pb-0" />
+        <v-sheet rounded="xl" border color="surface" class="px-2  pb-2" style="cursor: text;" @click="focusTextarea">
+            <FilePreview v-if="attachments.length" v-model="attachments" class="py-2" />
             <v-textarea ref="textareaRef" :model-value="modelValue"
-                @update:model-value="emit('update:modelValue', $event)" :placeholder="disabled ? '请先处理待审批的操作…' : '发送消息（Ctrl + Enter）'" variant="plain"
-                rows="1" auto-grow max-rows="6" hide-details :disabled="disabled" @keydown.ctrl.enter.exact.prevent="send" @paste="onPaste">
+                :class="['message-textarea', { 'message-textarea--with-files': attachments.length > 0 }]"
+                @update:model-value="emit('update:modelValue', $event)"
+                :placeholder="disabled ? '请先处理待审批的操作…' : '发送消息（Enter 发送，Shift + Enter 换行）'" variant="plain" rows="1"
+                auto-grow max-rows="6" hide-details :disabled="disabled" @keydown="onTextareaKeydown"
+                @compositionstart="onCompositionStart" @compositionend="onCompositionEnd" @paste="onPaste">
             </v-textarea>
             <!-- Toolbar -->
             <v-row align="center" density="compact" class="mt-1">
@@ -18,8 +20,8 @@
                 <v-scale-transition mode="out-in">
                     <v-btn v-if="loading" key="stop" icon="mdi-stop" size="small" color="primary" variant="tonal"
                         :ripple="false" @click="$emit('stop')" />
-                    <v-btn v-else-if="asr.isStarting.value" key="starting" icon="mdi-loading" size="small" color="warning"
-                        variant="tonal" :ripple="false" :loading="true" disabled />
+                    <v-btn v-else-if="asr.isStarting.value" key="starting" icon="mdi-loading" size="small"
+                        color="warning" variant="tonal" :ripple="false" :loading="true" disabled />
                     <v-btn v-else-if="!hasContent && !asr.isRecording.value" key="mic" icon="mdi-microphone-outline"
                         size="small" variant="text" :ripple="false" :disabled="disabled" @click="toggleRecording" />
                     <v-btn v-else-if="asr.isRecording.value" key="recording" icon="mdi-microphone" size="small"
@@ -118,6 +120,25 @@
     const canSend = computed(() =>
         hasContent.value && !props.loading && !props.disabled && !hasUploadingAttachments.value
     )
+
+    const isComposing = ref(false)
+
+    const onCompositionStart = () => {
+        isComposing.value = true
+    }
+
+    const onCompositionEnd = () => {
+        isComposing.value = false
+    }
+
+    const onTextareaKeydown = (e: KeyboardEvent) => {
+        if (e.key !== 'Enter') return
+        if (e.shiftKey) return
+        if (e.isComposing || isComposing.value || e.keyCode === 229) return
+
+        e.preventDefault()
+        send()
+    }
 
     const toggleRecording = () => {
         if (asr.isStarting.value || asr.isRecording.value) {
@@ -261,3 +282,26 @@
 
     defineExpose({ addFiles, getAttachmentsSnapshot, clearAttachments })
 </script>
+
+<style scoped>
+    .message-textarea {
+        --v-input-padding-top: 0px;
+        --v-field-padding-top: 0px;
+        --v-field-input-padding-top: 0px;
+    }
+
+    .message-textarea :deep(.v-field__input) {
+        min-height: 0;
+        padding-top: 12px;
+        padding-inline-start: 8px;
+        padding-bottom: 0;
+    }
+
+    .message-textarea--with-files :deep(.v-field__input) {
+        padding-top: 0;
+    }
+
+    .message-textarea :deep(textarea.v-field__input) {
+        line-height: 1.5;
+    }
+</style>

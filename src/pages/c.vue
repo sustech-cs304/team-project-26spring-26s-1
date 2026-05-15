@@ -1,12 +1,12 @@
 <template>
-    <v-layout class="h-100 overflow-hidden min-height-0">
+    <v-layout class="chat-layout h-100 overflow-hidden min-height-0">
 
         <!-- 对话列表侧边栏 -->
-        <v-navigation-drawer v-model="drawer" permanent width="250" class="min-height-0">
-            <v-list nav density="compact" v-if="!searchMode">
+        <v-navigation-drawer v-model="drawer" permanent width="250" class="min-height-0" floating>
+            <v-list nav density="compact" v-if="!searchMode" class="pb-0">
                 <!-- 新对话按钮 -->
-                <v-list-item title="新对话" @click="newConversation" rounded="lg" slim prepend-gap="6" :ripple="false"
-                    to="/c">
+                <v-list-item title="新对话" @click="newConversation" link rounded="lg" slim prepend-gap="6"
+                    :ripple="false">
                     <template #prepend>
                         <v-icon size="small">mdi-chat-plus-outline</v-icon>
                     </template>
@@ -30,22 +30,17 @@
                 </div>
             </div>
 
-            <v-divider></v-divider>
-            <div class="d-flex align-center justify-space-between px-0 pt-2 pr-2">
-                <v-card-subtitle>{{ searchMode ? '搜索结果' : '历史对话' }}</v-card-subtitle>
-            </div>
-
             <!-- Loading State -->
             <div v-if="loading" class="d-flex justify-center py-4">
-                <v-progress-circular indeterminate size="24" color="primary"></v-progress-circular>
+                <v-progress-circular indeterminate size="24"></v-progress-circular>
             </div>
 
             <v-list nav density="compact" v-else-if="displayConversations.length > 0">
                 <v-list-item v-for="conv in displayConversations" :key="conv.conversation_id" :title="conv.title"
-                    :to="`/c/${conv.conversation_id}`" rounded="lg" color="primary" slim prepend-gap="6" :ripple="false"
+                    :to="`/c/${conv.conversation_id}`" rounded="lg" slim prepend-gap="6" :ripple="false"
                     class="conv-item">
                     <template #prepend>
-                        <v-icon size="x-small" v-if="conv.is_pinned && !searchMode" color="primary">mdi-pin</v-icon>
+                        <v-icon size="x-small" v-if="conv.is_pinned && !searchMode">mdi-pin</v-icon>
                     </template>
                     <template #append>
                         <v-menu :close-on-content-click="true" location="end">
@@ -94,14 +89,14 @@
                     <v-card-actions>
                         <v-spacer />
                         <v-btn variant="text" @click="renameDialog = false">取消</v-btn>
-                        <v-btn variant="tonal" color="primary" @click="confirmRename">确认</v-btn>
+                        <v-btn variant="tonal" @click="confirmRename">确认</v-btn>
                     </v-card-actions>
                 </v-card>
             </v-dialog>
         </v-navigation-drawer>
 
         <!-- 顶部应用栏 -->
-        <v-app-bar flat height="48" color="transparent">
+        <v-app-bar flat height="48" color="background" class="chat-app-bar">
             <template #prepend>
                 <v-btn :icon="drawer ? 'mdi-menu-open' : 'mdi-menu'" variant="text" @click="drawer = !drawer"
                     :ripple="false" size="small" />
@@ -122,8 +117,10 @@
 
 
         <!-- 子路由内容区 -->
-        <v-main class="overflow-hidden min-height-0">
-            <RouterView />
+        <v-main class="chat-route-main overflow-hidden min-height-0">
+            <div class="chat-route-panel">
+                <RouterView />
+            </div>
         </v-main>
 
         <!-- 全屏拖拽上传遮罩层 -->
@@ -131,7 +128,7 @@
             <Transition name="drop-fade">
                 <div v-if="showDropZone" class="drop-overlay">
                     <div class="drop-overlay__content">
-                        <v-icon icon="mdi-cloud-upload-outline" size="64" color="primary" />
+                        <v-icon icon="mdi-cloud-upload-outline" size="64" />
                         <div class="text-h6 mt-4">拖拽文件到此处上传</div>
                         <div class="text-body-large text-medium-emphasis mt-1">
                             支持图片、PDF、PPT、Markdown、TXT，单个文件不超过 5 MB
@@ -450,7 +447,14 @@
 <style scoped>
     .title-btn .edit-icon {
         opacity: 0;
-        transition: opacity 0.15s ease;
+    }
+
+    .title-btn {
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.25rem;
+        letter-spacing: 0;
+        text-transform: none;
     }
 
     .title-btn:hover .edit-icon {
@@ -459,11 +463,33 @@
 
     .conv-item .conv-menu-btn {
         opacity: 0;
-        transition: opacity 0.15s ease;
     }
 
     .conv-item:hover .conv-menu-btn {
         opacity: 1;
+    }
+
+    .chat-layout {
+        --chat-content-radius: 8px;
+        background: rgb(var(--v-theme-surface));
+    }
+
+    .chat-route-main {
+        background: transparent;
+    }
+
+    .chat-app-bar {
+        background: rgb(var(--v-theme-background)) !important;
+        border-top-left-radius: var(--chat-content-radius) !important;
+        overflow: hidden;
+    }
+
+    .chat-route-panel {
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        background: rgb(var(--v-theme-background));
+        border-bottom-left-radius: var(--chat-content-radius);
     }
 </style>
 
@@ -485,7 +511,6 @@
         flex-direction: column;
         align-items: center;
         padding: 48px;
-        border: 3px dashed rgb(var(--v-theme-primary));
         border-radius: 16px;
     }
 

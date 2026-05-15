@@ -237,13 +237,18 @@
 
     /* ── 基础文本 ── */
     .md-body {
-        line-height: 1.8;
+        font-family: inherit;
+        font-size: inherit;
+        font-weight: inherit;
+        line-height: inherit;
+        color: inherit;
         word-break: break-word;
         overflow-wrap: anywhere;
     }
 
     .md-body p {
-        margin: 0.4em 0;
+        line-height: inherit;
+        margin: 0.35em 0;
     }
 
     .md-body p:first-child {
@@ -263,19 +268,19 @@
     .md-body h6 {
         margin: 0.6em 0 0.3em;
         font-weight: 600;
-        line-height: 1.4;
+        line-height: 1.35;
     }
 
     .md-body h1 {
-        font-size: 1.4em;
+        font-size: 1.25rem;
     }
 
     .md-body h2 {
-        font-size: 1.2em;
+        font-size: 1.125rem;
     }
 
     .md-body h3 {
-        font-size: 1.05em;
+        font-size: 1rem;
     }
 
     .md-body h1:first-child,
@@ -329,8 +334,8 @@
 
     .code-block-header {
         padding: 0.4em 0.8em;
-        background: rgba(128, 128, 128, 0.08);
-        border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+        background: rgba(var(--v-theme-on-surface), 0.05);
+        border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.1);
     }
 
     .code-copy-btn {
@@ -345,14 +350,6 @@
 
     .code-copy-btn:active {
         background-color: rgba(var(--v-theme-on-surface), 0.08) !important;
-    }
-
-    /* 深色模式下代码块头部的适配 */
-    @media (prefers-color-scheme: dark) {
-        .code-block-header {
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom-color: rgba(255, 255, 255, 0.1);
-        }
     }
 
     .code-block-lang {

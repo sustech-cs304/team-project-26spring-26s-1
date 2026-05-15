@@ -1,7 +1,31 @@
+export type ThemePreference = 'system' | 'light' | 'dark'
+
+const THEME_STORAGE_KEY = 'opencrab:theme-preference'
+const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark']
+
+function canUseLocalStorage () {
+    return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+}
+
+function normalizeThemePreference (value: unknown): ThemePreference {
+    return THEME_PREFERENCES.includes(value as ThemePreference)
+        ? value as ThemePreference
+        : 'system'
+}
+
+export function getStoredThemePreference (): ThemePreference {
+    if (!canUseLocalStorage()) return 'system'
+    return normalizeThemePreference(window.localStorage.getItem(THEME_STORAGE_KEY))
+}
+
+export function setStoredThemePreference (preference: ThemePreference) {
+    if (!canUseLocalStorage()) return
+    window.localStorage.setItem(THEME_STORAGE_KEY, preference)
+}
+
 /**
- * 监听系统主题变化
- * @param callback 主题变化时的回调函数 (isDark: boolean)
- * @returns 取消监听的函数
+ * 监听系统主题变化。
+ * 用于不在 Vuetify 组件树内的代码；组件内优先使用 useTheme().current.value.dark。
  */
 export function watchTheme(callback: (isDark: boolean) => void): () => void {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')

@@ -33,7 +33,6 @@ The frontend expects these backend defaults:
 
 - API base URL: `http://127.0.0.1:8000/api`
 - WebSocket base URL: `ws://127.0.0.1:8000`
-- FastAPI docs, for backend inspection: `http://127.0.0.1:8000/docs`
 
 The Skills Hub admin service from `skillshub-admin` is optional. Start it only when testing skill upload, review, approval, or download flows.
 

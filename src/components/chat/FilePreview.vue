@@ -5,7 +5,7 @@
             <!-- 图片类型：缩略图预览 -->
             <template v-if="file.category === 'image'">
                 <div class="preview-item">
-                    <v-img :src="file.dataUrl" width="56" height="56" cover rounded="lg" class="border-thin" />
+                    <v-img :src="file.dataUrl" width="56" height="56" cover class="preview-card border-thin" />
                     <div v-if="file.uploadStatus === 'uploading'" class="preview-mask">
                         <v-progress-circular indeterminate size="20" width="2" color="primary" />
                     </div>
@@ -15,7 +15,7 @@
             <!-- 非图片类型：图标卡片 -->
             <template v-else>
                 <div class="preview-item">
-                    <v-sheet rounded="lg" :color="cardColor" class="d-flex align-center pa-1 px-2"
+                    <v-sheet border :color="cardColor" class="preview-card d-flex align-center pa-1 px-2"
                         style="width: 140px; height: 56px; overflow: hidden;">
                         <v-icon :icon="getFileIcon(file.category).icon" :color="getFileIcon(file.category).color" size="28"
                             class="flex-shrink-0" />
@@ -63,6 +63,10 @@
         position: relative;
     }
 
+    .preview-card {
+        border-radius: 18px !important;
+    }
+
     .preview-mask {
         position: absolute;
         inset: 0;
@@ -70,7 +74,7 @@
         align-items: center;
         justify-content: center;
         background: rgba(0, 0, 0, 0.35);
-        border-radius: 12px;
+        border-radius: 18px;
     }
 
     .preview-mask--wide {

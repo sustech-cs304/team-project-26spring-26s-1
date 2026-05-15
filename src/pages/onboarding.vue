@@ -3,12 +3,13 @@
         <v-sheet color="transparent" class="flex-grow-1 overflow-y-auto">
             <v-container max-width="860" class="px-6 py-6">
                 <div class="d-flex flex-column ga-4">
-                    <v-sheet rounded="xl" color="surface" elevation="1" class="pa-6">
+                    <v-sheet rounded="lg" color="surface" elevation="1" class="pa-6">
                         <div>
                             <div>
                                 <div class="d-flex align-center ga-2 mb-3">
                                     <v-chip size="small" variant="tonal" color="primary">Onboarding</v-chip>
-                                    <v-chip size="small" variant="tonal">{{ currentStep + 1 }}/{{ steps.length }}</v-chip>
+                                    <v-chip size="small" variant="tonal">{{ currentStep + 1 }}/{{ steps.length
+                                        }}</v-chip>
                                 </div>
                                 <div class="text-h5 font-weight-bold mb-2" style="line-height:1.2;">
                                     {{ currentMeta.title }}
@@ -30,7 +31,7 @@
 
                     <v-window v-model="currentStep" class="flex-grow-1" :touch="false">
                         <v-window-item v-for="(step, index) in steps" :key="step.key" :value="index">
-                            <v-card rounded="xl" color="surface" elevation="1" class="pa-6">
+                            <v-card rounded="lg" color="surface" elevation="1" class="pa-6">
                                 <template v-if="step.key === 'welcome'">
                                     <div class="d-flex flex-column ga-4">
                                         <div class="text-subtitle-1 font-weight-bold">欢迎使用 OpenCrab</div>
@@ -38,19 +39,22 @@
                                             <v-col cols="12" md="4">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
                                                     <div class="text-subtitle-2 font-weight-bold mb-2">了解你</div>
-                                                    <div class="text-body-2 text-medium-emphasis">一句话介绍、身份与专业会帮助 agent 更快进入合适的语境。</div>
+                                                    <div class="text-body-2 text-medium-emphasis">一句话介绍、身份与专业会帮助 agent
+                                                        更快进入合适的语境。</div>
                                                 </v-card>
                                             </v-col>
                                             <v-col cols="12" md="4">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
                                                     <div class="text-subtitle-2 font-weight-bold mb-2">准备能力</div>
-                                                    <div class="text-body-2 text-medium-emphasis">配置 SUSTech 账号和模型连接，后续聊天和设置页都可直接复用。</div>
+                                                    <div class="text-body-2 text-medium-emphasis">配置 SUSTech
+                                                        账号和模型连接，后续聊天和设置页都可直接复用。</div>
                                                 </v-card>
                                             </v-col>
                                             <v-col cols="12" md="4">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
                                                     <div class="text-subtitle-2 font-weight-bold mb-2">下载知识包</div>
-                                                    <div class="text-body-2 text-medium-emphasis">首版会为 SUSTech-CS 推荐知识库，便于后续问答和课程支持。</div>
+                                                    <div class="text-body-2 text-medium-emphasis">首版会为 SUSTech-CS
+                                                        推荐知识库，便于后续问答和课程支持。</div>
                                                 </v-card>
                                             </v-col>
                                         </v-row>
@@ -61,11 +65,14 @@
                                     <div class="d-flex flex-column ga-4">
                                         <div>
                                             <div class="text-subtitle-1 font-weight-bold mb-2">用一句话介绍你自己</div>
-                                            <div class="text-caption text-medium-emphasis">例如：我是南科大计科大二学生，最近在补操作系统和算法。</div>
+                                            <div class="text-caption text-medium-emphasis">例如：我是南科大计科大二学生，最近在补操作系统和算法。
+                                            </div>
                                         </div>
-                                        <v-textarea v-model="userProfile.oneLineProfile" variant="outlined" density="compact" rounded="lg"
-                                            rows="4" counter="120" maxlength="120" placeholder="输入一句能让 agent 快速了解你的描述" />
-                                        <div v-if="userProfile.oneLineProfile.trim().length === 0" class="text-caption text-medium-emphasis">
+                                        <v-textarea v-model="userProfile.oneLineProfile" variant="outlined"
+                                            density="compact" rounded="lg" rows="4" counter="120" maxlength="120"
+                                            placeholder="输入一句能让 agent 快速了解你的描述" />
+                                        <div v-if="userProfile.oneLineProfile.trim().length === 0"
+                                            class="text-caption text-medium-emphasis">
                                             这一项是必填的，后续 agent 会参考这里的描述理解你的背景。
                                         </div>
                                     </div>
@@ -79,24 +86,28 @@
                                         <v-row density="comfortable">
                                             <v-col cols="12" md="4">
                                                 <div class="text-caption text-medium-emphasis mb-2">身份</div>
-                                                <v-select v-model="userProfile.identity" density="compact" variant="outlined" rounded="lg"
-                                                    :items="identityOptions" item-title="label" item-value="value" hide-details />
+                                                <v-select v-model="userProfile.identity" density="compact"
+                                                    variant="outlined" rounded="lg" :items="identityOptions"
+                                                    item-title="label" item-value="value" hide-details />
                                             </v-col>
                                             <v-col cols="12" md="4">
                                                 <div class="text-caption text-medium-emphasis mb-2">学校</div>
-                                                <v-select v-model="userProfile.school" density="compact" variant="outlined" rounded="lg"
-                                                    :items="schoolOptions" item-title="label" item-value="value" hide-details />
+                                                <v-select v-model="userProfile.school" density="compact"
+                                                    variant="outlined" rounded="lg" :items="schoolOptions"
+                                                    item-title="label" item-value="value" hide-details />
                                             </v-col>
                                             <v-col cols="12" md="4">
                                                 <div class="text-caption text-medium-emphasis mb-2">年龄层</div>
-                                                <v-select v-model="userProfile.ageBand" density="compact" variant="outlined" rounded="lg"
-                                                    :items="ageBandOptions" item-title="label" item-value="value" hide-details />
+                                                <v-select v-model="userProfile.ageBand" density="compact"
+                                                    variant="outlined" rounded="lg" :items="ageBandOptions"
+                                                    item-title="label" item-value="value" hide-details />
                                             </v-col>
                                         </v-row>
                                         <div>
                                             <div class="text-caption text-medium-emphasis mb-2">专业</div>
-                                            <v-select v-model="userProfile.major" density="compact" variant="outlined" rounded="lg"
-                                                :items="majorOptions" item-title="label" item-value="value" hide-details />
+                                            <v-select v-model="userProfile.major" density="compact" variant="outlined"
+                                                rounded="lg" :items="majorOptions" item-title="label" item-value="value"
+                                                hide-details />
                                         </div>
                                     </div>
                                 </template>
@@ -105,22 +116,27 @@
                                         <div>
                                             <div>
                                                 <div class="text-subtitle-1 font-weight-bold mb-2">SUSTech 教务配置</div>
+                                                <div class="text-caption text-medium-emphasis">可跳过，后续可在设置页继续配置。</div>
                                             </div>
                                         </div>
 
                                         <v-row density="comfortable">
                                             <v-col cols="12" md="6">
                                                 <div class="text-caption text-medium-emphasis mb-2">学号</div>
-                                                <v-text-field v-model="campusAuth.studentId" density="compact" variant="outlined" rounded="lg"
-                                                    placeholder="例如 12110001" hide-details />
+                                                <v-text-field v-model="campusAuth.studentId" density="compact"
+                                                    variant="outlined" rounded="lg" placeholder="例如 12110001"
+                                                    hide-details />
                                             </v-col>
                                             <v-col cols="12" md="6">
                                                 <div class="text-caption text-medium-emphasis mb-2">密码</div>
-                                                <v-text-field v-model="campusAuth.password" density="compact" variant="outlined" rounded="lg"
+                                                <v-text-field v-model="campusAuth.password" density="compact"
+                                                    variant="outlined" rounded="lg"
                                                     :type="showCampusPassword ? 'text' : 'password'" hide-details>
                                                     <template #append-inner>
-                                                        <v-btn size="x-small" variant="text" icon @click="showCampusPassword = !showCampusPassword">
-                                                            <v-icon size="16">{{ showCampusPassword ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
+                                                        <v-btn size="x-small" variant="text" icon
+                                                            @click="showCampusPassword = !showCampusPassword">
+                                                            <v-icon size="16">{{ showCampusPassword ? 'mdi-eye-off' :
+                                                                'mdi-eye' }}</v-icon>
                                                         </v-btn>
                                                     </template>
                                                 </v-text-field>
@@ -133,27 +149,33 @@
                                     <div class="d-flex flex-column ga-4">
                                         <div>
                                             <div class="text-subtitle-1 font-weight-bold mb-2">模型配置</div>
+                                            <div class="text-caption text-medium-emphasis">可跳过，后续可在设置页继续配置。</div>
                                         </div>
                                         <v-row density="comfortable">
                                             <v-col cols="12">
                                                 <div class="text-caption text-medium-emphasis mb-2">Base URL</div>
-                                                <v-text-field v-model="modelEndpoint.baseUrl" density="compact" variant="outlined" rounded="lg"
+                                                <v-text-field v-model="modelEndpoint.baseUrl" density="compact"
+                                                    variant="outlined" rounded="lg"
                                                     placeholder="https://api.openai.com/v1" hide-details />
                                             </v-col>
                                             <v-col cols="12" md="6">
                                                 <div class="text-caption text-medium-emphasis mb-2">API Key</div>
-                                                <v-text-field v-model="modelEndpoint.apiKey" density="compact" variant="outlined" rounded="lg"
+                                                <v-text-field v-model="modelEndpoint.apiKey" density="compact"
+                                                    variant="outlined" rounded="lg"
                                                     :type="showApiKey ? 'text' : 'password'" hide-details>
                                                     <template #append-inner>
-                                                        <v-btn size="x-small" variant="text" icon @click="showApiKey = !showApiKey">
-                                                            <v-icon size="16">{{ showApiKey ? 'mdi-eye-off' : 'mdi-eye' }}</v-icon>
+                                                        <v-btn size="x-small" variant="text" icon
+                                                            @click="showApiKey = !showApiKey">
+                                                            <v-icon size="16">{{ showApiKey ? 'mdi-eye-off' : 'mdi-eye'
+                                                                }}</v-icon>
                                                         </v-btn>
                                                     </template>
                                                 </v-text-field>
                                             </v-col>
                                             <v-col cols="12" md="6">
                                                 <div class="text-caption text-medium-emphasis mb-2">Model Name</div>
-                                                <v-text-field v-model="modelEndpoint.modelName" density="compact" variant="outlined" rounded="lg"
+                                                <v-text-field v-model="modelEndpoint.modelName" density="compact"
+                                                    variant="outlined" rounded="lg"
                                                     placeholder="gpt-4.1-mini / deepseek-chat / qwen" hide-details />
                                             </v-col>
                                         </v-row>
@@ -166,33 +188,42 @@
                                             <div>
                                                 <div class="text-subtitle-1 font-weight-bold mb-2">知识库下载</div>
                                             </div>
-                                            <v-chip size="small" variant="tonal" color="primary">{{ knowledgePack.packId }}</v-chip>
+                                            <v-chip size="small" variant="tonal" color="primary">{{ knowledgePack.packId
+                                                }}</v-chip>
                                         </div>
 
                                         <v-card rounded="lg" variant="tonal" class="pa-4">
                                             <div class="d-flex align-center justify-space-between ga-3 mb-3">
                                                 <div>
-                                                    <div class="text-subtitle-2 font-weight-bold">SUSTech-CS Starter Pack</div>
-                                                    <div class="text-caption text-medium-emphasis">课程知识、院校上下文与计算机相关基础资料</div>
+                                                    <div class="text-subtitle-2 font-weight-bold">SUSTech-CS Starter
+                                                        Pack</div>
+                                                    <div class="text-caption text-medium-emphasis">课程知识、院校上下文与计算机相关基础资料
+                                                    </div>
                                                 </div>
                                                 <v-btn color="primary" size="small" rounded="lg"
-                                                    :loading="isKnowledgeSubmitting" :disabled="knowledgeSync.status === 'running'"
+                                                    :loading="isKnowledgeSubmitting"
+                                                    :disabled="knowledgeSync.status === 'running'"
                                                     @click="triggerKnowledgeDownload">
                                                     {{ knowledgeButtonLabel }}
                                                 </v-btn>
                                             </div>
-                                            <v-progress-linear :model-value="knowledgeProgress" color="primary" rounded height="8" />
+                                            <v-progress-linear :model-value="knowledgeProgress" color="primary" rounded
+                                                height="8" />
                                             <div class="d-flex align-center justify-space-between mt-3">
-                                                <span class="text-caption text-medium-emphasis">{{ knowledgeStatusText }}</span>
-                                                <span class="text-caption text-medium-emphasis">{{ Math.round(knowledgeProgress) }}%</span>
+                                                <span class="text-caption text-medium-emphasis">{{ knowledgeStatusText
+                                                    }}</span>
+                                                <span class="text-caption text-medium-emphasis">{{
+                                                    Math.round(knowledgeProgress) }}%</span>
                                             </div>
-                                            <div v-if="knowledgeMetaLine" class="text-caption text-medium-emphasis mt-2">
+                                            <div v-if="knowledgeMetaLine"
+                                                class="text-caption text-medium-emphasis mt-2">
                                                 {{ knowledgeMetaLine }}
                                             </div>
                                             <div v-if="knowledgeSummary" class="text-caption text-medium-emphasis mt-1">
                                                 {{ knowledgeSummary }}
                                             </div>
-                                            <div v-if="knowledgeSync.status === 'failed' && knowledgeSync.error" class="text-caption text-error mt-2">
+                                            <div v-if="knowledgeSync.status === 'failed' && knowledgeSync.error"
+                                                class="text-caption text-error mt-2">
                                                 {{ knowledgeSync.error }}
                                             </div>
                                         </v-card>
@@ -215,7 +246,8 @@
                                                         <v-icon size="18" color="primary">mdi-message-outline</v-icon>
                                                         <span class="text-subtitle-2 font-weight-bold">Chat</span>
                                                     </div>
-                                                    <div class="text-body-2 text-medium-emphasis" style="line-height:1.7;">
+                                                    <div class="text-body-2 text-medium-emphasis"
+                                                        style="line-height:1.7;">
                                                         以对话为中心的主工作区，支持消息输入、文件上传和后续 agent 交互。
                                                     </div>
                                                 </v-card>
@@ -226,7 +258,8 @@
                                                         <v-icon size="18" color="primary">mdi-calendar</v-icon>
                                                         <span class="text-subtitle-2 font-weight-bold">Calendar</span>
                                                     </div>
-                                                    <div class="text-body-2 text-medium-emphasis" style="line-height:1.7;">
+                                                    <div class="text-body-2 text-medium-emphasis"
+                                                        style="line-height:1.7;">
                                                         统一查看课程和个人安排，后续也可以接入校园与任务相关事件。
                                                     </div>
                                                 </v-card>
@@ -234,10 +267,12 @@
                                             <v-col cols="12" md="6">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
                                                     <div class="d-flex align-center ga-2 mb-3">
-                                                        <v-icon size="18" color="primary">mdi-format-list-checkbox</v-icon>
+                                                        <v-icon size="18"
+                                                            color="primary">mdi-format-list-checkbox</v-icon>
                                                         <span class="text-subtitle-2 font-weight-bold">Tasks</span>
                                                     </div>
-                                                    <div class="text-body-2 text-medium-emphasis" style="line-height:1.7;">
+                                                    <div class="text-body-2 text-medium-emphasis"
+                                                        style="line-height:1.7;">
                                                         把高频操作沉淀成任务流，后续可以复用环境变量、脚本与定时触发能力。
                                                     </div>
                                                 </v-card>
@@ -246,9 +281,11 @@
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
                                                     <div class="d-flex align-center ga-2 mb-3">
                                                         <v-icon size="18" color="primary">mdi-connection</v-icon>
-                                                        <span class="text-subtitle-2 font-weight-bold">Store / Capabilities</span>
+                                                        <span class="text-subtitle-2 font-weight-bold">Store /
+                                                            Capabilities</span>
                                                     </div>
-                                                    <div class="text-body-2 text-medium-emphasis" style="line-height:1.7;">
+                                                    <div class="text-body-2 text-medium-emphasis"
+                                                        style="line-height:1.7;">
                                                         管理扩展能力、插件和工具入口，后续可逐步扩展校园与学习场景。
                                                     </div>
                                                 </v-card>
@@ -265,7 +302,8 @@
 
         <v-sheet color="surface" class="px-6 py-4">
             <v-container max-width="860" class="pa-0 d-flex align-center justify-space-between ga-3 flex-wrap">
-                <v-btn variant="text" size="small" rounded="lg" :disabled="currentStep === 0 || isCompleting" @click="goPrevious">
+                <v-btn variant="text" size="small" rounded="lg" :disabled="currentStep === 0 || isCompleting"
+                    @click="goPrevious">
                     上一步
                 </v-btn>
                 <div class="d-flex align-center ga-3">
@@ -359,6 +397,12 @@
     const hasCompleteCampusAuth = computed(() =>
         !!campusAuth.studentId.trim() && !!campusAuth.password.trim()
     )
+    const hasAnyModelAuthValue = computed(() =>
+        !!modelEndpoint.apiKey.trim() || !!modelEndpoint.modelName.trim()
+    )
+    const hasCompleteModelConfig = computed(() =>
+        !!modelEndpoint.baseUrl.trim() && !!modelEndpoint.apiKey.trim() && !!modelEndpoint.modelName.trim()
+    )
 
     const canProceed = computed(() => {
         switch (steps[currentStep.value]?.key) {
@@ -367,7 +411,7 @@
             case 'campus':
                 return !hasAnyCampusAuthValue.value || hasCompleteCampusAuth.value
             case 'model':
-                return !!modelEndpoint.baseUrl.trim() && !!modelEndpoint.apiKey.trim() && !!modelEndpoint.modelName.trim()
+                return !hasAnyModelAuthValue.value || hasCompleteModelConfig.value
             case 'knowledge':
                 return knowledgePack.status === 'ready'
             default:
