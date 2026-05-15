@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping
+from pathlib import Path
 from types import UnionType
-from typing import Any, Literal, Union, get_args, get_origin
+from typing import Annotated, Any, Literal, Union, get_args, get_origin
 
 import yaml
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -13,68 +14,72 @@ jinja_env = Environment(
     autoescape=select_autoescape()
 )
 
+SENSITIVE_CONFIG_META_KEY = "x-sensitive"
+REDACTED_CONFIG_VALUE = "********"
+SensitiveStr = Annotated[str, Field(json_schema_extra={SENSITIVE_CONFIG_META_KEY: True})]
+
 class LLMEndpointConfig(BaseModel):
-    type: Literal["OpenAI", "Qwen", "Anthropic"]
-    base_url: str
-    api_key: str
-    model: str
+    type: Literal["OpenAI", "Qwen", "Anthropic"] = "OpenAI"
+    base_url: str = ""
+    api_key: SensitiveStr = ""
+    model: str = ""
     max_token_count: int = Field(default=128000, ge=1)
 
 class RerankerEndpointConfig(BaseModel):
-    type: Literal["OpenAI"]
-    base_url: str
-    api_key: str
-    model: str
+    type: Literal["OpenAI"] = "OpenAI"
+    base_url: str = ""
+    api_key: SensitiveStr = ""
+    model: str = ""
 
 class EmbedEndpointConfig(BaseModel):
-    type: Literal["OpenAI"]
-    base_url: str
-    api_key: str
-    model: str
-    dims: int
+    type: Literal["OpenAI"] = "OpenAI"
+    base_url: str = ""
+    api_key: SensitiveStr = ""
+    model: str = ""
+    dims: int = 1536
 
 class ASREndpointConfig(BaseModel):
-    type: Literal["Qwen"]
-    base_url: str
-    api_key: str
+    type: Literal["Qwen"] = "Qwen"
+    base_url: str = ""
+    api_key: SensitiveStr = ""
 
 class ApiConfig(BaseModel):
-    agent: LLMEndpointConfig
-    utility: LLMEndpointConfig
-    embed: EmbedEndpointConfig
-    rerank: RerankerEndpointConfig
-    asr: ASREndpointConfig
+    agent: LLMEndpointConfig = Field(default_factory=LLMEndpointConfig)
+    utility: LLMEndpointConfig = Field(default_factory=LLMEndpointConfig)
+    embed: EmbedEndpointConfig = Field(default_factory=EmbedEndpointConfig)
+    rerank: RerankerEndpointConfig = Field(default_factory=RerankerEndpointConfig)
+    asr: ASREndpointConfig = Field(default_factory=ASREndpointConfig)
 
 class MineruConfig(BaseModel):
-    base_url: str
-    api_key: str
+    base_url: str = ""
+    api_key: SensitiveStr = ""
 
 class FileConfig(BaseModel):
-    upload_path: str
+    upload_path: str = "./uploads"
     rag_path: str = "./rag"
-    mineru: MineruConfig
+    mineru: MineruConfig = Field(default_factory=MineruConfig)
 
 class WebFetchConfig(BaseModel):
-    base_url: str
-    api_key: str
+    base_url: str = ""
+    api_key: SensitiveStr = ""
     path: str = "/api/fetch"
     timeout_ms: int = 30000
 
 class WebSearchConfig(BaseModel):
-    base_url: str
-    api_key: str
+    base_url: str = ""
+    api_key: SensitiveStr = ""
     path: str = "/api/search"
     timeout_ms: int = 30000
 
 class OneBotConfig(BaseModel):
-    access_token: str = ""
+    access_token: SensitiveStr = ""
     superuser_ids: list[str] = Field(default_factory=list)
     command_trigger: str = "/agent"
     message_trigger: str = "/"
 
 
 class TelegramConfig(BaseModel):
-    token: str = ""
+    token: SensitiveStr = ""
     superuser_ids: list[str] = Field(default_factory=list)
     command_trigger: str = "/agent"
     message_trigger: str = "/"
@@ -92,7 +97,7 @@ class RagCloudConfig(BaseModel):
     base_url: str = ""
     manifest_path: str = "manifest.json"
     timeout_ms: int = 30000
-    api_key: str = ""
+    api_key: SensitiveStr = ""
 
 class CodeInterpreterConfig(BaseModel):
     default_timeout_s: float = Field(default=10.0, gt=0)
@@ -112,10 +117,10 @@ class MCPConfig(BaseModel):
     enabled_by_default: bool = False
 
 class AppConfig(BaseModel):
-    api: ApiConfig
-    file: FileConfig
-    webfetch: WebFetchConfig
-    websearch: WebSearchConfig
+    api: ApiConfig = Field(default_factory=ApiConfig)
+    file: FileConfig = Field(default_factory=FileConfig)
+    webfetch: WebFetchConfig = Field(default_factory=WebFetchConfig)
+    websearch: WebSearchConfig = Field(default_factory=WebSearchConfig)
     onebot: OneBotConfig = Field(default_factory=OneBotConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     rag_cloud: RagCloudConfig = RagCloudConfig()
@@ -130,6 +135,18 @@ DEFAULT_CONFIG_PATH = "config.yaml"
 
 _DICT_ORIGINS = {dict, Mapping, MutableMapping}
 _UNION_ORIGINS = {Union, UnionType}
+
+def _save_config_file(
+    config_to_save: AppConfig,
+    file_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    exclude_defaults: bool = True,
+) -> None:
+    path = Path(file_path)
+    if path.parent != Path("."):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(config_to_save.model_dump(exclude_defaults=exclude_defaults), f, sort_keys=False)
 
 
 def _is_dict_annotation(annotation: Any) -> bool:
@@ -227,10 +244,27 @@ def _merge_config_dict(
         merged[key] = value
     return merged
 
+def _save_config_file(
+    config_to_save: AppConfig,
+    file_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    exclude_defaults: bool = True,
+) -> None:
+    path = Path(file_path)
+    if path.parent != Path("."):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(config_to_save.model_dump(exclude_defaults=exclude_defaults), f, sort_keys=False)
 
 def load_config(file_path: str = DEFAULT_CONFIG_PATH) -> AppConfig:
     """Loads config.yaml into a verified Pydantic object with env var lookups."""
-    with open(file_path, "r", encoding="utf-8") as f:
+    path = Path(file_path)
+    if not path.exists():
+        config = AppConfig()
+        _save_config_file(config, file_path, exclude_defaults=False)
+        return config
+
+    with path.open("r", encoding="utf-8") as f:
         config_data = yaml.safe_load(f) or {}
 
     return AppConfig.model_validate(config_data)
@@ -257,12 +291,89 @@ def set_config(config: AppConfig) -> AppConfig:
     _config = config
     return _config
 
+def _is_sensitive_field(field: Any) -> bool:
+    extra = field.json_schema_extra or {}
+    return bool(extra.get(SENSITIVE_CONFIG_META_KEY))
+
+
+def _field_model_class(field: Any) -> type[BaseModel] | None:
+    annotation = field.annotation
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    return None
+
+
+def _redact_value(value: Any) -> Any:
+    if value in ("", None):
+        return value
+    return REDACTED_CONFIG_VALUE
+
+
+def dump_public_config(
+    model: BaseModel,
+    model_cls: type[BaseModel] | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    cls = model_cls or type(model)
+
+    for name, field in cls.model_fields.items():
+        value = getattr(model, name)
+        nested_model_cls = _field_model_class(field)
+
+        if _is_sensitive_field(field):
+            result[name] = _redact_value(value)
+        elif nested_model_cls is not None and isinstance(value, BaseModel):
+            result[name] = dump_public_config(value, nested_model_cls)
+        elif isinstance(value, list):
+            result[name] = [
+                dump_public_config(item) if isinstance(item, BaseModel) else item
+                for item in value
+            ]
+        elif isinstance(value, dict):
+            result[name] = {
+                key: dump_public_config(item) if isinstance(item, BaseModel) else item
+                for key, item in value.items()
+            }
+        else:
+            result[name] = value
+
+    return result
+
+def strip_redacted_config_patch(
+    delta: Mapping[str, Any],
+    model_cls: type[BaseModel],
+) -> dict[str, Any]:
+    cleaned: dict[str, Any] = {}
+
+    for key, value in delta.items():
+        field = model_cls.model_fields.get(key)
+        if field is None:
+            cleaned[key] = value
+            continue
+
+        nested_model_cls = _field_model_class(field)
+
+        if _is_sensitive_field(field) and value == REDACTED_CONFIG_VALUE:
+            continue
+
+        if isinstance(value, Mapping) and nested_model_cls is not None:
+            nested = strip_redacted_config_patch(
+                value,
+                nested_model_cls,
+            )
+            if nested:
+                cleaned[key] = nested
+        else:
+            cleaned[key] = value
+
+    return cleaned
 
 def build_patched_config(
     delta: Mapping[str, Any],
     base_config: AppConfig | None = None,
 ) -> AppConfig:
     current_config = get_config() if base_config is None else base_config
+    delta = strip_redacted_config_patch(delta, AppConfig)
     merged = _merge_config_dict(current_config.model_dump(), delta, AppConfig)
     return AppConfig.model_validate(merged)
 
@@ -280,5 +391,4 @@ def reload_config(file_path: str = DEFAULT_CONFIG_PATH) -> AppConfig:
 def save_config(config_to_save: AppConfig | None = None, file_path: str = DEFAULT_CONFIG_PATH):
     """Saves the Pydantic config object back to a YAML file."""
     current_config = get_config() if config_to_save is None else config_to_save
-    with open(file_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(current_config.model_dump(exclude_defaults=True), f, sort_keys=False)
+    _save_config_file(current_config, file_path, exclude_defaults=False)
