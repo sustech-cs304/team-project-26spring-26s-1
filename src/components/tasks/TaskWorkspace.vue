@@ -1,41 +1,57 @@
 <template>
-    <v-layout class="h-100">
-        <v-navigation-drawer v-model="drawer" permanent width="250">
-            <div class="pa-0 pt-1">
-                <v-list nav density="compact" class="pt-1">
+    <v-layout class="task-workspace h-100 overflow-hidden min-height-0">
+        <v-navigation-drawer v-model="drawer" permanent width="250" color="surface" floating class="task-sidebar min-height-0">
+            <template v-if="!taskSearchMode">
+                <v-list nav density="compact" class="pb-0">
                     <v-list-item title="任务" rounded="lg" slim prepend-gap="6" :ripple="false"
-                        :active="currentView === 'tasks'" color="primary" @click="currentView = 'tasks'">
+                        :active="currentView === 'tasks'" active-class="theme-active-list-item"
+                        @click="currentView = 'tasks'">
                         <template #prepend>
                             <v-icon size="small">mdi-format-list-bulleted-square</v-icon>
                         </template>
                     </v-list-item>
+                    <v-list-item title="搜索任务" rounded="lg" slim prepend-gap="6" :ripple="false" link
+                        @click="enterTaskSearchMode">
+                        <template #prepend>
+                            <v-icon size="small">mdi-text-box-search-outline</v-icon>
+                        </template>
+                    </v-list-item>
                     <v-list-item title="环境变量" rounded="lg" slim prepend-gap="6" :ripple="false"
-                        :active="currentView === 'env-vars'" color="primary" @click="openEnvVars">
+                        :active="currentView === 'env-vars'" active-class="theme-active-list-item"
+                        @click="openEnvVars">
                         <template #prepend>
                             <v-icon size="small">mdi-key-outline</v-icon>
                         </template>
                     </v-list-item>
                 </v-list>
+            </template>
+            <div v-else class="px-2 py-2">
+                <v-text-field :model-value="search" placeholder="搜索任务" variant="solo-filled" flat
+                    density="compact" hide-details clearable autofocus prepend-inner-icon="mdi-magnify"
+                    rounded="lg" class="text-body-2"
+                    @update:model-value="handleSearchUpdate(String($event ?? ''))"
+                    @click:clear="exitTaskSearchMode" @keydown.esc="exitTaskSearchMode" />
+                <div class="d-flex justify-end mt-1">
+                    <v-btn size="x-small" variant="text" @click="exitTaskSearchMode">取消</v-btn>
+                </div>
             </div>
 
-            <v-divider />
-
-            <div class="d-flex align-center justify-space-between px-0 pt-2 pr-2">
-                <v-card-subtitle>{{ currentView === 'tasks' ? '任务' : '环境变量' }}</v-card-subtitle>
+            <div v-if="currentView === 'tasks'" class="d-flex align-center justify-space-between px-3 pt-2 pb-1">
+                <v-card-subtitle class="pa-0 text-caption">
+                    {{ taskSearchMode ? '搜索结果' : '任务' }}
+                </v-card-subtitle>
             </div>
 
             <template v-if="currentView === 'tasks'">
-                <TaskListPane :loading="loading" :search="search" :status-filter="statusFilter"
-                    :status-filters="statusFilters" :tasks="filteredTasks" :selected-task-id="selectedTaskId"
-                    @update:search="search = $event" @update:status-filter="statusFilter = $event as StatusFilter"
-                    @select="selectTask" />
+                <TaskListPane :loading="loading" :search-mode="taskSearchMode" :search="search"
+                    :status-filter="statusFilter" :status-filters="statusFilters" :tasks="filteredTasks"
+                    :selected-task-id="selectedTaskId" @update:status-filter="statusFilter = $event as StatusFilter"
+                    @select="selectTask" @edit="handleListEdit" @duplicate="handleListDuplicate"
+                    @toggle-status="handleListToggleStatus" @delete="handleListDelete" />
             </template>
-            <div v-else class="px-4 py-4 text-body-large text-medium-emphasis">
-                在这里管理已保存的变量，并把返回的 `secret_ref` 填入任务设置中。
-            </div>
         </v-navigation-drawer>
 
-        <v-app-bar flat height="48" color="transparent">
+        <v-app-bar flat height="48" color="background" class="task-app-bar">
             <template #prepend>
                 <v-btn :icon="drawer ? 'mdi-menu-open' : 'mdi-menu'" variant="text" size="small" :ripple="false"
                     @click="drawer = !drawer" />
@@ -45,23 +61,21 @@
 
         </v-app-bar>
 
-        <v-main scrollable>
-            <v-sheet color="transparent" class="h-100 overflow-y-auto">
-                <v-container max-width="1100" class="px-5 py-5">
-                    <TaskDetailsPane v-if="currentView === 'tasks'" :task="selectedTask" :active-tab="activeTab"
-                        :triggering="triggering" :run-status-filter="runStatusFilter"
-                        :run-status-filters="runStatusFilters" :runs="runs" :runs-loading="runsLoading"
-                        :selected-run-id="selectedRunId" :selected-run="selectedRun"
-                        :selected-run-logs="selectedRunLogs" :logs-loading="logsLoading"
-                        @update:active-tab="activeTab = $event" @trigger="triggerNow" @edit="handleOpenEdit"
-                        @duplicate="handleOpenDuplicate" @toggle-status="toggleTaskStatus" @delete="deleteDialog = true"
-                        @update:run-status-filter="runStatusFilter = $event as RunFilter"
-                        @cancel-run="cancelSelectedRun" @select-run="selectRun" />
-                    <TaskEnvVarsPane v-else :env-vars="envVars" :loading="envVarsLoading" :saving="envVarSaving"
-                        :deleting-key="deletingEnvKey" :latest-secret-ref="latestSecretRef" @save="saveEnvVar"
-                        @delete="removeEnvVarEntry" @copy="copySecretRef" />
-                </v-container>
-            </v-sheet>
+        <v-main class="task-main h-100 overflow-hidden min-height-0">
+            <div class="task-route-panel">
+                <TaskDetailsPane v-if="currentView === 'tasks'" :task="selectedTask"
+                    :triggering="triggering" :run-status-filter="runStatusFilter"
+                    :run-status-filters="runStatusFilters" :runs="runs" :runs-loading="runsLoading"
+                    :selected-run-id="selectedRunId" :selected-run="selectedRun"
+                    :selected-run-logs="selectedRunLogs" :logs-loading="logsLoading"
+                    @trigger="triggerNow" @edit="handleOpenEdit" @duplicate="handleOpenDuplicate"
+                    @toggle-status="toggleTaskStatus" @delete="deleteDialog = true"
+                    @update:run-status-filter="runStatusFilter = $event as RunFilter"
+                    @cancel-run="cancelSelectedRun" @select-run="selectRun" />
+                <TaskEnvVarsPane v-else :env-vars="envVars" :loading="envVarsLoading" :saving="envVarSaving"
+                    :deleting-key="deletingEnvKey" :latest-saved-key="latestEnvKey" @save="saveEnvVar"
+                    @delete="removeEnvVarEntry" />
+            </div>
         </v-main>
 
         <TaskEditorDialog v-model="editorDialog" :title="editorTitle" :action-label="editorActionLabel" :saving="saving"
@@ -77,47 +91,48 @@
 </template>
 
 <script setup lang="ts">
-    import { deleteEnvVar, getEnvVars, upsertEnvVar } from '@/api/tasks'
     import { statusFilters, runStatusFilters, type RunFilter, type StatusFilter, cronPresets, useTaskWorkspace } from '@/composables/useTaskWorkspace'
     import TaskDeleteDialog from '@/components/tasks/TaskDeleteDialog.vue'
     import TaskDetailsPane from '@/components/tasks/TaskDetailsPane.vue'
     import TaskEditorDialog from '@/components/tasks/TaskEditorDialog.vue'
     import TaskEnvVarsPane from '@/components/tasks/TaskEnvVarsPane.vue'
     import TaskListPane from '@/components/tasks/TaskListPane.vue'
-    import { copyText } from '@/utils/copyText'
-    import { validateEnvVarKey, type EnvVarRef } from '@/utils/tasks'
     import { useRoute } from 'vue-router'
 
     const route = useRoute()
     const drawer = ref(true)
     const currentView = ref<'tasks' | 'env-vars'>('tasks')
-    const envVars = ref<EnvVarRef[]>([])
-    const envVarsLoading = ref(false)
-    const envVarSaving = ref(false)
-    const deletingEnvKey = ref<string | null>(null)
-    const latestSecretRef = ref<string | null>(null)
+    const taskSearchMode = ref(false)
 
     const {
-        activeTab,
         cancelSelectedRun,
         confirmDelete,
         deleteDialog,
         deleting,
+        deletingEnvKey,
         editorActionLabel,
         editorDialog,
         editorForm,
         editorTitle,
+        ensureEnvVarsLoaded,
+        envVarSaving,
+        envVars,
+        envVarsLoading,
         filteredTasks,
         hasEditorChanges,
+        latestEnvKey,
+        loadEnvVarList,
         loading,
         logsLoading,
         openCreate,
         openDuplicate,
         openEdit,
+        removeEnvVarEntry,
         removeEnvVar,
         runStatusFilter,
         runs,
         runsLoading,
+        saveEnvVar,
         saveTask,
         saving,
         search,
@@ -128,6 +143,7 @@
         selectedTask,
         selectedTaskId,
         selectTask,
+        showSnackbar,
         snackbar,
         statusFilter,
         toggleTaskStatus,
@@ -135,39 +151,30 @@
         triggering,
     } = useTaskWorkspace()
 
-    function showSnackbar (text: string, color: 'success' | 'error' = 'success') {
-        snackbar.text = text
-        snackbar.color = color
-        snackbar.show = true
+    function openEnvVars () {
+        exitTaskSearchMode()
+        currentView.value = 'env-vars'
+        loadEnvVarList()
     }
 
-    async function loadEnvVarList () {
-        envVarsLoading.value = true
-        try {
-            const result = await getEnvVars()
-
-            if (!Array.isArray(result)) {
-                throw new Error('Invalid env vars response payload')
-            }
-
-            envVars.value = result
-        } catch (error) {
-            console.error('Failed to load environment variables:', error)
-            envVars.value = []
-            showSnackbar('加载环境变量失败', 'error')
-        } finally {
-            envVarsLoading.value = false
+    function handleSearchUpdate (value: string) {
+        search.value = value
+        if (!value.trim()) {
+            statusFilter.value = 'all'
         }
     }
 
-    async function ensureEnvVarsLoaded () {
-        if (envVars.value.length || envVarsLoading.value) return
-        await loadEnvVarList()
+    function enterTaskSearchMode () {
+        currentView.value = 'tasks'
+        taskSearchMode.value = true
+        search.value = ''
+        statusFilter.value = 'all'
     }
 
-    function openEnvVars () {
-        currentView.value = 'env-vars'
-        loadEnvVarList()
+    function exitTaskSearchMode () {
+        taskSearchMode.value = false
+        search.value = ''
+        statusFilter.value = 'all'
     }
 
     async function handleOpenCreate () {
@@ -186,6 +193,26 @@
         currentView.value = 'tasks'
         await ensureEnvVarsLoaded()
         openDuplicate()
+    }
+
+    async function handleListEdit (taskId: string) {
+        selectTask(taskId)
+        await handleOpenEdit()
+    }
+
+    async function handleListDuplicate (taskId: string) {
+        selectTask(taskId)
+        await handleOpenDuplicate()
+    }
+
+    async function handleListToggleStatus (taskId: string) {
+        selectTask(taskId)
+        await toggleTaskStatus()
+    }
+
+    function handleListDelete (taskId: string) {
+        selectTask(taskId)
+        deleteDialog.value = true
     }
 
     async function handleRequestEnvVarSetup () {
@@ -217,70 +244,24 @@
             return
         }
 
-        const selectedSecretRefs = new Set(
+        const selectedKeys = new Set(
             editorForm.env_var_refs
-                .map(item => item.secret_ref.trim())
+                .map(item => item.key.trim())
                 .filter(Boolean)
         )
-        const firstAvailable = envVars.value.find(item => !selectedSecretRefs.has(item.secret_ref))
+        const firstAvailable = envVars.value.find(item => !selectedKeys.has(item.key))
 
         if (!firstAvailable) return
 
         editorForm.env_var_refs.push({
             key: firstAvailable.key,
-            secret_ref: firstAvailable.secret_ref,
         })
     }
 
-    async function saveEnvVar (payload?: { key: string, value: string }) {
-        const key = payload?.key.trim() ?? ''
-        const value = payload?.value.trim() ?? ''
-        if (!key || !value || envVarSaving.value) return
-
-        const keyError = validateEnvVarKey(key)
-        if (keyError) {
-            showSnackbar(keyError, 'error')
-            return
-        }
-
-        envVarSaving.value = true
-        try {
-            const saved = await upsertEnvVar({ key, value })
-            latestSecretRef.value = saved.secret_ref
-            await loadEnvVarList()
-            showSnackbar('环境变量已保存')
-        } catch (error) {
-            console.error('Failed to save environment variable:', error)
-            showSnackbar('保存环境变量失败', 'error')
-        } finally {
-            envVarSaving.value = false
-        }
-    }
-
-    async function removeEnvVarEntry (key: string) {
-        deletingEnvKey.value = key
-        try {
-            await deleteEnvVar(key)
-            envVars.value = envVars.value.filter((item) => item.key !== key)
-            showSnackbar('环境变量已删除')
-        } catch (error) {
-            console.error('Failed to delete environment variable:', error)
-            showSnackbar('删除环境变量失败', 'error')
-        } finally {
-            deletingEnvKey.value = null
-        }
-    }
-
-    async function copySecretRef (secretRef: string) {
-        await copyText(secretRef, {
-            onSuccess: () => showSnackbar('secret_ref 已复制'),
-            onError: () => showSnackbar('复制 secret_ref 失败', 'error'),
-        })
-    }
 
     watch(
-        () => [route.query.taskId, route.query.runId, route.query.tab],
-        ([taskId, runId, tab]) => {
+        () => [route.query.taskId, route.query.runId],
+        ([taskId, runId]) => {
             if (typeof taskId === 'string' && taskId) {
                 currentView.value = 'tasks'
                 if (selectedTaskId.value !== taskId) {
@@ -288,13 +269,8 @@
                 }
             }
 
-            if (tab === 'runs' || tab === 'details') {
-                activeTab.value = tab
-            }
-
             if (typeof runId === 'string' && runId) {
                 currentView.value = 'tasks'
-                activeTab.value = 'runs'
                 if (selectedRunId.value !== runId) {
                     selectRun(runId)
                 }
@@ -302,5 +278,56 @@
         },
         { immediate: true }
     )
-
 </script>
+
+<style scoped>
+    .task-workspace {
+        --task-content-radius: 8px;
+        background: rgb(var(--v-theme-surface));
+    }
+
+    .task-sidebar {
+        background: rgb(var(--v-theme-surface)) !important;
+    }
+
+    .task-app-bar {
+        background: rgb(var(--v-theme-background)) !important;
+        border-top-left-radius: var(--task-content-radius) !important;
+        overflow: hidden;
+    }
+
+    .task-app-bar :deep(.v-toolbar__content) {
+        position: relative;
+    }
+
+    .task-main {
+        background: transparent;
+    }
+
+    .task-route-panel {
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        background: rgb(var(--v-theme-background));
+        border-bottom-left-radius: var(--task-content-radius);
+    }
+
+    .task-workspace :deep(.theme-active-list-item) {
+        background: rgba(var(--v-theme-on-surface), 0.05) !important;
+        color: rgb(var(--v-theme-on-surface)) !important;
+    }
+
+    .task-workspace :deep(.v-list-item--active > .v-list-item__overlay),
+    .task-workspace :deep(.theme-active-list-item > .v-list-item__overlay) {
+        opacity: 0 !important;
+    }
+
+    .task-sidebar :deep(.theme-active-list-item .v-icon) {
+        color: currentColor !important;
+    }
+
+    .task-sidebar :deep(.theme-active-list-item .v-list-item-subtitle) {
+        color: rgba(var(--v-theme-on-surface), 0.62) !important;
+        opacity: 1;
+    }
+</style>

@@ -4,7 +4,7 @@
             <v-card-item>
                 <v-card-title class="text-body-1 font-weight-bold">删除任务</v-card-title>
             </v-card-item>
-            <v-card-text class="text-body-large">
+            <v-card-text class="text-body-2">
                 此操作无法撤销。
             </v-card-text>
             <v-card-actions class="px-5 pb-4">

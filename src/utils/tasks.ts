@@ -9,7 +9,6 @@ export type LogType = 'script_start' | 'script_stdout' | 'script_stderr' | 'scri
 
 export interface EnvVarRef {
     key: string
-    secret_ref: string
 }
 
 export function validateEnvVarKey (key: string | null | undefined): string | null {
@@ -193,7 +192,7 @@ export const MODE_ICON: Record<ExecutionMode, string> = {
 
 export const MODE_LABEL: Record<ExecutionMode, string> = {
     prompt: '提示词',
-    script: '脚本',
+    script: 'py脚本',
 }
 
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
@@ -217,21 +216,70 @@ export function formatDuration (ms?: number | null): string {
     return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
 }
 
-export function formatDateTime (iso?: string | null): string {
-    if (!iso) return '—'
+function normalizeUtcTimestamp (value: string): string {
+    const trimmed = value.trim()
+    const normalized = trimmed
+        .replace(' ', 'T')
+        .replace(/(\.\d{3})\d+/, '$1')
+
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized)
+    const isDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized)
+
+    return isDateTime && !hasTimezone ? `${normalized}Z` : normalized
+}
+
+export function parseTaskDateTime (iso?: string | null): Date | null {
+    if (!iso) return null
     try {
         // Handle numeric string timestamps (seconds or milliseconds)
         const num = Number(iso)
         if (!isNaN(num) && num > 0) {
             const ms = num < 1e12 ? num * 1000 : num
-            return new Date(ms).toLocaleString('zh-CN', { hour12: false })
+            const date = new Date(ms)
+            return Number.isNaN(date.getTime()) ? null : date
         }
-        const d = new Date(iso)
-        if (isNaN(d.getTime())) return iso
-        return d.toLocaleString('zh-CN', { hour12: false })
+        const date = new Date(normalizeUtcTimestamp(iso))
+        return Number.isNaN(date.getTime()) ? null : date
+    } catch {
+        return null
+    }
+}
+
+export function formatDateTime (iso?: string | null): string {
+    if (!iso) return '—'
+    const date = parseTaskDateTime(iso)
+    if (!date) return iso
+    try {
+        return date.toLocaleString('zh-CN', { hour12: false })
     } catch {
         return iso
     }
+}
+
+const WEEKDAY_LABELS: Record<string, string> = {
+    '0': '周日',
+    '1': '周一',
+    '2': '周二',
+    '3': '周三',
+    '4': '周四',
+    '5': '周五',
+    '6': '周六',
+}
+
+function padCronNumber (value: string): string {
+    return value.padStart(2, '0')
+}
+
+function formatCronTime (hour: string, minute: string): string {
+    return `${padCronNumber(hour)}:${padCronNumber(minute)}`
+}
+
+function cronListToHuman (value: string, labelMap?: Record<string, string>): string | null {
+    if (!/^\d+(,\d+)*$/.test(value)) return null
+    return value
+        .split(',')
+        .map(item => labelMap?.[item] ?? item)
+        .join('、')
 }
 
 export function cronToHuman (cron: string | null): string {
@@ -240,11 +288,37 @@ export function cronToHuman (cron: string | null): string {
     if (parts.length !== 5) return cron
 
     const [min, hour, dom, mon, dow] = parts
+    if (!min || !hour || !dom || !mon || !dow) return cron
 
     if (min === '*' && hour === '*') return '每分钟'
-    if (min!.startsWith('*/')) return `每 ${min!.slice(2)} 分钟`
-    if (hour === '*') return `每小时 :${min!.padStart(2, '0')}`
-    if (dom === '*' && mon === '*' && dow === '*') return `每天 ${hour!.padStart(2, '0')}:${min!.padStart(2, '0')}`
-    if (dom === '*' && mon === '*' && dow === '1-5') return `工作日 ${hour!.padStart(2, '0')}:${min!.padStart(2, '0')}`
+
+    if (min.startsWith('*/') && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+        return `每 ${min.slice(2)} 分钟`
+    }
+
+    if (min === '0' && hour.startsWith('*/') && dom === '*' && mon === '*' && dow === '*') {
+        return `每 ${hour.slice(2)} 小时`
+    }
+
+    if (hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+        return `每小时 ${padCronNumber(min)} 分`
+    }
+
+    if (/^\d+$/.test(min) && /^\d+$/.test(hour)) {
+        const time = formatCronTime(hour, min)
+
+        if (dom === '*' && mon === '*' && dow === '*') return `每天 ${time}`
+        if (dom === '*' && mon === '*' && dow === '1-5') return `工作日 ${time}`
+
+        const dowList = cronListToHuman(dow, WEEKDAY_LABELS)
+        if (dom === '*' && mon === '*' && dowList) return `每周 ${dowList} ${time}`
+
+        const domList = cronListToHuman(dom)
+        if (domList && mon === '*' && dow === '*') return `每月 ${domList} 日 ${time}`
+
+        const monList = cronListToHuman(mon)
+        if (domList && monList && dow === '*') return `每年 ${monList} 月 ${domList} 日 ${time}`
+    }
+
     return cron
 }

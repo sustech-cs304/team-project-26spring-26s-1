@@ -2,16 +2,19 @@ import {
     cancelRun,
     createTask,
     deleteTask,
+    deleteEnvVar,
     disableTask,
     enableTask,
+    getEnvVars,
     getRunLogs,
     getTaskRuns,
     getTasks,
     triggerTask,
     updateTask,
+    upsertEnvVar,
 } from '@/api/tasks'
 import type { EnvVarRef, LogEntry, Run, RunStatus, Task, TaskCreateForm, TaskUpdateForm } from '@/utils/tasks'
-import { formatDateTime } from '@/utils/tasks'
+import { formatDateTime, parseTaskDateTime, validateEnvVarKey } from '@/utils/tasks'
 
 type EditorMode = 'create' | 'edit' | 'duplicate'
 
@@ -45,12 +48,25 @@ export type RunFilter = (typeof runStatusFilters)[number]['value']
 
 export const cronPresets = [
     { label: '每小时', cron: '0 * * * *' },
-    { label: '每天 09:00', cron: '0 9 * * *' },
     { label: '工作日 09:00', cron: '0 9 * * 1-5' },
     { label: '每 5 分钟', cron: '*/5 * * * *' },
 ]
 
-const TASK_POLL_INTERVAL_MS = 10_000
+const TASK_POLL_INTERVAL_MS = 3_000
+
+function getRunSortTime (run: Run): number {
+    return parseTaskDateTime(run.started_at)?.getTime()
+        ?? parseTaskDateTime(run.finished_at)?.getTime()
+        ?? 0
+}
+
+function sortRunsByTimeDesc (items: Run[]): Run[] {
+    return [...items].sort((a, b) => {
+        const diff = getRunSortTime(b) - getRunSortTime(a)
+        if (diff !== 0) return diff
+        return a.id.localeCompare(b.id)
+    })
+}
 
 export function useTaskWorkspace () {
     const tasks = ref<Task[]>([])
@@ -58,7 +74,6 @@ export function useTaskWorkspace () {
     const search = ref('')
     const statusFilter = ref<StatusFilter>('all')
     const selectedTaskId = ref<string | null>(null)
-    const activeTab = ref<'details' | 'runs'>('details')
 
     const triggering = ref(false)
     const saving = ref(false)
@@ -73,6 +88,12 @@ export function useTaskWorkspace () {
     const selectedRunId = ref<string | null>(null)
     const logCache = ref<Record<string, string[]>>({})
     const logsLoading = ref(false)
+
+    const envVars = ref<EnvVarRef[]>([])
+    const envVarsLoading = ref(false)
+    const envVarSaving = ref(false)
+    const deletingEnvKey = ref<string | null>(null)
+    const latestEnvKey = ref<string | null>(null)
 
     const snackbar = reactive({
         show: false,
@@ -139,6 +160,69 @@ export function useTaskWorkspace () {
         snackbar.show = true
     }
 
+    async function loadEnvVarList () {
+        envVarsLoading.value = true
+        try {
+            const result = await getEnvVars()
+
+            if (!Array.isArray(result)) {
+                throw new Error('Invalid env vars response payload')
+            }
+
+            envVars.value = result
+        } catch (error) {
+            console.error('Failed to load environment variables:', error)
+            envVars.value = []
+            showSnackbar('加载环境变量失败', 'error')
+        } finally {
+            envVarsLoading.value = false
+        }
+    }
+
+    async function ensureEnvVarsLoaded () {
+        if (envVars.value.length || envVarsLoading.value) return
+        await loadEnvVarList()
+    }
+
+    async function saveEnvVar (payload?: { key: string, value: string }) {
+        const key = payload?.key.trim() ?? ''
+        const value = payload?.value.trim() ?? ''
+        if (!key || !value || envVarSaving.value) return
+
+        const keyError = validateEnvVarKey(key)
+        if (keyError) {
+            showSnackbar(keyError, 'error')
+            return
+        }
+
+        envVarSaving.value = true
+        try {
+            const saved = await upsertEnvVar({ key, value })
+            latestEnvKey.value = saved.key
+            await loadEnvVarList()
+            showSnackbar('环境变量已保存')
+        } catch (error) {
+            console.error('Failed to save environment variable:', error)
+            showSnackbar('保存环境变量失败', 'error')
+        } finally {
+            envVarSaving.value = false
+        }
+    }
+
+    async function removeEnvVarEntry (key: string) {
+        deletingEnvKey.value = key
+        try {
+            await deleteEnvVar(key)
+            envVars.value = envVars.value.filter((item) => item.key !== key)
+            showSnackbar('环境变量已删除')
+        } catch (error) {
+            console.error('Failed to delete environment variable:', error)
+            showSnackbar('删除环境变量失败', 'error')
+        } finally {
+            deletingEnvKey.value = null
+        }
+    }
+
     function makeEditorForm (task?: Task | null, duplicate = false): TaskEditorForm {
         return {
             name: duplicate && task ? `${task.name} Copy` : task?.name ?? '',
@@ -170,7 +254,6 @@ export function useTaskWorkspace () {
             cron_expression: form.cron_expression.trim(),
             env_var_refs: form.env_var_refs.map((item) => ({
                 key: item.key.trim(),
-                secret_ref: item.secret_ref.trim(),
             })),
         }
     }
@@ -189,7 +272,6 @@ export function useTaskWorkspace () {
 
     function selectTask (taskId: string) {
         selectedTaskId.value = taskId
-        activeTab.value = 'details'
     }
 
     function openCreate () {
@@ -213,7 +295,7 @@ export function useTaskWorkspace () {
     }
 
     function addEnvVar () {
-        editorForm.env_var_refs.push({ key: '', secret_ref: '' })
+        editorForm.env_var_refs.push({ key: '' })
     }
 
     function removeEnvVar (index: number) {
@@ -228,7 +310,7 @@ export function useTaskWorkspace () {
             payload: editorForm.payload,
             cron_expression: editorForm.cron_expression.trim() || null,
             env_var_refs: editorForm.env_var_refs
-                .map((item) => ({ key: item.key.trim(), secret_ref: item.secret_ref.trim() }))
+                .map((item) => ({ key: item.key.trim() }))
                 .filter((item) => item.key),
         }
     }
@@ -330,7 +412,6 @@ export function useTaskWorkspace () {
         try {
             await triggerTask(selectedTask.value.id)
             showSnackbar('任务已触发')
-            activeTab.value = 'runs'
             await Promise.all([loadTasksList(), loadRuns()])
         } catch (error) {
             console.error('Failed to trigger task:', error)
@@ -351,16 +432,17 @@ export function useTaskWorkspace () {
                 status: runStatusFilter.value === 'all' ? undefined : runStatusFilter.value as RunStatus,
             })
             const items = Array.isArray(response?.items) ? response.items : []
-            runs.value = items
+            const sortedItems = sortRunsByTimeDesc(items)
+            runs.value = sortedItems
 
             if (!runs.value.length) {
                 selectedRunId.value = null
                 return
             }
 
-            const firstRun = runs.value[0]
-            if ((!selectedRunId.value || !runs.value.some((run) => run.id === selectedRunId.value)) && firstRun) {
-                selectedRunId.value = firstRun.id
+            const latestRun = runs.value[0]
+            if ((!selectedRunId.value || !runs.value.some((run) => run.id === selectedRunId.value)) && latestRun) {
+                selectedRunId.value = latestRun.id
             }
         } catch (error) {
             console.error('Failed to load runs:', error)
@@ -421,19 +503,15 @@ export function useTaskWorkspace () {
         await loadRunLogs(runId)
     })
 
-    watch(activeTab, (tab) => {
-        if (tab === 'runs' && selectedTask.value) loadRuns()
-    })
-
-    watch(selectedTaskId, () => {
+    watch(() => selectedTask.value?.id ?? null, (taskId) => {
         runs.value = []
         selectedRunId.value = null
         logCache.value = {}
-        if (activeTab.value === 'runs' && selectedTask.value) loadRuns()
+        if (taskId) loadRuns()
     })
 
     watch(runStatusFilter, () => {
-        if (activeTab.value === 'runs' && selectedTask.value) {
+        if (selectedTask.value) {
             selectedRunId.value = null
             logCache.value = {}
             loadRuns()
@@ -445,7 +523,7 @@ export function useTaskWorkspace () {
 
         await loadTasksList({ silent: true })
 
-        if (activeTab.value === 'runs' && selectedTask.value) {
+        if (selectedTask.value) {
             await loadRuns({ silent: true })
             if (selectedRunId.value) {
                 await loadRunLogs(selectedRunId.value, { silent: true, force: true })
@@ -454,7 +532,7 @@ export function useTaskWorkspace () {
     }
 
     onMounted(() => {
-        loadTasksList()
+        void loadTasksList()
         pollTimer = setInterval(() => {
             void pollVisibleTaskData()
         }, TASK_POLL_INTERVAL_MS)
@@ -468,29 +546,37 @@ export function useTaskWorkspace () {
     })
 
     return {
-        activeTab,
         addEnvVar,
         cancelSelectedRun,
         confirmDelete,
         cronPresets,
         deleteDialog,
         deleting,
+        deletingEnvKey,
         editorActionLabel,
         editorDialog,
         editorForm,
         editorTitle,
+        ensureEnvVarsLoaded,
+        envVarSaving,
+        envVars,
+        envVarsLoading,
         filteredTasks,
         hasEditorChanges,
+        latestEnvKey,
+        loadEnvVarList,
         loading,
         logsLoading,
         openCreate,
         openDuplicate,
         openEdit,
+        removeEnvVarEntry,
         removeEnvVar,
         runStatusFilter,
         runs,
         runsLoading,
         saveTask,
+        saveEnvVar,
         saving,
         search,
         selectRun,
@@ -500,6 +586,7 @@ export function useTaskWorkspace () {
         selectedTask,
         selectedTaskId,
         selectTask,
+        showSnackbar,
         snackbar,
         statusFilter,
         tasks,
