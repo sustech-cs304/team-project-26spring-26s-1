@@ -34,7 +34,7 @@ from agent.file_utils.utils import (
     load_attachment_content,
 )
 from agent.parser import AnthropicEventParser
-from agent.utils.exception import is_langchain_network_failure
+from agent.utils.exception import describe_exception
 
 log = logging.getLogger(__name__)
 message_type_adapter = TypeAdapter(AnyMessage)
@@ -512,12 +512,11 @@ class ConversationRunner:
                 if not job.delete_requested and current_message_node == MAIN_MODEL_NODE_NAME:
                     await _persist_partial_ai_message(current_message)
             except Exception as exc:
-                if not is_langchain_network_failure(exc):
-                    raise
-
+                error_name, error_description = describe_exception(exc)
                 log.warning(
-                    "Network failure while streaming conversation: conversation_id=%s, error=%s",
+                    "Error while streaming conversation: conversation_id=%s, error_type=%s, error=%s",
                     conversation_id,
+                    error_name,
                     exc,
                 )
                 if current_message_node == MAIN_MODEL_NODE_NAME:
@@ -525,7 +524,7 @@ class ConversationRunner:
                 async with job.cond:
                     job.history.append(
                         CompletionResponseError(
-                            error_message=str(exc) or "Network failure while streaming the model response."
+                            error_message=f"{error_name}: {error_description}"
                         )
                     )
                     job.cond.notify_all()
