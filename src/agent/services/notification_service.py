@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlencode, urlparse, urlunparse
 
-from agent.config import NotificationConfig, get_config
+from agent.config import NotificationConfig, get_config, get_config_path
 from agent.notification_assets import (
     DEFAULT_NOTIFICATION_ICON_RELATIVE_PATH,
     ensure_default_notification_icon,
@@ -108,13 +108,14 @@ class NotificationService:
 
     @property
     def _config(self) -> NotificationConfig:
-        return get_config().notification
+        return get_config_path(get_config(), "notification")
 
-    def _build_notifier_signature(self) -> tuple[Any, ...]:
+    def _build_notifier_signature(self, config: NotificationConfig | None = None) -> tuple[Any, ...]:
+        config = config if config is not None else self._config
         return (
-            self._config.app_name,
-            self._config.app_icon,
-            self._config.notification_limit,
+            config.app_name,
+            config.app_icon,
+            config.notification_limit,
         )
 
     def _resolve_path(self, raw_path: str | None) -> Path | None:
@@ -151,11 +152,12 @@ class NotificationService:
         return staged
 
     async def send_async(self, notification: AppNotification) -> str | None:
-        notifier = self._get_notifier()
+        config = self._config
+        notifier = self._get_notifier(config)
         if notifier is None:
             return None
 
-        payload = self._to_backend_payload(notification)
+        payload = self._to_backend_payload(notification, config)
         try:
             return await notifier.send(**payload)
         except Exception:
@@ -198,17 +200,19 @@ class NotificationService:
         tab: str | None = None,
         query: Mapping[str, Any] | None = None,
     ) -> Deeplink:
+        config = self._config
         return Deeplink.route(
             resource,
             entity_id,
-            scheme=self._config.deeplink_scheme,
+            scheme=config.deeplink_scheme,
             action=action,
             tab=tab,
             query=query,
         )
 
-    def _get_notifier(self) -> Any | None:
-        if not self._config.enabled:
+    def _get_notifier(self, config: NotificationConfig | None = None) -> Any | None:
+        config = config if config is not None else self._config
+        if not config.enabled:
             return None
 
         if not self._backend_loaded:
@@ -217,20 +221,20 @@ class NotificationService:
         if not self._backend_available or self._desktop_notifier is None:
             return None
 
-        notifier_signature = self._build_notifier_signature()
+        notifier_signature = self._build_notifier_signature(config)
         if self._notifier is None or self._notifier_signature != notifier_signature:
             app_icon = None
-            if self._config.app_icon and self._desktop_icon is not None:
-                resolved_icon = self._resolve_path(self._config.app_icon)
+            if config.app_icon and self._desktop_icon is not None:
+                resolved_icon = self._resolve_path(config.app_icon)
                 if resolved_icon is not None:
                     app_icon = self._desktop_icon(
                         self._stage_windows_notification_asset(resolved_icon)
                     )
 
             self._notifier = self._desktop_notifier(
-                app_name=self._config.app_name,
+                app_name=config.app_name,
                 app_icon=app_icon,
-                notification_limit=self._config.notification_limit,
+                notification_limit=config.notification_limit,
             )
             self._notifier_signature = notifier_signature
 
@@ -253,7 +257,12 @@ class NotificationService:
         self._desktop_urgency = getattr(module, "Urgency", None)
         self._backend_available = self._desktop_notifier is not None
 
-    def _to_backend_payload(self, notification: AppNotification) -> dict[str, Any]:
+    def _to_backend_payload(
+        self,
+        notification: AppNotification,
+        config: NotificationConfig | None = None,
+    ) -> dict[str, Any]:
+        config = config if config is not None else self._config
         urgency = None
         if self._desktop_urgency is not None:
             urgency_map = {
@@ -269,7 +278,7 @@ class NotificationService:
             "message": notification.message,
             "urgency": urgency,
             "thread": notification.thread,
-            "timeout": notification.timeout_s or self._config.default_timeout_s,
+            "timeout": notification.timeout_s or config.default_timeout_s,
         }
 
         deeplink_url = self._normalize_deeplink(notification.deeplink)
@@ -293,7 +302,7 @@ class NotificationService:
         if buttons:
             payload["buttons"] = buttons
 
-        default_icon_path = notification.icon_path or self._config.app_icon
+        default_icon_path = notification.icon_path or config.app_icon
         if default_icon_path and self._desktop_icon is not None:
             resolved_icon = self._resolve_path(default_icon_path)
             if resolved_icon is not None:

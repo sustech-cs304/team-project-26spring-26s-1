@@ -7,7 +7,7 @@ from typing import Any, Literal
 import aiohttp
 from langchain.tools import tool
 
-from agent.config import get_config
+from agent.config import get_config, get_config_path, require_webfetch_config, require_websearch_config
 
 
 async def _post_json(base_url: str, path: str, api_key: str, payload: dict[str, Any], timeout_ms: int) -> dict[str, Any]:
@@ -90,7 +90,7 @@ async def webfetch(
         payload["country_code"] = country_code
 
     try:
-        webfetch_config = get_config().webfetch
+        webfetch_config = require_webfetch_config(get_config_path(get_config(), "webfetch"))
         response = await _post_json(
             base_url=webfetch_config.base_url,
             path=webfetch_config.path,
@@ -154,7 +154,7 @@ async def websearch(
     }
 
     try:
-        websearch_config = get_config().websearch
+        websearch_config = require_websearch_config(get_config_path(get_config(), "websearch"))
         response = await _post_json(
             base_url=websearch_config.base_url,
             path=websearch_config.path,

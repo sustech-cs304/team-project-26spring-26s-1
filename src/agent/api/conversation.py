@@ -6,7 +6,7 @@ import websockets
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 import pydantic
-from agent.config import get_config
+from agent.config import get_config, get_config_path, require_asr_config
 from contextlib import suppress
 from agent.db.models import Conversation
 from agent.api.conversation_runner import ConversationRunner
@@ -158,7 +158,7 @@ async def conversation_asr(websocket: WebSocket):
     dashscope_ws = None
  
     try:
-        asr_config = get_config().api.asr
+        asr_config = require_asr_config(get_config_path(get_config(), "api.asr"))
         dashscope_ws = await websockets.connect(
             asr_config.base_url,
             additional_headers={

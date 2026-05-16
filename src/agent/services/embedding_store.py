@@ -6,6 +6,8 @@ from langchain.tools import ToolRuntime
 from langchain_openai import OpenAIEmbeddings
 from langgraph.store.sqlite import AsyncSqliteStore
 
+from agent.config import get_config, get_config_path, require_embedding_config
+
 NAMESPACE = "embeddings"
 
 
@@ -23,6 +25,7 @@ async def embed_texts(
     Returns:
         嵌入向量列表
     """
+    embedding_config = require_embedding_config(embedding_config)
     embeddings = OpenAIEmbeddings(
         model=embedding_config.model,
         api_key=embedding_config.api_key,
@@ -41,6 +44,7 @@ def build_indexed_store(runtime_store, embedding_config) -> AsyncSqliteStore:
     if not hasattr(runtime_store, "conn"):
         raise ValueError("Runtime store does not expose a SQLite connection.")
 
+    embedding_config = require_embedding_config(embedding_config)
     embeddings = OpenAIEmbeddings(
         model=embedding_config.model,
         api_key=embedding_config.api_key,
@@ -104,8 +108,7 @@ async def store_embeddings(
     if not store:
         raise ValueError("Store is not available from runtime")
 
-    config = runtime.config
-    embedding_config = config.api.embed
+    embedding_config = require_embedding_config(get_config_path(get_config(), "api.embed"))
 
     indexed_store = build_indexed_store(store, embedding_config)
     await indexed_store.setup()

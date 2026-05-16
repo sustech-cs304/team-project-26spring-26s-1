@@ -6,7 +6,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwen
 
-from agent.config import LLMEndpointConfig, get_config
+from agent.config import ConfigMissingError, LLMEndpointConfig, get_config, get_config_path, require_llm_endpoint_config
 
 log = logging.getLogger(__name__)
 DEFAULT_CONVERSATION_TITLE = "New Conversation"
@@ -27,7 +27,7 @@ class ConversationTitleGenerator:
     def _build_model(self, endpoint: LLMEndpointConfig):
         if endpoint.type == "OpenAI":
             default_headers = None
-            if endpoint == get_config().api.utility:
+            if endpoint == require_llm_endpoint_config(get_config_path(get_config(), "api.utility"), "api.utility"):
                 default_headers = {
                     "User-Agent": "OpenCrab/1.0 utility-title-generator"
                 }
@@ -117,7 +117,11 @@ class ConversationTitleGenerator:
         if not normalized_text:
             return None
 
-        endpoint = get_config().api.utility
+        try:
+            endpoint = require_llm_endpoint_config(get_config_path(get_config(), "api.utility"), "api.utility")
+        except ConfigMissingError as exc:
+            log.warning("Skipping conversation title generation: %s", exc)
+            return None
         try:
             return await self._generate_with_endpoint(endpoint, normalized_text)
         except Exception as exc:

@@ -8,7 +8,7 @@ import aiosqlite
 import orjson
 import sqlite_vec
 
-from agent.config import AppConfig
+from agent.config import AppConfig, get_config_path, require_embedding_config
 from agent.services.embedding_store import NAMESPACE, build_indexed_store
 
 
@@ -58,7 +58,8 @@ async def restore_from_embedding_array(
     overwrite_sources = {normalize_source_name(x) for x in (overwrite_sources or set())}
 
     async with aiosqlite.connect(str(store_db), isolation_level=None) as conn:
-        indexed_store = build_indexed_store(type("Store", (), {"conn": conn})(), config.api.embed)
+        embedding_config = require_embedding_config(get_config_path(config, "api.embed"))
+        indexed_store = build_indexed_store(type("Store", (), {"conn": conn})(), embedding_config)
         await indexed_store.setup()
 
         for source_file in sorted(overwrite_sources):

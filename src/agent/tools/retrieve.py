@@ -8,7 +8,7 @@ from langchain.tools import ToolRuntime, tool
 
 from agent.services.embedding_store import NAMESPACE, build_indexed_store
 
-from agent.config import get_config
+from agent.config import AppConfig, get_config, get_config_path, require_embedding_config, require_reranker_config
 
 
 @dataclass
@@ -118,20 +118,14 @@ def _extract_rerank_from_candidate(candidate: Any) -> Any:
     return None
 
 
-def _resolve_embedding_config(runtime: ToolRuntime) -> Any:
+def _resolve_embedding_config(config: AppConfig) -> Any:
     """Resolve embedding config from runtime or default config, supporting both object and dict shapes."""
-    embed = _extract_embed_from_candidate(get_config())
-    if embed is not None:
-        return embed
-    raise ValueError("Embedding config not found. Checked runtime.config/context and config.yaml in cwd/repository root.")
+    return require_embedding_config(get_config_path(config, "api.embed"))
 
 
-def _resolve_rerank_config(runtime: ToolRuntime) -> Any:
+def _resolve_rerank_config(config: AppConfig) -> Any:
     """Resolve rerank config from runtime or default config, supporting both object and dict shapes."""
-    rerank = _extract_rerank_from_candidate(get_config())
-    if rerank is not None:
-        return rerank
-    raise ValueError("Rerank config not found. Checked runtime.config/context and config.yaml in cwd/repository root.")
+    return require_reranker_config(get_config_path(config, "api.rerank"))
 
 
 def _build_rerank_url(base_url: str) -> str:
@@ -253,8 +247,9 @@ async def retrieve_from_rag_db(runtime: ToolRuntime, query: str, top_k: int = 5)
         if not store:
             return "Error: Store is not available from runtime."
 
-        embedding_config = _resolve_embedding_config(runtime)
-        rerank_config = _resolve_rerank_config(runtime)
+        app_config = get_config()
+        embedding_config = _resolve_embedding_config(app_config)
+        rerank_config = _resolve_rerank_config(app_config)
         indexed_store = build_indexed_store(store, embedding_config)
         await indexed_store.setup()
 

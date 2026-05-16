@@ -12,7 +12,7 @@ from langchain_qwq import ChatQwen
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.runtime import Runtime
 
-from agent.config import LLMEndpointConfig, get_config, jinja_env
+from agent.config import LLMEndpointConfig, get_config, get_config_path, jinja_env, require_llm_endpoint_config
 from agent.core.state import AgentState
 from agent.tools.core_memory import core_memory_get
 
@@ -152,7 +152,7 @@ async def context_compacting_node(state: AgentState, runtime: Runtime[Any]) -> A
     if len(messages) < 2:
         return state
 
-    endpoint = get_config().api.agent
+    endpoint = require_llm_endpoint_config(get_config_path(get_config(), "api.agent"), "api.agent")
     token_budget = endpoint.max_token_count
     if token_budget <= 0:
         return state

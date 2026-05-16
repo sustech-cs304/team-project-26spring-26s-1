@@ -9,7 +9,7 @@ from langchain_qwq import ChatQwen
 from langgraph.runtime import Runtime
 from typing import Any
 
-from agent.config import LLMEndpointConfig, get_config, jinja_env
+from agent.config import LLMEndpointConfig, get_config, get_config_path, jinja_env, require_llm_endpoint_config
 from agent.core.runnable_config import runnable_config_bool
 from agent.core.state import AgentState
 from agent.services.mcp_lifespan import MCPLifespanManager
@@ -55,8 +55,9 @@ class ConfiguredModel:
 
         return model
 
-    def _get_model(self):
-        endpoint = get_config().api.agent
+    def _get_model(self, endpoint: LLMEndpointConfig | None = None):
+        if endpoint is None:
+            endpoint = require_llm_endpoint_config(get_config_path(get_config(), "api.agent"), "api.agent")
         signature = (
             endpoint.type,
             endpoint.model,
@@ -91,7 +92,7 @@ class ConfiguredModel:
         if store:
             core_memory_entries = await core_memory_get(store)
 
-        endpoint = get_config().api.agent
+        endpoint = require_llm_endpoint_config(get_config_path(get_config(), "api.agent"), "api.agent")
         installed_skills = get_installed_skill_summaries()
 
         system_prompt = self._system_prompt_template.render(
@@ -101,7 +102,7 @@ class ConfiguredModel:
         )
         system_prompt_message = SystemMessage(content=system_prompt)
 
-        model = self._get_model()
+        model = self._get_model(endpoint)
         mcp_tools: list[BaseTool] = []
         if self._mcp_manager is not None:
             mcp_tools = await self._mcp_manager.get_tools(

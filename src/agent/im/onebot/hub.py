@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from agent.api.conversation_models import CompletionResponseToolCall
 from agent.api.conversation_runner import ConversationRunner
-from agent.config import get_config
+from agent.config import get_config, get_config_path
 from agent.im.message_utils import (
     TOOL_FORWARD_THRESHOLD,
     extract_paragraphs,
@@ -43,23 +43,23 @@ class OneBotHub(IMSessionController):
 
     @property
     def access_token(self) -> str:
-        return get_config().onebot.access_token
+        return get_config_path(get_config(), "onebot.access_token")
 
     @property
     def superuser_ids(self) -> set[str]:
         return {
             str(user_id).strip()
-            for user_id in get_config().onebot.superuser_ids
+            for user_id in get_config_path(get_config(), "onebot.superuser_ids")
             if str(user_id).strip()
         }
 
     @property
     def command_trigger(self) -> str:
-        return get_config().onebot.command_trigger
+        return get_config_path(get_config(), "onebot.command_trigger")
 
     @property
     def message_trigger(self) -> str:
-        return get_config().onebot.message_trigger
+        return get_config_path(get_config(), "onebot.message_trigger")
 
     async def serve(self, websocket: WebSocket):
         self_id = websocket.headers.get("x-self-id")
@@ -122,10 +122,11 @@ class OneBotHub(IMSessionController):
         connection.fail_pending(ConnectionError("OneBot connection closed"))
 
     def _is_authorized(self, websocket: WebSocket) -> bool:
-        if not self.access_token:
+        access_token = self.access_token
+        if not access_token:
             return True
         authorization = websocket.headers.get("authorization") or ""
-        return authorization == f"Bearer {self.access_token}"
+        return authorization == f"Bearer {access_token}"
 
     async def _handle_event(self, connection: OneBotConnection, payload: dict[str, Any]):
         if str(payload.get("post_type", "")).lower() != "message":
