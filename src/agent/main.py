@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.exceptions import RequestValidationError
 
 import fastapi
@@ -126,7 +126,12 @@ async def lifespan(app: fastapi.FastAPI):
 		await store_conn.close()
 		await checkpointer_conn.close()
 
-app = fastapi.FastAPI(lifespan=lifespan)
+app = fastapi.FastAPI(
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(_: fastapi.Request, __: RequestValidationError):
@@ -136,6 +141,11 @@ async def request_validation_exception_handler(_: fastapi.Request, __: RequestVa
 @app.exception_handler(ConfigMissingError)
 async def config_missing_exception_handler(_: fastapi.Request, exc: ConfigMissingError):
 	return JSONResponse(status_code=503, content={"message": str(exc)})
+
+
+@app.get("/api/health", response_class=PlainTextResponse)
+async def health_check():
+	return "ok"
 
 
 @app.post("/internal/shutdown")
