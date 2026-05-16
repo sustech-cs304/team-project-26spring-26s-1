@@ -545,6 +545,17 @@ fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn start_backend_sidecar_in_background(app: AppHandle) {
+    thread::spawn(move || {
+        if let Err(err) = start_backend_sidecar(&app) {
+            log::warn!("backend autostart disabled: {err}");
+            if cfg!(debug_assertions) {
+                eprintln!("backend autostart disabled: {err}");
+            }
+        }
+    });
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -644,12 +655,7 @@ pub fn run() {
                 )?;
             }
 
-            if let Err(err) = start_backend_sidecar(app.handle()) {
-                log::warn!("backend autostart disabled: {err}");
-                if cfg!(debug_assertions) {
-                    eprintln!("backend autostart disabled: {err}");
-                }
-            }
+            start_backend_sidecar_in_background(app.handle().clone());
 
             #[cfg(any(windows, target_os = "linux"))]
             app.deep_link()
