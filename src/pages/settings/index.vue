@@ -1,20 +1,30 @@
 <template>
-    <v-container fluid class="d-flex flex-column h-100 pa-0">
-        <div class="d-flex flex-grow-1 overflow-hidden">
-            <v-sheet class="flex-shrink-0 overflow-y-auto border-e" color="transparent" width="220">
-                <v-list density="compact" class="pa-2" nav>
-                    <v-list-item v-for="tab in tabs" :key="tab.id" :prepend-icon="tab.icon" :title="tab.label"
-                        :active="activeTab === tab.id" active-color="primary" rounded="lg"
-                        @click="activeTab = tab.id" />
-                </v-list>
-            </v-sheet>
+    <v-layout class="settings-workspace h-100 overflow-hidden min-height-0">
+        <v-navigation-drawer permanent width="250" color="surface" floating class="settings-sidebar min-height-0">
+            <v-list density="compact" class="pa-2" nav>
+                <v-list-item v-for="tab in tabs" :key="tab.id" :prepend-icon="tab.icon" :title="tab.label"
+                    :active="activeTab === tab.id" active-class="theme-active-list-item" rounded="lg" slim
+                    prepend-gap="8" :ripple="false" @click="activeTab = tab.id" />
+            </v-list>
+        </v-navigation-drawer>
 
-            <v-sheet color="transparent" class="flex-grow-1 overflow-y-auto">
-                <v-container max-width="672" class="pa-6">
+        <v-app-bar flat height="48" color="background" class="settings-app-bar">
+            <template #prepend>
+                <v-icon size="18" class="ml-3">{{ activeTabMeta.icon }}</v-icon>
+            </template>
+
+            <div class="settings-app-title">
+                {{ activeTabMeta.label }}
+            </div>
+        </v-app-bar>
+
+        <v-main class="settings-main h-100 overflow-hidden min-height-0">
+            <div class="settings-route-panel">
+                <div class="settings-content-shell">
                     <template v-if="isConfigTab(activeTab)">
 
                         <div v-if="loadingConfig" class="d-flex justify-center py-16">
-                            <v-progress-circular indeterminate color="primary" />
+                            <v-progress-circular indeterminate />
                         </div>
 
                         <div v-else-if="loadError">
@@ -22,87 +32,86 @@
                                 {{ loadError }}
                             </v-alert>
 
-                            <v-btn size="small" rounded="lg" variant="flat" color="primary" @click="loadConfigData">
+                            <v-btn size="small" rounded="lg" variant="tonal" @click="loadConfigData">
                                 Retry Loading Config
                             </v-btn>
                         </div>
 
                         <div v-else-if="activeTab === 'llm'">
-                            <div class="text-subtitle-1 font-weight-bold mb-1">LLM Configuration</div>
-                            <div class="text-caption text-medium-emphasis mb-4">
+                            <div class="settings-section-title">LLM Configuration</div>
+                            <div class="settings-section-description mb-4">
                                 Edit the backend `api.agent` endpoint used as the primary model.
                             </div>
 
                             <div class="d-flex align-center ga-2 flex-wrap mb-5">
-                                <v-chip size="small" rounded="lg" variant="tonal" color="primary">
+                                <v-chip size="small" rounded="lg" variant="tonal">
                                     {{ llm.provider }}
                                 </v-chip>
-                                <div class="text-caption text-medium-emphasis">
+                                <div class="settings-help-text">
                                     Provider type is kept from backend config and is not editable here.
                                 </div>
                             </div>
 
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Base URL</div>
+                            <div class="settings-field">
+                                <div class="settings-field-label">Base URL</div>
                                 <v-text-field v-model="llm.baseUrl" density="compact" variant="solo-filled" flat
                                     rounded="lg" hide-details="auto" />
-                                <div class="text-caption text-medium-emphasis mt-1">
+                                <div class="settings-help-text mt-1">
                                     Supports reverse proxy or custom relay endpoints.
                                 </div>
                             </div>
 
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">API Key</div>
+                            <div class="settings-field">
+                                <div class="settings-field-label">API Key</div>
                                 <v-text-field v-model="llm.apiKey" density="compact" variant="solo-filled" flat
-                                    rounded="lg" hide-details="auto"
-                                    :type="visibility.llmApiKey ? 'text' : 'password'"
+                                    rounded="lg" hide-details="auto" :type="visibility.llmApiKey ? 'text' : 'password'"
                                     :append-inner-icon="visibility.llmApiKey ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
                                     @click:append-inner="visibility.llmApiKey = !visibility.llmApiKey" />
                             </div>
 
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Model Name</div>
+                            <div class="settings-field">
+                                <div class="settings-field-label">Model Name</div>
                                 <v-text-field v-model="llm.modelName" density="compact" variant="solo-filled" flat
                                     rounded="lg" hide-details="auto" />
                             </div>
 
-                            <v-divider class="mb-4" />
-                            <v-btn size="small" rounded="lg" variant="flat" color="primary" :loading="saving.llm"
+                            <v-divider class="settings-divider" />
+                            <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.llm"
                                 @click="saveLlmConfiguration">
                                 Save Configuration
                             </v-btn>
                         </div>
 
                         <div v-else-if="activeTab === 'file'">
-                            <div class="text-subtitle-1 font-weight-bold mb-1">File Configuration</div>
-                            <div class="text-caption text-medium-emphasis mb-6">
+                            <div class="settings-section-title">File Configuration</div>
+                            <div class="settings-section-description mb-6">
                                 Only the `file.mineru.api_key` value is editable from the frontend.
                             </div>
 
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">MinerU API Key</div>
-                                <v-text-field v-model="fileConfig.mineruApiKey" density="compact"
-                                    variant="solo-filled" flat rounded="lg" hide-details="auto"
+                            <div class="settings-field">
+                                <div class="settings-field-label">MinerU API Key</div>
+                                <v-text-field v-model="fileConfig.mineruApiKey" density="compact" variant="solo-filled"
+                                    flat rounded="lg" hide-details="auto"
                                     :type="visibility.fileApiKey ? 'text' : 'password'"
                                     :append-inner-icon="visibility.fileApiKey ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
                                     @click:append-inner="visibility.fileApiKey = !visibility.fileApiKey" />
                             </div>
 
-                            <v-divider class="mb-4" />
-                            <v-btn size="small" rounded="lg" variant="flat" color="primary" :loading="saving.file"
+                            <v-divider class="settings-divider" />
+                            <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.file"
                                 @click="saveFileConfiguration">
                                 Save File Configuration
                             </v-btn>
                         </div>
 
                         <div v-else-if="activeTab === 'onebot'">
-                            <div class="text-subtitle-1 font-weight-bold mb-1">OneBot</div>
-                            <div class="text-caption text-medium-emphasis mb-6">
+                            <div class="settings-section-title">OneBot</div>
+                            <div class="settings-section-description mb-6">
                                 Edit the backend-managed OneBot token and superuser list.
                             </div>
 
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Bot Token</div>
+                            <div class="settings-field">
+                                <div class="settings-field-label">Bot Token</div>
                                 <v-text-field v-model="onebot.token" density="compact" variant="solo-filled" flat
                                     rounded="lg" hide-details="auto"
                                     :type="visibility.onebotToken ? 'text' : 'password'"
@@ -110,31 +119,31 @@
                                     @click:append-inner="visibility.onebotToken = !visibility.onebotToken" />
                             </div>
 
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Superuser IDs</div>
-                                <v-textarea v-model="onebot.superuserIdsText" density="compact"
-                                    variant="solo-filled" flat rounded="lg" hide-details="auto" rows="4"
-                                    auto-grow placeholder="123456&#10;789012" />
-                                <div class="text-caption text-medium-emphasis mt-1">
+                            <div class="settings-field">
+                                <div class="settings-field-label">Superuser IDs</div>
+                                <v-textarea v-model="onebot.superuserIdsText" density="compact" variant="solo-filled"
+                                    flat rounded="lg" hide-details="auto" rows="4" auto-grow
+                                    placeholder="123456&#10;789012" />
+                                <div class="settings-help-text mt-1">
                                     Enter one OneBot superuser ID per line. Commas are also supported.
                                 </div>
                             </div>
 
-                            <v-divider class="mb-4" />
-                            <v-btn size="small" rounded="lg" variant="flat" color="primary"
-                                :loading="saving.onebot" @click="saveOnebotConfiguration">
+                            <v-divider class="settings-divider" />
+                            <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.onebot"
+                                @click="saveOnebotConfiguration">
                                 Save OneBot Settings
                             </v-btn>
                         </div>
 
                         <div v-else-if="activeTab === 'telegram'">
-                            <div class="text-subtitle-1 font-weight-bold mb-1">Telegram</div>
-                            <div class="text-caption text-medium-emphasis mb-6">
+                            <div class="settings-section-title">Telegram</div>
+                            <div class="settings-section-description mb-6">
                                 Edit the backend-managed Telegram bot token and superuser list.
                             </div>
 
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Bot Token</div>
+                            <div class="settings-field">
+                                <div class="settings-field-label">Bot Token</div>
                                 <v-text-field v-model="telegram.token" density="compact" variant="solo-filled" flat
                                     rounded="lg" hide-details="auto"
                                     :type="visibility.telegramToken ? 'text' : 'password'"
@@ -142,91 +151,78 @@
                                     @click:append-inner="visibility.telegramToken = !visibility.telegramToken" />
                             </div>
 
-                            <div class="mb-5">
-                                <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Superuser IDs</div>
-                                <v-textarea v-model="telegram.superuserIdsText" density="compact"
-                                    variant="solo-filled" flat rounded="lg" hide-details="auto" rows="4"
-                                    auto-grow placeholder="123456&#10;789012" />
-                                <div class="text-caption text-medium-emphasis mt-1">
+                            <div class="settings-field">
+                                <div class="settings-field-label">Superuser IDs</div>
+                                <v-textarea v-model="telegram.superuserIdsText" density="compact" variant="solo-filled"
+                                    flat rounded="lg" hide-details="auto" rows="4" auto-grow
+                                    placeholder="123456&#10;789012" />
+                                <div class="settings-help-text mt-1">
                                     Enter one Telegram user ID per line. Commas are also supported.
                                 </div>
                             </div>
 
-                            <v-divider class="mb-4" />
-                            <v-btn size="small" rounded="lg" variant="flat" color="primary"
-                                :loading="saving.telegram" @click="saveTelegramConfiguration">
+                            <v-divider class="settings-divider" />
+                            <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.telegram"
+                                @click="saveTelegramConfiguration">
                                 Save Telegram Settings
                             </v-btn>
                         </div>
                     </template>
 
                     <div v-else-if="activeTab === 'credentials'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">Credential Vault</div>
-                        <div class="text-caption text-medium-emphasis mb-4">
+                        <div class="settings-section-title">Credential Vault</div>
+                        <div class="settings-section-description mb-4">
                             Securely store and manage your SUSTech authentication credentials.
                         </div>
 
-                        <v-alert rounded="lg" variant="tonal" type="info" class="mb-5">
+                        <v-alert rounded="lg" variant="tonal" type="info" density="compact" class="mb-5">
                             Credentials are kept locally for the current frontend flow and synced to the backend CAS
                             configuration when you save.
                         </v-alert>
 
-                        <div class="mb-4">
-                            <div class="text-caption text-medium-emphasis mb-1">Student ID</div>
+                        <div class="settings-field">
+                            <div class="settings-field-label">Student ID</div>
                             <v-text-field v-model="creds.studentId" density="compact" variant="solo-filled" flat
                                 rounded="lg" placeholder="e.g. 12110001" hide-details="auto" />
                         </div>
 
-                        <div class="mb-5">
-                            <div class="text-caption text-medium-emphasis mb-1">Password</div>
+                        <div class="settings-field">
+                            <div class="settings-field-label">Password</div>
                             <v-text-field v-model="creds.password" density="compact" variant="solo-filled" flat
                                 rounded="lg" hide-details="auto" :type="showPassword ? 'text' : 'password'"
                                 :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
                                 @click:append-inner="showPassword = !showPassword" />
                         </div>
 
-                        <v-divider class="mb-4" />
-                        <v-btn size="small" rounded="lg" variant="flat" color="primary"
-                            :loading="saving.credentials" @click="saveCredentialVault">
+                        <v-divider class="settings-divider" />
+                        <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.credentials"
+                            @click="saveCredentialVault">
                             Save Credentials
                         </v-btn>
                     </div>
 
                     <div v-else-if="activeTab === 'appearance'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">Appearance</div>
-                        <div class="text-caption text-medium-emphasis mb-6">
+                        <div class="settings-section-title">Appearance</div>
+                        <div class="settings-section-description mb-6">
                             Customize the look and feel of the application.
                         </div>
 
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Theme</div>
+                        <div class="settings-field">
+                            <div class="settings-field-label">Theme</div>
                             <v-item-group v-model="appearance.theme" mandatory>
                                 <v-row density="compact">
                                     <v-col v-for="option in themeOptions" :key="option.value" cols="12" sm="4">
                                         <v-item v-slot="{ isSelected, toggle }" :value="option.value">
-                                            <v-card rounded="lg" elevation="0"
-                                                :variant="isSelected ? 'tonal' : 'outlined'"
-                                                :color="isSelected ? 'primary' : undefined" @click="toggle">
-                                                <v-card-text class="pa-4">
-                                                    <div class="d-flex align-start ga-3">
-                                                        <v-avatar rounded="lg" size="32"
-                                                            :color="isSelected ? 'primary' : 'surface-variant'"
-                                                            :variant="isSelected ? 'flat' : 'tonal'">
-                                                            <v-icon size="18">{{ option.icon }}</v-icon>
-                                                        </v-avatar>
-                                                        <div class="flex-grow-1">
-                                                            <div class="d-flex align-center justify-space-between ga-2">
-                                                                <div class="text-body-2 font-weight-medium">
-                                                                    {{ option.label }}
-                                                                </div>
-                                                                <v-icon v-if="isSelected" size="16" color="primary">
-                                                                    mdi-check-circle
-                                                                </v-icon>
-                                                            </div>
-                                                            <div class="text-caption text-medium-emphasis mt-1">
-                                                                {{ option.description }}
-                                                            </div>
+                                            <v-card rounded="lg" elevation="0" border class="settings-option-card"
+                                                :class="{ 'settings-option-card--active': isSelected }" @click="toggle">
+                                                <v-card-text class="pa-3">
+                                                    <div class="d-flex align-center ga-2">
+                                                        <v-icon size="18">{{ option.icon }}</v-icon>
+                                                        <div class="text-body-2 font-weight-medium">
+                                                            {{ option.label }}
                                                         </div>
+                                                        <v-spacer />
+                                                        <v-icon v-if="isSelected" size="15">mdi-check</v-icon>
                                                     </div>
                                                 </v-card-text>
                                             </v-card>
@@ -234,43 +230,43 @@
                                     </v-col>
                                 </v-row>
                             </v-item-group>
-                            <div class="text-caption text-medium-emphasis mt-1">
+                            <div class="settings-help-text mt-1">
                                 System mode follows your OS appearance settings.
                             </div>
                         </div>
 
-                        <v-divider class="mb-4" />
-                        <v-btn size="small" rounded="lg" variant="flat" color="primary" @click="saveAppearance">
+                        <v-divider class="settings-divider" />
+                        <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" @click="saveAppearance">
                             Save Appearance
                         </v-btn>
                     </div>
 
                     <div v-else-if="activeTab === 'notifications'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">Notifications</div>
-                        <div class="text-caption text-medium-emphasis mb-6">
+                        <div class="settings-section-title">Notifications</div>
+                        <div class="settings-section-description mb-6">
                             Control when and how you receive notifications.
                         </div>
 
-                        <v-card rounded="lg" elevation="0" border class="mb-4" max-width="420">
+                        <v-card rounded="lg" elevation="0" border class="mb-4">
                             <v-list bg-color="transparent" density="comfortable">
                                 <v-list-item prepend-icon="mdi-bell-outline" title="Enable Notifications"
                                     subtitle="Master toggle for all notification types.">
                                     <template #append>
                                         <v-switch v-model="notif.enabled" density="compact" hide-details
-                                            color="primary" />
+                                            inset />
                                     </template>
                                 </v-list-item>
                             </v-list>
                         </v-card>
 
-                        <v-card rounded="lg" elevation="0" border class="mb-5 overflow-hidden" max-width="420">
+                        <v-card rounded="lg" elevation="0" border class="mb-5 overflow-hidden">
                             <v-list bg-color="transparent" density="comfortable">
                                 <template v-for="(item, index) in notifItems" :key="item.key">
                                     <v-list-item :prepend-icon="item.icon" :title="item.label"
                                         :subtitle="item.description">
                                         <template #append>
                                             <v-switch v-model="notif[item.key]" density="compact" hide-details
-                                                color="primary" :disabled="!notif.enabled" />
+                                                inset :disabled="!notif.enabled" />
                                         </template>
                                     </v-list-item>
                                     <v-divider v-if="index < notifItems.length - 1" />
@@ -278,26 +274,26 @@
                             </v-list>
                         </v-card>
 
-                        <v-divider class="mb-4 mt-2" />
-                        <v-btn size="small" rounded="lg" variant="flat" color="primary"
+                        <v-divider class="settings-divider" />
+                        <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button"
                             @click="saveNotificationSettings">
                             Save Notification Settings
                         </v-btn>
                     </div>
 
                     <div v-else-if="activeTab === 'preferences'">
-                        <div class="text-subtitle-1 font-weight-bold mb-1">System Preferences</div>
-                        <div class="text-caption text-medium-emphasis mb-6">
+                        <div class="settings-section-title">System Preferences</div>
+                        <div class="settings-section-description mb-6">
                             Configure system-level behavior of the agent.
                         </div>
 
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">Wake Shortcut</div>
+                        <div class="settings-field">
+                            <div class="settings-field-label">Wake Shortcut</div>
                             <v-text-field
                                 :model-value="prefs.recording ? 'Listening for a shortcut...' : prefs.shortcut"
                                 density="compact" variant="solo-filled" flat rounded="lg" hide-details readonly
                                 prepend-inner-icon="mdi-keyboard-outline"
-                                :color="prefs.recording ? 'primary' : undefined" />
+                                :focused="prefs.recording" />
                             <div class="d-flex align-center ga-2 mt-3">
                                 <v-btn variant="tonal" rounded="lg" size="small" :disabled="prefs.recording"
                                     @click="startRecording">
@@ -310,48 +306,46 @@
                             </div>
                         </div>
 
-                        <v-card variant="outlined" rounded="lg" class="mb-5" max-width="420">
+                        <v-card variant="outlined" rounded="lg" class="mb-5">
                             <v-list bg-color="transparent" density="comfortable">
                                 <v-list-item prepend-icon="mdi-power" title="Launch on Startup"
                                     subtitle="Automatically start Agent when system boots.">
                                     <template #append>
                                         <v-switch v-model="prefs.startup" density="compact" hide-details
-                                            color="primary" />
+                                            inset />
                                     </template>
                                 </v-list-item>
                             </v-list>
                         </v-card>
 
-                        <div class="mb-5">
-                            <div class="text-caption font-weight-medium text-medium-emphasis mb-2">
-                                Default Workspace Path
-                            </div>
+                        <div class="settings-field">
+                            <div class="settings-field-label">Default Workspace Path</div>
                             <div class="d-flex ga-2">
-                                <v-text-field v-model="prefs.workspacePath" density="compact" variant="solo-filled"
-                                    flat rounded="lg" hide-details="auto" class="flex-grow-1" />
+                                <v-text-field v-model="prefs.workspacePath" density="compact" variant="solo-filled" flat
+                                    rounded="lg" hide-details="auto" class="flex-grow-1" />
                                 <v-btn variant="text" rounded="lg" size="small" prepend-icon="mdi-folder-outline"
                                     @click="browseWorkspace">
                                     Browse
                                 </v-btn>
                             </div>
-                            <div class="text-caption text-medium-emphasis mt-1">
+                            <div class="settings-help-text mt-1">
                                 Agent will organize files, download courseware, and store data in this directory.
                             </div>
                         </div>
 
-                        <v-divider class="mb-4" />
-                        <v-btn size="small" rounded="lg" variant="flat" color="primary" @click="savePreferences">
+                        <v-divider class="settings-divider" />
+                        <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" @click="savePreferences">
                             Save Preferences
                         </v-btn>
                     </div>
-                </v-container>
-            </v-sheet>
-        </div>
+                </div>
+            </div>
+        </v-main>
 
         <v-snackbar v-model="notice.show" :color="notice.color" timeout="2600" location="top">
             {{ notice.text }}
         </v-snackbar>
-    </v-container>
+    </v-layout>
 </template>
 
 <script setup lang="ts">
@@ -360,6 +354,7 @@
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
     import { useRoute } from 'vue-router'
     import { useTheme } from 'vuetify'
+    import { getStoredThemePreference, setStoredThemePreference, type ThemePreference } from '@/utils/theme'
 
     type SettingsTabId =
         | 'llm'
@@ -372,7 +367,6 @@
         | 'preferences'
 
     type NoticeColor = 'success' | 'error' | 'warning'
-    type ThemePreference = 'system' | 'light' | 'dark'
     type NotificationKey = 'taskComplete' | 'taskFailed' | 'calendarReminder'
 
     interface NotificationItem {
@@ -397,6 +391,10 @@
         { id: 'notifications', icon: 'mdi-bell-outline', label: 'Notifications' },
         { id: 'preferences', icon: 'mdi-wrench-outline', label: 'System Preferences' },
     ]
+
+    const activeTabMeta = computed(() =>
+        tabs.find(tab => tab.id === activeTab.value) ?? tabs[0]!
+    )
 
     watch(
         () => route.query.tab,
@@ -483,7 +481,7 @@
     ]
 
     const appearance = reactive({
-        theme: 'system' as ThemePreference,
+        theme: getStoredThemePreference(),
     })
 
     const notif = reactive({
@@ -524,22 +522,22 @@
     let shortcutHandler: ((event: KeyboardEvent) => void) | null = null
     let recordTimer: ReturnType<typeof setTimeout> | null = null
 
-    function isConfigTab(tab: SettingsTabId) {
+    function isConfigTab (tab: SettingsTabId) {
         return tab === 'llm' || tab === 'file' || tab === 'onebot' || tab === 'telegram'
     }
 
-    function showNotice(text: string, color: NoticeColor = 'success') {
+    function showNotice (text: string, color: NoticeColor = 'success') {
         notice.show = true
         notice.text = text
         notice.color = color
     }
 
-    function getErrorMessage(error: unknown, fallback: string) {
+    function getErrorMessage (error: unknown, fallback: string) {
         const responseMessage = (error as any)?.response?.data?.message || (error as any)?.response?.data?.detail
         return responseMessage || (error as any)?.message || fallback
     }
 
-    function applyConfig(config: AppConfig) {
+    function applyConfig (config: AppConfig) {
         loadedConfig.value = config
 
         llm.provider = config.api.agent.type
@@ -556,18 +554,18 @@
         telegram.superuserIdsText = (config.telegram?.superuser_ids || []).map(id => String(id)).join('\n')
     }
 
-    function parseSuperuserIds(value: string) {
+    function parseSuperuserIds (value: string) {
         return value
             .split(/[\n,]+/)
             .map(item => item.trim())
             .filter(Boolean)
     }
 
-    function areStringArraysEqual(left: string[], right: string[]) {
+    function areStringArraysEqual (left: string[], right: string[]) {
         return left.length === right.length && left.every((value, index) => value === right[index])
     }
 
-    async function loadConfigData() {
+    async function loadConfigData () {
         loadingConfig.value = true
         loadError.value = ''
 
@@ -581,7 +579,7 @@
         }
     }
 
-    function buildLlmPatch(): DeepPartial<AppConfig> | null {
+    function buildLlmPatch (): DeepPartial<AppConfig> | null {
         const snapshot = loadedConfig.value
         if (!snapshot) return null
 
@@ -611,7 +609,7 @@
         }
     }
 
-    function buildFilePatch(): DeepPartial<AppConfig> | null {
+    function buildFilePatch (): DeepPartial<AppConfig> | null {
         const snapshot = loadedConfig.value
         if (!snapshot) return null
 
@@ -627,7 +625,7 @@
         }
     }
 
-    function buildOnebotPatch(): DeepPartial<AppConfig> | null {
+    function buildOnebotPatch (): DeepPartial<AppConfig> | null {
         const snapshot = loadedConfig.value
         if (!snapshot) return null
 
@@ -650,7 +648,7 @@
         }
     }
 
-    function buildTelegramPatch() {
+    function buildTelegramPatch () {
         const snapshot = loadedConfig.value
         if (!snapshot) return null
 
@@ -676,7 +674,7 @@
         }
     }
 
-    async function saveLlmConfiguration() {
+    async function saveLlmConfiguration () {
         const delta = buildLlmPatch()
         if (!delta) {
             showNotice('No main model changes to save.', 'warning')
@@ -696,7 +694,7 @@
         }
     }
 
-    async function saveFileConfiguration() {
+    async function saveFileConfiguration () {
         const delta = buildFilePatch()
         if (!delta) {
             showNotice('No file API key changes to save.', 'warning')
@@ -716,7 +714,7 @@
         }
     }
 
-    async function saveOnebotConfiguration() {
+    async function saveOnebotConfiguration () {
         const delta = buildOnebotPatch()
         if (!delta) {
             showNotice('No OneBot changes to save.', 'warning')
@@ -736,7 +734,7 @@
         }
     }
 
-    async function saveTelegramConfiguration() {
+    async function saveTelegramConfiguration () {
         const result = buildTelegramPatch()
         if (!result) {
             showNotice('No Telegram changes to save.', 'warning')
@@ -756,7 +754,7 @@
         }
     }
 
-    async function saveCredentialVault() {
+    async function saveCredentialVault () {
         saving.credentials = true
 
         saveCampusAuth({
@@ -778,16 +776,17 @@
         }
     }
 
-    function saveAppearance() {
+    function saveAppearance () {
+        setStoredThemePreference(appearance.theme)
         theme.global.name.value = appearance.theme
         showNotice('Appearance saved')
     }
 
-    function saveNotificationSettings() {
+    function saveNotificationSettings () {
         showNotice('Notification settings saved')
     }
 
-    function cleanupShortcutCapture() {
+    function cleanupShortcutCapture () {
         if (shortcutHandler) {
             window.removeEventListener('keydown', shortcutHandler)
             shortcutHandler = null
@@ -799,7 +798,7 @@
         }
     }
 
-    function startRecording() {
+    function startRecording () {
         cleanupShortcutCapture()
         prefs.recording = true
 
@@ -829,11 +828,11 @@
         }, 5000)
     }
 
-    function browseWorkspace() {
+    function browseWorkspace () {
         showNotice('Workspace picker is not connected yet. You can still edit the path manually.', 'warning')
     }
 
-    function savePreferences() {
+    function savePreferences () {
         showNotice('Preferences saved')
     }
 
@@ -845,3 +844,141 @@
         cleanupShortcutCapture()
     })
 </script>
+
+<style scoped>
+    .settings-workspace {
+        --settings-content-radius: 8px;
+        background: rgb(var(--v-theme-surface));
+    }
+
+    .settings-sidebar {
+        background: rgb(var(--v-theme-surface)) !important;
+    }
+
+    .settings-app-bar {
+        background: rgb(var(--v-theme-background)) !important;
+        border-top-left-radius: var(--settings-content-radius) !important;
+        overflow: hidden;
+    }
+
+    .settings-app-bar :deep(.v-toolbar__content) {
+        position: relative;
+    }
+
+    .settings-app-title {
+        position: absolute;
+        left: 50%;
+        max-width: min(44vw, 520px);
+        overflow: hidden;
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.25rem;
+        text-overflow: ellipsis;
+        transform: translateX(-50%);
+        white-space: nowrap;
+    }
+
+    .settings-main {
+        background: transparent;
+    }
+
+    .settings-route-panel {
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        background: rgb(var(--v-theme-background));
+        border-bottom-left-radius: var(--settings-content-radius);
+    }
+
+    .settings-content-shell {
+        width: min(720px, 100%);
+        height: 100%;
+        min-height: 0;
+        margin-inline: auto;
+        overflow-y: auto;
+        padding: 12px 16px 20px;
+    }
+
+    .settings-section-title {
+        font-size: 0.9375rem;
+        font-weight: 700;
+        line-height: 1.35rem;
+    }
+
+    .settings-section-description,
+    .settings-help-text {
+        color: rgba(var(--v-theme-on-surface), 0.62);
+        font-size: 0.8125rem;
+        line-height: 1.35;
+    }
+
+    .settings-field {
+        margin-bottom: 14px;
+    }
+
+    .settings-field-label {
+        margin-bottom: 6px;
+        color: rgba(var(--v-theme-on-surface), 0.66);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        line-height: 1.1rem;
+    }
+
+    .settings-divider {
+        margin: 12px 0;
+    }
+
+    .settings-save-button {
+        display: flex;
+        margin-left: auto;
+    }
+
+    .settings-option-card {
+        background: rgba(var(--v-theme-on-surface), 0.018) !important;
+    }
+
+    .settings-option-card--active {
+        background: rgba(var(--v-theme-on-surface), 0.08) !important;
+        color: rgb(var(--v-theme-on-surface)) !important;
+    }
+
+    .settings-workspace :deep(.theme-active-list-item) {
+        background: rgba(var(--v-theme-on-surface), 0.08) !important;
+        color: rgb(var(--v-theme-on-surface)) !important;
+    }
+
+    .settings-workspace :deep(.theme-active-list-item .v-icon),
+    .settings-workspace :deep(.v-list-item--active .v-icon) {
+        color: rgb(var(--v-theme-on-surface)) !important;
+    }
+
+    .settings-workspace :deep(.v-list-item--active > .v-list-item__overlay),
+    .settings-workspace :deep(.theme-active-list-item > .v-list-item__overlay) {
+        opacity: 0 !important;
+    }
+
+    .settings-workspace :deep(.v-list-item-title) {
+        font-size: 0.8125rem;
+        font-weight: 600;
+    }
+
+    .settings-sidebar :deep(.v-list-item__prepend > .v-icon) {
+        font-size: 20px;
+        height: 20px;
+        width: 20px;
+    }
+
+    .settings-workspace :deep(.v-field) {
+        font-size: 0.875rem;
+    }
+
+    .settings-workspace :deep(.v-switch .v-selection-control) {
+        min-height: 32px;
+    }
+
+    @media (max-width: 760px) {
+        .settings-content-shell {
+            width: 100%;
+        }
+    }
+</style>

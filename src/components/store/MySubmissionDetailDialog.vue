@@ -1,94 +1,50 @@
 <template>
-    <v-dialog :model-value="modelValue" max-width="920" @update:model-value="emit('update:modelValue', $event)">
-        <v-card rounded="xl" style="border: 2px solid rgba(var(--v-border-color), var(--v-border-opacity));max-height: min(86vh, 920px);display: flex;flex-direction: column; overflow: hidden;">
-            <v-sheet class="px-6 px-md-8 pt-6 pb-4" style="border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));">
-                <div class="d-flex align-start justify-space-between ga-4">
-                    <div class="min-width-0">
-                        <div class="d-flex align-center flex-wrap ga-2 mb-2">
-                            <div class="text-h5 font-weight-bold text-truncate">
-                                {{ skill?.name ?? '' }}
-                            </div>
-                            <v-chip
-                                v-if="skill"
-                                size="small"
-                                rounded="lg"
-                                :color="getStatusColor(skill.status)"
-                                variant="tonal"
-                            >
-                                {{ getStatusText(skill.status) }}
-                            </v-chip>
+    <v-dialog :model-value="modelValue" max-width="760" @update:model-value="emit('update:modelValue', $event)">
+        <v-card rounded="lg" class="submission-dialog">
+            <div class="submission-header">
+                <div class="min-w-0">
+                    <div class="d-flex align-center ga-2">
+                        <div class="submission-title">
+                            {{ skill?.name ?? '投稿详情' }}
                         </div>
-
-                        <div
-                            v-if="skill"
-                            class="d-flex flex-wrap ga-4"
-                            style="font-size: 0.8rem; font-weight: 600; color: rgba(var(--v-theme-on-surface), 0.58);"
-                        >
-                            <span>Download count: {{ formatDownloads(skill.download_count) }}</span>
-                            <span>Created at: {{ formatDate(skill.created_at) }}</span>
-                        </div>
+                        <v-chip v-if="skill" size="x-small" rounded="lg" :color="getStatusColor(skill.status)"
+                            variant="tonal">
+                            {{ getStatusText(skill.status) }}
+                        </v-chip>
                     </div>
 
-                    <v-btn icon variant="text" @click="emit('update:modelValue', false)">
-                        <v-icon>mdi-close</v-icon>
-                    </v-btn>
+                    <div v-if="skill" class="submission-meta">
+                        <span>{{ formatDownloads(skill.download_count) }} 次下载</span>
+                        <span>{{ formatDate(skill.created_at) }}</span>
+                    </div>
                 </div>
-            </v-sheet>
 
-            <div class="px-6 px-md-8 pt-4 pb-0">
-                <div v-if="skill" class="d-flex flex-wrap ga-2 mb-4">
-                    <span
-                        v-for="tag in skill.tags"
-                        :key="tag.id"
-                        style="padding: 5px 9px; border-radius: 999px; border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); color: rgb(var(--v-theme-on-surface)); font-size: 0.72rem; font-weight: 700;"
-                    >
-                        {{ tag.name }}
-                    </span>
-                </div>
+                <v-btn icon="mdi-close" size="small" variant="text" :ripple="false"
+                    @click="emit('update:modelValue', false)" />
             </div>
 
-            <v-card-text class="px-6 px-md-8 pb-4" style="max-height: min(68vh, 760px); overflow-y: auto;" >
+            <v-card-text class="submission-body">
                 <template v-if="skill">
-                    <v-alert
-                        v-if="skill.status === 'rejected' && skill.rejection_reason"
-                        type="error"
-                        variant="tonal"
-                        rounded="lg"
-                        class="mb-4"
-                        icon="mdi-alert-circle-outline"
-                    >
-                        <div class="font-weight-bold mb-1">审核未通过</div>
-                        <div>{{ skill.rejection_reason }}</div>
+                    <v-alert v-if="skill.status === 'rejected' && skill.rejection_reason" type="error" variant="tonal"
+                        rounded="lg" density="compact" class="mb-2" icon="mdi-alert-circle-outline">
+                        {{ skill.rejection_reason }}
                     </v-alert>
 
-                    <v-sheet
-                        v-else-if="skill.status === 'pending'"
-                        class="mb-4 pa-4"
-                        rounded="lg"
-                        style="background: rgba(var(--v-theme-warning), 0.08); border: 1px solid rgba(var(--v-theme-warning), 0.24);"
-                    >
-                        <div class="font-weight-bold mb-1">审核状态</div>
-                        <div class="text-body-2 text-medium-emphasis">当前投稿正在审核中，请耐心等待结果。</div>
+                    <v-sheet v-else rounded="lg" border color="transparent" class="submission-status mb-2">
+                        <div class="font-weight-bold">{{ getStatusText(skill.status) }}</div>
+                        <div class="text-medium-emphasis">
+                            {{ getStatusDescription(skill.status) }}
+                        </div>
                     </v-sheet>
 
-                    <v-sheet
-                        v-else-if="skill.status === 'approved'"
-                        class="mb-4 pa-4"
-                        rounded="lg"
-                        style="background: rgba(var(--v-theme-success), 0.08); border: 1px solid rgba(var(--v-theme-success), 0.24);"
-                    >
-                        <div class="font-weight-bold mb-1">审核状态</div>
-                        <div class="text-body-2 text-medium-emphasis">该技能已通过审核并上架。</div>
-                    </v-sheet>
+                    <div v-if="skill.tags.length" class="submission-tags">
+                        <v-chip v-for="tag in skill.tags" :key="tag.id" size="x-small" rounded="lg" variant="outlined">
+                            {{ tag.name }}
+                        </v-chip>
+                    </div>
 
-                    <v-sheet
-                        v-else-if="skill.status === 'archived'"
-                        class="mb-4 pa-4"
-                        rounded="lg"
-                        style="background: rgba(var(--v-theme-on-surface), 0.04); border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));"
-                    >
-                        <div class="font-weight-bold mb-1">审核状态</div>
-                        <div class="text-body-2 text-medium-emphasis">该技能已下架，当前不会在技能商店展示。</div>
+                    <v-sheet rounded="lg" border color="transparent" class="submission-markdown">
+                        <MarkdownRenderer :content="skill.markdown_content || '暂无详情内容。'" />
                     </v-sheet>
                 </template>
 
@@ -97,9 +53,9 @@
                 </div>
             </v-card-text>
 
-            <v-card-actions class="px-6 px-md-8 pb-6">
+            <v-card-actions class="submission-actions">
                 <v-spacer />
-                <v-btn variant="text" rounded="lg" @click="emit('update:modelValue', false)">
+                <v-btn size="small" variant="text" rounded="lg" @click="emit('update:modelValue', false)">
                     关闭
                 </v-btn>
             </v-card-actions>
@@ -120,15 +76,15 @@
         'update:modelValue': [value: boolean]
     }>()
 
-    function formatDownloads(count: number) {
+    function formatDownloads (count: number) {
         if (count >= 1000000) return `${(count / 1000000).toFixed(1)}m`
         if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
         return String(count)
     }
 
-    function formatDate(raw: string) {
+    function formatDate (raw: string) {
         const date = new Date(raw)
-        if (Number.isNaN(date.getTime())) return raw
+        if (Number.isNaN(date.getTime())) return raw || '-'
 
         return date.toLocaleDateString('zh-CN', {
             year: 'numeric',
@@ -137,7 +93,7 @@
         })
     }
 
-    function getStatusText(status: StoreMySkill['status']) {
+    function getStatusText (status: StoreMySkill['status']) {
         switch (status) {
             case 'pending': return '审核中'
             case 'approved': return '已上架'
@@ -147,7 +103,7 @@
         }
     }
 
-    function getStatusColor(status: StoreMySkill['status']) {
+    function getStatusColor (status: StoreMySkill['status']) {
         switch (status) {
             case 'pending': return 'warning'
             case 'approved': return 'success'
@@ -156,4 +112,79 @@
             default: return 'default'
         }
     }
+
+    function getStatusDescription (status: StoreMySkill['status']) {
+        switch (status) {
+            case 'pending': return '当前投稿正在审核中。'
+            case 'approved': return '该技能已通过审核并上架。'
+            case 'archived': return '该技能已下架，当前不会在技能商店展示。'
+            case 'rejected': return '该技能未通过审核。'
+            default: return ''
+        }
+    }
 </script>
+
+<style scoped>
+    .submission-dialog {
+        display: flex;
+        overflow: hidden;
+        max-height: min(86vh, 820px);
+        flex-direction: column;
+        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    .submission-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    .submission-title {
+        overflow: hidden;
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.35rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .submission-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 4px;
+        color: rgba(var(--v-theme-on-surface), 0.58);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .submission-body {
+        overflow-y: auto;
+        padding: 12px 14px;
+    }
+
+    .submission-status {
+        padding: 10px 12px;
+        font-size: 0.8125rem;
+    }
+
+    .submission-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .submission-markdown {
+        padding: 14px;
+        background: rgba(var(--v-theme-on-surface), 0.018) !important;
+    }
+
+    .submission-actions {
+        padding: 8px 14px 12px;
+        border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+</style>

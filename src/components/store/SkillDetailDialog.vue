@@ -1,58 +1,37 @@
 <template>
-    <v-dialog :model-value="modelValue" max-width="920" @update:model-value="emit('update:modelValue', $event)">
-        <v-card rounded="xl" style="border: 2px solid rgba(var(--v-border-color), var(--v-border-opacity));">
-            <v-sheet class="px-6 px-md-8 pt-6 pb-4" style="border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));">
-                <div class="d-flex align-start justify-space-between ga-4">
-                    <div class="min-width-0">
-                        <div class="d-flex align-center flex-wrap ga-2 mb-2">
-                            <div class="text-h5 font-weight-bold text-truncate">
-                                {{ skill?.name ?? '' }}
-                            </div>
-                            <v-chip
-                                v-if="skill"
-                                size="small"
-                                rounded="lg"
-                                :color="skill.install ? 'success' : 'default'"
-                                :variant="skill.install ? 'tonal' : 'outlined'"
-                            >
-                                {{ skill.install ? '已安装' : '未安装' }}
-                            </v-chip>
+    <v-dialog :model-value="modelValue" max-width="760" @update:model-value="emit('update:modelValue', $event)">
+        <v-card rounded="lg" class="skill-detail-dialog">
+            <div class="skill-detail-header">
+                <div class="min-w-0">
+                    <div class="d-flex align-center ga-2">
+                        <div class="skill-detail-title">
+                            {{ skill?.name ?? '技能详情' }}
                         </div>
-
-                        <div
-                            v-if="skill"
-                            class="d-flex flex-wrap ga-4"
-                            style="font-size: 0.8rem; font-weight: 600; color: rgba(var(--v-theme-on-surface), 0.58);"
-                        >
-                            <span>Download count: {{ formatDownloads(skill.download_count) }}</span>
-                            <span>Created at: {{ formatDate(skill.created_at) }}</span>
-                        </div>
+                        <v-chip v-if="skill" size="x-small" rounded="lg" :variant="skill.install ? 'tonal' : 'outlined'">
+                            {{ skill.install ? '已安装' : '未安装' }}
+                        </v-chip>
                     </div>
-
-                    <v-btn icon variant="text" @click="emit('update:modelValue', false)">
-                        <v-icon>mdi-close</v-icon>
-                    </v-btn>
+                    <div v-if="skill" class="skill-detail-meta">
+                        <span>{{ formatDownloads(skill.download_count) }} 次下载</span>
+                        <span>{{ formatDate(skill.created_at) }}</span>
+                    </div>
                 </div>
-            </v-sheet>
 
-            <div class="px-6 px-md-8 pt-2 pb-0">
-                <div v-if="skill" class="d-flex flex-wrap ga-2">
-                    <span
-                        v-for="tag in skill.tags"
-                        :key="tag.id"
-                        style="padding: 5px 9px; border-radius: 999px; border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); color: rgb(var(--v-theme-on-surface)); font-size: 0.72rem; font-weight: 700;"
-                    >
-                        {{ tag.name }}
-                    </span>
-                </div>
+                <v-btn icon="mdi-close" size="small" variant="text" :ripple="false"
+                    @click="emit('update:modelValue', false)" />
             </div>
 
-            <v-card-text class="px-6 px-md-8 pb-4" style="max-height: min(68vh, 760px); overflow-y: auto;">
-                <v-skeleton-loader v-if="loading" type="article, article, article" />
+            <v-card-text class="skill-detail-body">
+                <v-skeleton-loader v-if="loading" type="article, article" />
 
                 <template v-else-if="skill">
+                    <div v-if="skill.tags.length" class="skill-detail-tags">
+                        <v-chip v-for="tag in skill.tags" :key="tag.id" size="x-small" rounded="lg" variant="outlined">
+                            {{ tag.name }}
+                        </v-chip>
+                    </div>
 
-                    <v-sheet style="border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); border-radius: 18px; padding: 20px;">
+                    <v-sheet rounded="lg" border color="transparent" class="skill-detail-markdown">
                         <MarkdownRenderer :content="skill.markdown_content || '暂无详情内容。'" />
                     </v-sheet>
                 </template>
@@ -62,28 +41,18 @@
                 </div>
             </v-card-text>
 
-            <v-card-actions class="px-6 px-md-8 pb-6">
+            <v-card-actions class="skill-detail-actions">
                 <v-spacer />
-                <v-btn variant="text" rounded="lg" @click="emit('update:modelValue', false)">
+                <v-btn size="small" variant="text" rounded="lg" @click="emit('update:modelValue', false)">
                     关闭
                 </v-btn>
-                <v-btn
-                    v-if="skill && !skill.install"
-                    color="primary"
-                    rounded="lg"
-                    :loading="actionLoading"
-                    @click="emit('install', skill)"
-                >
+                <v-btn v-if="skill && !skill.install" size="small" variant="tonal" rounded="lg"
+                    prepend-icon="mdi-download-outline" :loading="actionLoading"
+                    @click="emit('install', skill)">
                     下载
                 </v-btn>
-                <v-btn
-                    v-else-if="skill"
-                    color="error"
-                    variant="outlined"
-                    rounded="lg"
-                    :loading="actionLoading"
-                    @click="emit('remove', skill)"
-                >
+                <v-btn v-else-if="skill" size="small" variant="outlined" rounded="lg"
+                    prepend-icon="mdi-trash-can-outline" :loading="actionLoading" @click="emit('remove', skill)">
                     卸载
                 </v-btn>
             </v-card-actions>
@@ -108,15 +77,15 @@
         remove: [skill: StoreSkillDetail]
     }>()
 
-    function formatDownloads(count: number) {
+    function formatDownloads (count: number) {
         if (count >= 1000000) return `${(count / 1000000).toFixed(1)}m`
         if (count >= 1000) return `${(count / 1000).toFixed(1)}k`
         return String(count)
     }
 
-    function formatDate(raw: string) {
+    function formatDate (raw: string) {
         const date = new Date(raw)
-        if (Number.isNaN(date.getTime())) return raw
+        if (Number.isNaN(date.getTime())) return raw || '-'
 
         return date.toLocaleDateString('zh-CN', {
             year: 'numeric',
@@ -125,3 +94,61 @@
         })
     }
 </script>
+
+<style scoped>
+    .skill-detail-dialog {
+        overflow: hidden;
+        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    .skill-detail-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    .skill-detail-title {
+        overflow: hidden;
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.35rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .skill-detail-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 4px;
+        color: rgba(var(--v-theme-on-surface), 0.58);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .skill-detail-body {
+        max-height: min(68vh, 720px);
+        overflow-y: auto;
+        padding: 12px 14px;
+    }
+
+    .skill-detail-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .skill-detail-markdown {
+        padding: 14px;
+        background: rgba(var(--v-theme-on-surface), 0.018) !important;
+    }
+
+    .skill-detail-actions {
+        padding: 8px 14px 12px;
+        border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+</style>

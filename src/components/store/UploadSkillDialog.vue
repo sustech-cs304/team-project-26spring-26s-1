@@ -1,56 +1,41 @@
 <template>
-    <v-dialog :model-value="modelValue" max-width="500" @update:model-value="handleDialogChange">
-        <v-card rounded="xl">
-            <v-card-title class="text-h6 font-weight-bold px-6 pt-6 pb-2">上传新技能</v-card-title>
+    <v-dialog :model-value="modelValue" max-width="520" @update:model-value="handleDialogChange">
+        <v-card rounded="lg" class="upload-skill-dialog">
+            <div class="upload-skill-header">
+                <div>
+                    <div class="text-subtitle-1 font-weight-bold">上传技能</div>
+                    <div class="text-caption text-medium-emphasis">提交 Markdown 技能文件，审核后进入商店。</div>
+                </div>
+                <v-btn icon="mdi-close" size="small" variant="text" :ripple="false" @click="closeDialog" />
+            </div>
 
-            <v-card-text class="px-6 py-4">
-                <v-alert
-                    v-if="validationError"
-                    type="error"
-                    variant="tonal"
-                    density="comfortable"
-                    class="mb-4"
-                >
+            <v-card-text class="upload-skill-body">
+                <v-alert v-if="validationError" type="error" variant="tonal" density="compact" rounded="lg"
+                    class="mb-3">
                     {{ validationError }}
                 </v-alert>
 
-                <v-file-input
-                    v-model="selectedFile"
-                    label="选择技能文件 (.md)"
-                    accept=".md,text/markdown"
-                    variant="outlined"
-                    density="comfortable"
-                    prepend-icon=""
-                    prepend-inner-icon="mdi-language-markdown"
-                    class="mb-4"
-                    :rules="fileRules"
-                />
+                <div class="upload-field">
+                    <div class="upload-field__label">文件</div>
+                    <v-file-input v-model="selectedFile" placeholder="选择 .md 文件" accept=".md,text/markdown"
+                        variant="solo-filled" flat density="compact" prepend-icon=""
+                        prepend-inner-icon="mdi-language-markdown" rounded="lg" hide-details="auto"
+                        :rules="fileRules" />
+                </div>
 
-                <v-select
-                    v-model="selectedTagIds"
-                    :items="tags"
-                    item-title="name"
-                    item-value="id"
-                    label="选择标签 (可选)"
-                    multiple
-                    chips
-                    variant="outlined"
-                    density="comfortable"
-                    :hint="`最多选择 ${MAX_SELECTED_TAGS} 个标签`"
-                    persistent-hint
-                />
+                <div class="upload-field">
+                    <div class="upload-field__label">标签</div>
+                    <v-select v-model="selectedTagIds" :items="tags" item-title="name" item-value="id"
+                        placeholder="可选，最多 3 个" multiple chips variant="solo-filled" flat density="compact"
+                        rounded="lg" hide-details />
+                </div>
             </v-card-text>
 
-            <v-card-actions class="px-6 pb-6 pt-2">
+            <v-card-actions class="upload-skill-actions">
                 <v-spacer />
-                <v-btn variant="text" @click="closeDialog">取消</v-btn>
-                <v-btn
-                    color="primary"
-                    variant="flat"
-                    :loading="loading || validating"
-                    :disabled="!normalizedFile"
-                    @click="submit"
-                >
+                <v-btn size="small" variant="text" @click="closeDialog">取消</v-btn>
+                <v-btn size="small" variant="tonal" prepend-icon="mdi-upload-outline" :loading="loading || validating"
+                    :disabled="!normalizedFile" @click="submit">
                     提交审核
                 </v-btn>
             </v-card-actions>
@@ -112,22 +97,22 @@
         }
     })
 
-    function resetForm() {
+    function resetForm () {
         selectedFile.value = null
         selectedTagIds.value = []
         validationError.value = ''
         validating.value = false
     }
 
-    function handleDialogChange(value: boolean) {
+    function handleDialogChange (value: boolean) {
         emit('update:modelValue', value)
     }
 
-    function closeDialog() {
+    function closeDialog () {
         emit('update:modelValue', false)
     }
 
-    async function submit() {
+    async function submit () {
         if (!normalizedFile.value) return
 
         validationError.value = ''
@@ -146,3 +131,43 @@
         }
     }
 </script>
+
+<style scoped>
+    .upload-skill-dialog {
+        overflow: hidden;
+        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    .upload-skill-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+
+    .upload-skill-body {
+        display: grid;
+        gap: 12px;
+        padding: 12px 14px;
+    }
+
+    .upload-field {
+        display: grid;
+        grid-template-columns: 56px minmax(0, 1fr);
+        align-items: start;
+        gap: 10px;
+    }
+
+    .upload-field__label {
+        padding-top: 7px;
+        color: rgba(var(--v-theme-on-surface), 0.62);
+        font-size: 0.8125rem;
+    }
+
+    .upload-skill-actions {
+        padding: 8px 14px 12px;
+        border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    }
+</style>
