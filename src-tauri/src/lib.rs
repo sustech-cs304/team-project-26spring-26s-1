@@ -295,7 +295,10 @@ fn resolve_backend_config_source(app: &AppHandle, resource_dir: &Path) -> Option
         candidates.push(path);
     }
 
-    if let Ok(path) = app.path().resolve(BACKEND_CONFIG_FILE, BaseDirectory::Resource) {
+    if let Ok(path) = app
+        .path()
+        .resolve(BACKEND_CONFIG_FILE, BaseDirectory::Resource)
+    {
         candidates.push(path);
     }
 
@@ -335,10 +338,11 @@ fn ensure_backend_runtime_dir(app: &AppHandle, resource_dir: &Path) -> Result<Pa
     } else if let Some(config_source) = resolve_backend_config_source(app, resource_dir) {
         sync_file_if_missing(&config_source, &target_config)?;
     } else {
-        return Err(format!(
-            "missing {}; place it next to the app executable before starting the backend",
-            BACKEND_CONFIG_FILE
-        ));
+        log::info!(
+            "no bundled backend config found; agent-backend will create {} in {}",
+            BACKEND_CONFIG_FILE,
+            runtime_dir.display()
+        );
     }
 
     Ok(runtime_dir)
