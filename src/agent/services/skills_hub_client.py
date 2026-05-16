@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 import aiohttp
 from fastapi import HTTPException, status
 
-from agent.config import SkillsCloudConfig, get_config
+from agent.config import SkillsCloudConfig, get_config, get_config_path, require_skills_cloud_config
 
 
 _MAX_ERROR_DETAIL_LEN = 4000
@@ -43,25 +43,26 @@ class SkillsHubClient:
 
     @property
     def delete_submission_path(self) -> str:
-        return self._get_config().delete_submission_path
+        return self.get_delete_submission_path()
 
     def _get_config(self) -> SkillsCloudConfig:
         if self._config_override is not None:
             return self._config_override
-        return get_config().skills_cloud
+        return get_config_path(get_config(), "skills_cloud")
 
-    def _build_endpoint(self, path: str) -> str:
-        cfg = self._get_config()
+    def get_config_snapshot(self) -> SkillsCloudConfig:
+        return self._get_config()
+
+    def get_delete_submission_path(self, config: SkillsCloudConfig | None = None) -> str:
+        return get_config_path(config if config is not None else self._get_config(), "delete_submission_path")
+
+    def _build_endpoint(self, path: str, config: SkillsCloudConfig | None = None) -> str:
+        cfg = require_skills_cloud_config(config if config is not None else self._get_config())
         base_url = cfg.base_url.strip()
-        if not base_url:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="skills_cloud.base_url is not configured.",
-            )
         return urljoin(base_url.rstrip("/") + "/", path.lstrip("/"))
 
-    def _build_timeout(self) -> aiohttp.ClientTimeout:
-        timeout_ms = self._get_config().timeout_ms
+    def _build_timeout(self, config: SkillsCloudConfig | None = None) -> aiohttp.ClientTimeout:
+        timeout_ms = get_config_path(config if config is not None else self._get_config(), "timeout_ms")
         return aiohttp.ClientTimeout(total=max(timeout_ms, 1) / 1000)
 
     async def request_json(
@@ -69,17 +70,19 @@ class SkillsHubClient:
         method: str,
         path: str,
         *,
+        config: SkillsCloudConfig | None = None,
         token: str | None = None,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
         form_data: aiohttp.FormData | None = None,
     ) -> Any:
-        endpoint = self._build_endpoint(path)
+        cloud_config = config if config is not None else self._get_config()
+        endpoint = self._build_endpoint(path, cloud_config)
         headers: dict[str, str] = {}
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        async with aiohttp.ClientSession(timeout=self._build_timeout()) as session:
+        async with aiohttp.ClientSession(timeout=self._build_timeout(cloud_config)) as session:
             async with session.request(
                 method,
                 endpoint,
@@ -113,15 +116,17 @@ class SkillsHubClient:
         method: str,
         path: str,
         *,
+        config: SkillsCloudConfig | None = None,
         token: str | None = None,
         params: dict[str, Any] | None = None,
     ) -> str:
-        endpoint = self._build_endpoint(path)
+        cloud_config = config if config is not None else self._get_config()
+        endpoint = self._build_endpoint(path, cloud_config)
         headers: dict[str, str] = {}
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        async with aiohttp.ClientSession(timeout=self._build_timeout()) as session:
+        async with aiohttp.ClientSession(timeout=self._build_timeout(cloud_config)) as session:
             async with session.request(
                 method,
                 endpoint,
@@ -141,6 +146,7 @@ class SkillsHubClient:
         self,
         path: str,
         *,
+        config: SkillsCloudConfig | None = None,
         token: str | None,
         fields: dict[str, str] | None,
         files: dict[str, tuple[str, bytes, str]],
@@ -162,6 +168,7 @@ class SkillsHubClient:
         return await self.request_json(
             "POST",
             path,
+            config=config,
             token=token,
             form_data=form,
         )

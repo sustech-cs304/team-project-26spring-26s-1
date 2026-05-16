@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 
 import fastapi
 from agent.calendar import start_calendar_sync
-from agent.config import get_config
+from agent.config import ConfigMissingError, get_config, get_config_path, require_config_fields
 from agent.config_runtime import ConfigManager
 from agent.db.database import (
 	dispose_default_async_engine,
@@ -64,15 +64,21 @@ async def lifespan(app: fastapi.FastAPI):
 	store = AsyncSqliteStore(store_conn)
 	checkpointer_conn = await aiosqlite.connect("agent_checkpoints.db", isolation_level=None)
 	checkpointer = AsyncSqliteSaver(checkpointer_conn)
-	mcp_manager = MCPLifespanManager(get_config())
+	app_config = get_config()
+	mcp_manager = MCPLifespanManager(app_config)
  
 	graph = await create_graph(store=store, checkpointer=checkpointer, mcp_manager=mcp_manager)
 	notification_service = NotificationService(asyncio.get_running_loop())
 	skills_hub_client = SkillsHubClient()
 	skills_auth_state = SkillsAuthState()
+	skills_cloud_config = require_config_fields(
+		get_config_path(app_config, "skills_cloud"),
+		"skills_cloud",
+		("local_store_path",),
+	)
 	skills_local_store = SkillsLocalStore(
 		async_session,
-		get_config().skills_cloud.local_store_path,
+		skills_cloud_config.local_store_path,
 	)
  
 	app.state.engine = engine
@@ -82,7 +88,7 @@ async def lifespan(app: fastapi.FastAPI):
 	await ensure_default_schema()
 	config_manager = ConfigManager()
 	telegram_runtime = TelegramRuntime(async_session, graph, app.state.ConversationRunner)
-	await telegram_runtime.start(get_config())
+	await telegram_runtime.start(app_config)
 	config_manager.subscribe(telegram_runtime)
 	config_manager.subscribe(mcp_manager)
 	app.state.ConfigManager = config_manager
@@ -125,6 +131,11 @@ app = fastapi.FastAPI(lifespan=lifespan)
 @app.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(_: fastapi.Request, __: RequestValidationError):
 	return JSONResponse(status_code=400, content={"message": "Invalid request parameters"})
+
+
+@app.exception_handler(ConfigMissingError)
+async def config_missing_exception_handler(_: fastapi.Request, exc: ConfigMissingError):
+	return JSONResponse(status_code=503, content={"message": str(exc)})
 
 
 @app.post("/internal/shutdown")

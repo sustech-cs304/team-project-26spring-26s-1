@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping, Sequence
 from pathlib import Path
 from types import UnionType
 from typing import Annotated, Any, Literal, Union, get_args, get_origin
@@ -136,17 +136,120 @@ DEFAULT_CONFIG_PATH = "config.yaml"
 _DICT_ORIGINS = {dict, Mapping, MutableMapping}
 _UNION_ORIGINS = {Union, UnionType}
 
-def _save_config_file(
-    config_to_save: AppConfig,
-    file_path: str = DEFAULT_CONFIG_PATH,
-    *,
-    exclude_defaults: bool = True,
-) -> None:
-    path = Path(file_path)
-    if path.parent != Path("."):
-        path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(config_to_save.model_dump(exclude_defaults=exclude_defaults), f, sort_keys=False)
+
+class ConfigMissingError(RuntimeError):
+    def __init__(self, path: str, fields: Sequence[str] = ()):
+        self.path = path
+        self.fields = tuple(fields)
+        if self.fields:
+            field_names = ", ".join(self.fields)
+            message = f"{path} is not configured. Missing fields: {field_names}."
+        else:
+            message = f"{path} is not configured."
+        super().__init__(message)
+
+
+def _is_missing_config_value(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _normalize_config_path(path: str | Sequence[str]) -> tuple[str, ...]:
+    if isinstance(path, str):
+        return tuple(part for part in path.split(".") if part)
+    return tuple(str(part) for part in path)
+
+
+def _config_path_label(path: str | Sequence[str]) -> str:
+    return ".".join(_normalize_config_path(path))
+
+
+def get_config_path(config_obj: Any, path: str | Sequence[str]) -> Any:
+    parts = _normalize_config_path(path)
+    label = ".".join(parts)
+    current = config_obj
+
+    for index, part in enumerate(parts):
+        current_label = ".".join(parts[: index + 1])
+        if current is None:
+            raise ConfigMissingError(current_label)
+        if isinstance(current, Mapping):
+            if part not in current:
+                raise ConfigMissingError(current_label)
+            current = current[part]
+            continue
+        if not hasattr(current, part):
+            raise ConfigMissingError(current_label)
+        current = getattr(current, part)
+
+    if current is None:
+        raise ConfigMissingError(label)
+    return current
+
+
+def require_config_fields(config_obj: Any, path: str, fields: Sequence[str]) -> Any:
+    if config_obj is None:
+        raise ConfigMissingError(path)
+
+    if isinstance(config_obj, Mapping):
+        missing_fields = [
+            field
+            for field in fields
+            if field not in config_obj or _is_missing_config_value(config_obj.get(field))
+        ]
+    else:
+        missing_fields = [
+            field
+            for field in fields
+            if not hasattr(config_obj, field) or _is_missing_config_value(getattr(config_obj, field))
+        ]
+    if missing_fields:
+        raise ConfigMissingError(path, missing_fields)
+    return config_obj
+
+
+def require_config_path(config_obj: Any, path: str | Sequence[str], fields: Sequence[str]) -> Any:
+    label = _config_path_label(path)
+    return require_config_fields(get_config_path(config_obj, path), label, fields)
+
+
+def require_llm_endpoint_config(endpoint: LLMEndpointConfig | None, path: str) -> LLMEndpointConfig:
+    return require_config_fields(endpoint, path, ("base_url", "api_key", "model"))
+
+
+def require_embedding_config(endpoint: EmbedEndpointConfig | None, path: str = "api.embed") -> EmbedEndpointConfig:
+    return require_config_fields(endpoint, path, ("base_url", "api_key", "model"))
+
+
+def require_reranker_config(endpoint: RerankerEndpointConfig | None, path: str = "api.rerank") -> RerankerEndpointConfig:
+    return require_config_fields(endpoint, path, ("base_url", "api_key", "model"))
+
+
+def require_asr_config(endpoint: ASREndpointConfig | None, path: str = "api.asr") -> ASREndpointConfig:
+    return require_config_fields(endpoint, path, ("base_url", "api_key"))
+
+
+def require_mineru_config(config: MineruConfig | None, path: str = "file.mineru") -> MineruConfig:
+    return require_config_fields(config, path, ("base_url", "api_key"))
+
+
+def require_webfetch_config(config: WebFetchConfig | None, path: str = "webfetch") -> WebFetchConfig:
+    return require_config_fields(config, path, ("base_url", "api_key"))
+
+
+def require_websearch_config(config: WebSearchConfig | None, path: str = "websearch") -> WebSearchConfig:
+    return require_config_fields(config, path, ("base_url", "api_key"))
+
+
+def require_rag_cloud_config(config: RagCloudConfig | None, path: str = "rag_cloud") -> RagCloudConfig:
+    return require_config_fields(config, path, ("base_url",))
+
+
+def require_skills_cloud_config(config: SkillsCloudConfig | None, path: str = "skills_cloud") -> SkillsCloudConfig:
+    return require_config_fields(config, path, ("base_url",))
+
+
+def require_mcp_config(config: MCPConfig | None, path: str) -> MCPConfig:
+    return require_config_fields(config, path, ("url",))
 
 
 def _is_dict_annotation(annotation: Any) -> bool:
@@ -281,7 +384,7 @@ def get_default_enabled_mcp_names(config: AppConfig | None = None) -> list[str]:
     current_config = get_config() if config is None else config
     return [
         name
-        for name, server_config in current_config.mcp.items()
+        for name, server_config in get_config_path(current_config, "mcp").items()
         if server_config.enabled_by_default
     ]
 
@@ -297,10 +400,7 @@ def _is_sensitive_field(field: Any) -> bool:
 
 
 def _field_model_class(field: Any) -> type[BaseModel] | None:
-    annotation = field.annotation
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        return annotation
-    return None
+    return _model_type_from_annotation(field.annotation)
 
 
 def _redact_value(value: Any) -> Any:

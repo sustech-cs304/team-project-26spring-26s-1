@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import suppress
 
-from agent.config import AppConfig, TelegramConfig
+from agent.config import AppConfig, TelegramConfig, get_config_path
 
 from .bot import TelegramBot
 
@@ -20,7 +20,7 @@ class TelegramRuntime:
         return self._bot
 
     async def start(self, config: AppConfig):
-        await self._apply_telegram_config(config.telegram)
+        await self._apply_telegram_config(get_config_path(config, "telegram"))
 
     async def stop(self):
         bot = self._bot
@@ -30,7 +30,7 @@ class TelegramRuntime:
         self._bot = None
 
     async def apply_config(self, _old_config: AppConfig, new_config: AppConfig):
-        await self._apply_telegram_config(new_config.telegram)
+        await self._apply_telegram_config(get_config_path(new_config, "telegram"))
 
     async def _apply_telegram_config(self, next_config: TelegramConfig):
         next_config = next_config.model_copy(deep=True)

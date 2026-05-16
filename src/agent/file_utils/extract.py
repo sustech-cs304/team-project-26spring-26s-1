@@ -16,7 +16,7 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agent.config import get_config
+from agent.config import ConfigMissingError, get_config, get_config_path, require_config_fields, require_mineru_config
 from agent.db.models import Attachment
 from agent.file_utils.mineru import (
     MineruError,
@@ -178,7 +178,8 @@ def _safe_file_name(file_name: str | None) -> str:
 
 
 def _relative_upload_root() -> Path:
-    root = Path(get_config().file.upload_path)
+    file_config = require_config_fields(get_config_path(get_config(), "file"), "file", ("upload_path",))
+    root = Path(file_config.upload_path)
     return _relative_storage_path(root) if root.is_absolute() else root
 
 
@@ -224,12 +225,12 @@ async def _request_mineru_parse(
     *,
     page_ranges: list[str] | None = None,
 ) -> None:
-    file_config = get_config().file
-    base_url = file_config.mineru.base_url
-    api_key = file_config.mineru.api_key
     timeout = aiohttp.ClientTimeout(total=120)
     mineru_id: str | None = None
     try:
+        mineru_config = require_mineru_config(get_config_path(get_config(), "file.mineru"))
+        base_url = mineru_config.base_url
+        api_key = mineru_config.api_key
         async with aiohttp.ClientSession(headers=_make_headers(api_key), timeout=timeout) as csession:
             if page_ranges:
                 segment_tasks: list[MineruSegmentTask] = []
@@ -388,9 +389,12 @@ async def extract_attachment(file_id: str, session_factory: async_sessionmaker):
     log.info("Extracting attachment %s with MinerU task %s", file_id, mineru_id)
     markdown_file = source_file.with_suffix(".md")
     segmented_tasks = _parse_mineru_segment_tasks(mineru_id)
-    file_config = get_config().file
-    base_url = file_config.mineru.base_url
-    api_key = file_config.mineru.api_key
+    try:
+        mineru_config = require_mineru_config(get_config_path(get_config(), "file.mineru"))
+    except ConfigMissingError as exc:
+        raise FileProcessError(str(exc)) from exc
+    base_url = mineru_config.base_url
+    api_key = mineru_config.api_key
     timeout = aiohttp.ClientTimeout(total=120)
     await _cleanup_processing_artifacts(source_file, keep_markdown=False)
 

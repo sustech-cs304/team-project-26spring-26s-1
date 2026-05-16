@@ -16,7 +16,13 @@ from pydantic import BaseModel, Field
 
 from agent.core.state import ResumePayload
 from agent.core.runnable_config import runnable_config_bool
-from agent.config import get_config
+from agent.config import (
+    ConfigMissingError,
+    get_config,
+    get_config_path,
+    require_config_fields,
+    require_llm_endpoint_config,
+)
 from agent.tools import ToolArtifact
 
 log = logging.getLogger(__name__)
@@ -214,7 +220,15 @@ async def _run_script(code: str, language: str, timeout_s: float) -> str:
 
 async def security_review_node(state: CodeInterpreterGraph, config: RunnableConfig):
     app_config = get_config()
-    utility_config = app_config.api.utility
+    utility_config = require_llm_endpoint_config(
+        get_config_path(app_config, "api.utility"),
+        "api.utility",
+    )
+    interpreter_config = require_config_fields(
+        get_config_path(app_config, "code_interpreter"),
+        "code_interpreter",
+        ("auto_approve_max_risk_level",),
+    )
     language_model = ChatOpenAI(
         model=utility_config.model,
         api_key=cast(Any, utility_config.api_key),
@@ -227,7 +241,7 @@ async def security_review_node(state: CodeInterpreterGraph, config: RunnableConf
     }
     if _is_risk_level_allowed(
         review["threat_level"],
-        app_config.code_interpreter.auto_approve_max_risk_level,
+        interpreter_config.auto_approve_max_risk_level,
     ):
         result["user_feedback"] = "approve"
     elif runnable_config_bool(config, "non_interactive"):
@@ -316,7 +330,20 @@ async def code_interpreter(
     timeout_s: float | None = None,
 ) -> tuple[str, ToolArtifact]:
     """Execute code in a supported interpreter after a security review."""
-    interpreter_config = get_config().code_interpreter
+    app_config = get_config()
+    try:
+        require_llm_endpoint_config(
+            get_config_path(app_config, "api.utility"),
+            "api.utility",
+        )
+        interpreter_config = require_config_fields(
+            get_config_path(app_config, "code_interpreter"),
+            "code_interpreter",
+            ("default_timeout_s",),
+        )
+    except ConfigMissingError as exc:
+        return f"Error: {exc}", {"break_agent_loop": False}
+
     selected_language = language or "python"
     resolved_language = _normalize_language(selected_language)
     if resolved_language is None:

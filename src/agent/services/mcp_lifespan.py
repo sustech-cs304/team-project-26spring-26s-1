@@ -11,7 +11,7 @@ from langchain_mcp_adapters.sessions import Connection
 from langchain_mcp_adapters.tools import load_mcp_tools
 from mcp.client.session import ClientSession
 
-from agent.config import AppConfig, MCPConfig, get_config
+from agent.config import AppConfig, ConfigMissingError, MCPConfig, get_config, get_config_path, require_mcp_config
 
 log = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ class MCPLifespanManager:
     def __init__(self, config: AppConfig | None = None):
         current_config = get_config() if config is None else config
         self._lock = asyncio.Lock()
-        self._mcp_config = dict(current_config.mcp)
+        self._mcp_config = dict(get_config_path(current_config, "mcp"))
         self._servers: dict[str, _ManagedMCPServer] = {}
 
     async def _get_server(self, name: str) -> _ManagedMCPServer | None:
@@ -198,6 +198,11 @@ class MCPLifespanManager:
         async with self._lock:
             config = self._mcp_config.get(name)
             if config is None:
+                return None
+            try:
+                config = require_mcp_config(config, f"mcp.{name}")
+            except ConfigMissingError as exc:
+                log.warning("Skipping MCP server because config is incomplete: %s", exc)
                 return None
 
             current_server = self._servers.get(name)
@@ -261,10 +266,19 @@ class MCPLifespanManager:
     ) -> None:
         stale_servers: list[_ManagedMCPServer] = []
         async with self._lock:
-            self._mcp_config = dict(new_config.mcp)
+            next_mcp_config = dict(get_config_path(new_config, "mcp"))
+            self._mcp_config = next_mcp_config
             for server_name, server in list(self._servers.items()):
-                config = new_config.mcp.get(server_name)
-                if config is None or server.signature != _connection_signature(config):
+                config = next_mcp_config.get(server_name)
+                if config is None:
+                    stale_servers.append(self._servers.pop(server_name))
+                    continue
+                try:
+                    config = require_mcp_config(config, f"mcp.{server_name}")
+                except ConfigMissingError:
+                    stale_servers.append(self._servers.pop(server_name))
+                    continue
+                if server.signature != _connection_signature(config):
                     stale_servers.append(self._servers.pop(server_name))
 
         for server in stale_servers:

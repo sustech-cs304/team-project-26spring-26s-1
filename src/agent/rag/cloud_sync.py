@@ -9,7 +9,7 @@ from urllib.parse import urljoin
 
 import aiohttp
 
-from agent.config import get_config
+from agent.config import AppConfig, get_config, get_config_path, require_config_fields, require_embedding_config, require_rag_cloud_config
 from agent.rag.restore import load_embedding_array, restore_from_embedding_array
 
 
@@ -56,6 +56,10 @@ class RagCloudSyncService:
         return self._status.to_dict()
 
     async def trigger_sync(self) -> dict[str, Any]:
+        app_config = get_config()
+        require_rag_cloud_config(get_config_path(app_config, "rag_cloud"))
+        require_embedding_config(get_config_path(app_config, "api.embed"))
+        require_config_fields(get_config_path(app_config, "file"), "file", ("rag_path",))
         async with self._lock:
             if self._task and not self._task.done():
                 return self._status.to_dict()
@@ -66,12 +70,12 @@ class RagCloudSyncService:
                 progress=5,
                 message="Fetching cloud manifest.",
             )
-            self._task = asyncio.create_task(self._run_sync())
+            self._task = asyncio.create_task(self._run_sync(app_config))
             return self._status.to_dict()
 
-    async def _run_sync(self) -> None:
+    async def _run_sync(self, app_config: AppConfig) -> None:
         try:
-            manifest = await self._fetch_manifest()
+            manifest = await self._fetch_manifest(app_config)
             knowledge_base_id = str(manifest.get("knowledge_base_id") or "default")
             version = str(manifest.get("version") or "unknown")
             files = manifest.get("files")
@@ -87,15 +91,15 @@ class RagCloudSyncService:
                 version=version,
             )
 
-            cache_dir = self._prepare_cache_dir(knowledge_base_id, version)
-            downloaded_files = await self._download_manifest_files(files, cache_dir)
+            cache_dir = self._prepare_cache_dir(app_config, knowledge_base_id, version)
+            downloaded_files = await self._download_manifest_files(app_config, files, cache_dir)
 
             self._status.downloaded_files = [str(path) for path in downloaded_files]
             self._status.progress = 70
             self._status.stage = "import"
             self._status.message = "Importing embeddings into agent_store.db."
 
-            stats = await self._import_downloaded_files(downloaded_files)
+            stats = await self._import_downloaded_files(app_config, downloaded_files)
 
             self._status.status = "success"
             self._status.stage = "completed"
@@ -117,10 +121,8 @@ class RagCloudSyncService:
             self._status.message = "Knowledge base sync failed."
             self._status.error = str(exc)
 
-    async def _fetch_manifest(self) -> dict[str, Any]:
-        cloud_config = get_config().rag_cloud
-        if not cloud_config.base_url.strip():
-            raise ValueError("rag_cloud.base_url is not configured.")
+    async def _fetch_manifest(self, app_config: AppConfig) -> dict[str, Any]:
+        cloud_config = require_rag_cloud_config(get_config_path(app_config, "rag_cloud"))
 
         endpoint = urljoin(cloud_config.base_url.rstrip("/") + "/", cloud_config.manifest_path.lstrip("/"))
         timeout = aiohttp.ClientTimeout(total=max(cloud_config.timeout_ms, 1000) / 1000)
@@ -142,9 +144,10 @@ class RagCloudSyncService:
             raise ValueError("Manifest response must be a JSON object.")
         return data
 
-    def _prepare_cache_dir(self, knowledge_base_id: str, version: str) -> Path:
+    def _prepare_cache_dir(self, app_config: AppConfig, knowledge_base_id: str, version: str) -> Path:
+        file_config = require_config_fields(get_config_path(app_config, "file"), "file", ("rag_path",))
         cache_dir = (
-            Path(get_config().file.rag_path)
+            Path(file_config.rag_path)
             / "embeddings"
             / "cloud-cache"
             / knowledge_base_id
@@ -153,9 +156,9 @@ class RagCloudSyncService:
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir
 
-    async def _download_manifest_files(self, files: list[Any], cache_dir: Path) -> list[Path]:
+    async def _download_manifest_files(self, app_config: AppConfig, files: list[Any], cache_dir: Path) -> list[Path]:
         downloaded: list[Path] = []
-        cloud_config = get_config().rag_cloud
+        cloud_config = require_rag_cloud_config(get_config_path(app_config, "rag_cloud"))
         timeout = aiohttp.ClientTimeout(total=max(cloud_config.timeout_ms, 1000) / 1000)
         headers = {}
         if cloud_config.api_key:
@@ -183,7 +186,7 @@ class RagCloudSyncService:
 
         return downloaded
 
-    async def _import_downloaded_files(self, downloaded_files: list[Path]):
+    async def _import_downloaded_files(self, app_config: AppConfig, downloaded_files: list[Path]):
         embedding_items: list[dict[str, Any]] = []
         overwrite_sources: set[str] = set()
 
@@ -202,7 +205,7 @@ class RagCloudSyncService:
             raise ValueError("Downloaded embedding files do not include any source_file values.")
 
         return await restore_from_embedding_array(
-            config=get_config(),
+            config=app_config,
             embedding_items=embedding_items,
             store_db=STORE_DB_PATH,
             overwrite_sources=overwrite_sources,
