@@ -1,58 +1,6 @@
 <template>
     <v-card rounded="0" elevation="0" class="h-100 d-flex flex-column" color="transparent">
         <template v-if="task">
-            <v-card-item class="px-0 py-0 flex-shrink-0">
-                <div class="task-content-shell px-5">
-                    <div class="d-flex align-center justify-space-between ga-4">
-                        <div class="min-w-0">
-                            <div class="d-flex align-center ga-2 flex-wrap">
-                                <div>{{ task.name }}</div>
-                            </div>
-                        </div>
-
-                        <div class="d-flex align-center ga-1 flex-shrink-0">
-                            <v-btn :icon="task.status === 'running' ? 'mdi-progress-clock' : 'mdi-play'" variant="text"
-                                size="small" :ripple="false" :aria-label="task.status === 'running' ? '运行中' : '运行任务'"
-                                :loading="triggering" :disabled="task.status === 'running'" @click="emit('trigger')" />
-                            <v-menu location="bottom end" :offset="4">
-                                <template #activator="{ props }">
-                                    <v-btn v-bind="props" icon="mdi-dots-horizontal" variant="text" size="small"
-                                        :ripple="false" />
-                                </template>
-                                <v-list rounded="lg" density="compact" width="136" class="py-1">
-                                    <v-list-item title="编辑" density="compact" @click="emit('edit')">
-                                        <template #prepend>
-                                            <v-icon size="16">mdi-pencil-outline</v-icon>
-                                        </template>
-                                    </v-list-item>
-                                    <v-list-item title="复制" density="compact" @click="emit('duplicate')">
-                                        <template #prepend>
-                                            <v-icon size="16">mdi-content-copy</v-icon>
-                                        </template>
-                                    </v-list-item>
-                                    <v-list-item :title="task.status === 'disabled' ? '启用' : '禁用'" density="compact"
-                                        @click="emit('toggle-status')">
-                                        <template #prepend>
-                                            <v-icon size="16">
-                                                {{ task.status === 'disabled' ? 'mdi-play-circle-outline' :
-                                                    'mdi-pause-circle-outline' }}
-                                            </v-icon>
-                                        </template>
-                                    </v-list-item>
-                                    <v-divider />
-                                    <v-list-item title="删除" base-color="error" density="compact"
-                                        @click="emit('delete')">
-                                        <template #prepend>
-                                            <v-icon size="16">mdi-delete-outline</v-icon>
-                                        </template>
-                                    </v-list-item>
-                                </v-list>
-                            </v-menu>
-                        </div>
-                    </div>
-                </div>
-            </v-card-item>
-
             <div class="task-details-scroll flex-grow-1">
                 <v-card-text class="task-content-shell task-pane-body">
                     <div class="task-overview-grid">
@@ -229,7 +177,7 @@
 
     .task-overview-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
         flex-shrink: 0;
     }

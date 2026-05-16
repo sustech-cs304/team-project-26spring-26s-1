@@ -1,8 +1,9 @@
 <template>
-    <v-sheet color="surface" class="d-flex flex-column h-100 overflow-hidden">
+    <v-sheet color="surface" class="calendar-workspace d-flex flex-column h-100 overflow-hidden"
+        :style="calendarWorkspaceStyle">
         <v-sheet class="d-flex flex-grow-1 min-height-0 overflow-hidden">
             <v-sheet width="250" min-width="250" max-width="250"
-                class="border-e d-flex flex-column min-height-0 overflow-hidden">
+                class="d-flex flex-column min-height-0 overflow-hidden">
                 <v-sheet class="d-flex flex-column flex-shrink-0 overflow-y-auto">
                     <v-sheet class="pa-3 border-b">
                         <v-sheet class="d-flex align-center justify-space-between ga-1 mb-2">
@@ -15,9 +16,7 @@
                             </v-btn>
                         </v-sheet>
                         <v-sheet style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px;">
-                            <span v-for="h in miniHeaders" :key="h"
-                                style="font-size: 10px; text-align: center; color: rgba(var(--v-theme-on-surface), 0.5);">{{
-                                h }}</span>
+                            <span v-for="h in miniHeaders" :key="h" class="mini-weekday">{{ h }}</span>
                             <button v-for="c in cells" :key="`mini-${c.dateKey}`" class="mini-day-btn"
                                 :class="{ muted: !c.currentMonth, today: c.isToday, active: selectedCell?.dateKey === c.dateKey }"
                                 @click="onCellClick(c)">
@@ -27,24 +26,24 @@
                     </v-sheet>
 
                     <v-sheet class="pa-3 border-b">
-                        <v-sheet class="text-caption text-medium-emphasis mb-2">Source</v-sheet>
+                        <v-sheet class="calendar-section-label mb-2">Source</v-sheet>
                         <v-sheet class="d-flex flex-column ga-2">
                             <v-chip v-for="src in sourceOptions" :key="src.value" class="source-chip" size="small" label
                                 :variant="activeSource === src.value ? 'flat' : 'outlined'"
                                 :style="sourceChipStyle(src.value)" @click="toggleSourceSelection(src.value)">
-                                <v-sheet class="d-flex align-center w-100 ga-2">
+                                <v-sheet color="transparent" class="d-flex align-center w-100 ga-2">
                                     <v-sheet class="flex-shrink-0" width="4" rounded="pill"
                                         style="align-self: stretch; margin: 2px 0; background: var(--strip-accent);" />
                                     <span>{{ src.label }}</span>
-                                    <v-btn icon size="x-small" variant="text"
-                                        style="width: 22px; height: 22px; margin-left: auto; margin-right: -4px; color: rgba(var(--v-theme-on-surface), 0.62);"
+                                    <v-btn icon size="x-small" variant="text" class="source-action-btn"
+                                        style="margin-left: auto; margin-right: -4px;"
                                         :aria-label="sourceHighlighted(src.value) ? 'Hide highlight' : 'Show highlight'"
                                         @click.stop="toggleSourceHighlight(src.value)">
                                         <v-icon size="14">{{ sourceHighlighted(src.value) ? 'mdi-eye' : 'mdi-eye-off'
-                                            }}</v-icon>
+                                        }}</v-icon>
                                     </v-btn>
-                                    <v-btn icon size="x-small" variant="text"
-                                        style="width: 22px; height: 22px; margin-right: -4px; color: rgba(var(--v-theme-on-surface), 0.62);"
+                                    <v-btn icon size="x-small" variant="text" class="source-action-btn"
+                                        style="margin-right: -4px;"
                                         aria-label="Edit source color" @click.stop="openSourceColorDialog(src.value)">
                                         <v-icon size="14">mdi-palette</v-icon>
                                     </v-btn>
@@ -54,149 +53,276 @@
                     </v-sheet>
                 </v-sheet>
 
-                <CalendarEventPanel embedded :title="panelTitle" :subtitle="panelSubtitle" :events="panelEvents"
+                <CalendarEventPanel embedded :show-header="false" :events="panelEvents"
                     :selected-event-id="selectedEventId" :source-color-map="resolvedSourceColorMap"
-                    @select="onEventClick" @edit="openEdit" @delete="deleteEvent" @contextmenu="openEventContextMenu" />
+                    @select="onEventClick" @edit="onEventClick" @delete="deleteEvent" @contextmenu="openEventContextMenu" />
             </v-sheet>
 
-            <v-sheet class="flex-grow-1 d-flex flex-column min-width-0 min-height-0 overflow-hidden">
-                <v-sheet class="px-4 py-2 border-s border-e border-b d-flex align-center justify-end flex-shrink-0">
-                    <v-sheet class="d-flex align-center ga-2">
-                        <v-btn size="small" variant="outlined" @click="goToday">Today</v-btn>
+            <v-sheet class="calendar-center-panel flex-grow-1 d-flex flex-column min-width-0 min-height-0 overflow-hidden">
+                <v-sheet class="calendar-toolbar px-4 py-2 border-b d-flex align-center justify-end flex-shrink-0">
+                    <v-sheet color="transparent" class="calendar-toolbar-actions d-flex align-center ga-2">
+                        <v-btn icon size="small" variant="text" @click="goToday">
+                            <v-icon size="16">mdi-calendar-today</v-icon>
+                            <v-tooltip activator="parent" location="bottom">Today</v-tooltip>
+                        </v-btn>
+                        <v-btn icon size="small" variant="text" @click="startInlineCreate">
+                            <v-icon size="16">mdi-plus</v-icon>
+                            <v-tooltip activator="parent" location="bottom">New Event</v-tooltip>
+                        </v-btn>
                         <v-btn icon size="small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
                             <v-icon size="14">{{ searchRailCollapsed ? 'mdi-dock-right' : 'mdi-dock-window' }}</v-icon>
-                            <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show search' :
-                                'Hide search' }}</v-tooltip>
-                        </v-btn>
-                        <v-btn size="small" color="primary" @click="openCreate(selectedCell?.dateKey ?? todayKey)">
-                            <v-icon size="12" class="mr-1">mdi-plus</v-icon>New Event
+                            <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show right panel' :
+                                'Hide right panel' }}</v-tooltip>
                         </v-btn>
                     </v-sheet>
                 </v-sheet>
 
-                <section class="flex-grow-1 d-flex flex-column min-width-0 min-height-0 border-s border-e border-b"
+                <section class="calendar-grid-shell flex-grow-1 d-flex flex-column min-width-0 min-height-0 border-s border-e border-b"
                     style="overflow: hidden; position: relative;" @wheel.prevent="onCalendarWheel">
-                    <CalendarGrid :cells="cells" :events="displayEvents" :highlighted-sources="highlightedSourceList"
+                    <CalendarGrid :cells="cells" :events="displayEvents"
                         :selected-cell="selectedCell" :source-color-map="resolvedSourceColorMap"
+                        :selected-event-id="selectedEventId"
                         @cell-click="onCellClick" @event-click="onEventClick"
-                        @event-context-menu="openEventContextMenu" />
-
-                    <v-card v-if="selectedEventDetail" class="event-details-card" rounded="lg" elevation="6">
-                        <v-sheet class="d-flex align-center justify-space-between mb-2">
-                            <v-sheet class="text-caption text-medium-emphasis">Event Details</v-sheet>
-                            <v-btn icon size="x-small" variant="text" @click="selectedEventId = null">
-                                <v-icon size="14">mdi-close</v-icon>
-                            </v-btn>
-                        </v-sheet>
-
-                        <v-sheet class="text-body-2 font-weight-bold mb-2">{{ selectedEventDetail.title }}</v-sheet>
-
-                        <v-sheet class="event-detail-row"><span
-                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Source</span><span>{{
-                                selectedEventDetail.source }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span
-                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Color</span><span>{{
-                                selectedEventDetail.color || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span
-                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Start
-                                Time</span><span>{{ getEventStartTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span
-                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">End
-                                Time</span><span>{{ getEventEndTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span
-                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Time</span><span>{{
-                                    getEventDisplayTime(selectedEventDetail) || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span
-                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Location</span><span>{{
-                                selectedEventDetail.location || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span
-                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Description</span><span>{{
-                                selectedEventDetail.description || '-' }}</span></v-sheet>
-                        <v-sheet class="event-detail-row"><span
-                                style="width: 72px; flex-shrink: 0; color: rgba(var(--v-theme-on-surface), 0.58);">Link</span>
-                            <a v-if="selectedEventDetail.link" class="event-detail-link"
-                                :href="selectedEventDetail.link" target="_blank" rel="noopener noreferrer">
-                                {{ selectedEventDetail.link }}
-                            </a>
-                            <span v-else>-</span>
-                        </v-sheet>
-                    </v-card>
+                        @event-context-menu="openEventContextMenu" @event-drop="moveEventToDate" />
                 </section>
             </v-sheet>
 
 
-            <aside v-if="!searchRailCollapsed" class="border-s d-flex flex-column"
-                style="width: 280px; min-width: 280px; overflow-y: auto; background: color-mix(in srgb, rgb(var(--v-theme-surface)) 92%, #0f172a);">
-                <v-sheet class="pa-3 border-b">
-                    <v-sheet class="text-subtitle-2 font-weight-bold">Search Events</v-sheet>
-                </v-sheet>
-
-                <v-sheet class="pa-3 d-flex flex-column ga-2">
-                    <v-text-field v-model="searchForm.keyword" label="Keyword" density="compact" variant="outlined"
-                        hide-details placeholder="title / location / link" />
-
-                    <v-btn size="x-small" variant="text" class="justify-start"
-                        style="padding-left: 0; min-height: 24px; color: rgba(var(--v-theme-on-surface), 0.72);"
-                        @click="showAdvanced = !showAdvanced">
-                        <v-icon size="14" class="mr-1">{{ showAdvanced ? 'mdi-chevron-down' : 'mdi-chevron-right'
-                            }}</v-icon>
-                        Advanced
-                    </v-btn>
-
-                    <v-expand-transition>
-                        <v-sheet v-show="showAdvanced" class="d-flex flex-column ga-2">
-                            <v-select v-model="searchForm.source" :items="dialogSourceItems" label="Source"
-                                density="compact" variant="outlined" hide-details clearable />
-                            <v-text-field v-model="searchForm.startDate" label="Start Date" density="compact"
-                                variant="outlined" type="date" hide-details />
-                            <v-text-field v-model="searchForm.endDate" label="End Date" density="compact"
-                                variant="outlined" type="date" hide-details />
+            <aside v-if="!searchRailCollapsed" class="calendar-right-panel d-flex flex-column">
+                <template v-if="selectedEventDetail">
+                    <v-sheet class="px-3 py-2 border-b d-flex align-center justify-space-between ga-2">
+                        <v-sheet class="d-flex align-center ga-2 min-width-0">
+                            <v-sheet width="8" height="8" rounded="circle" class="flex-shrink-0"
+                                :style="{ background: selectedEventColor }" />
+                            <span class="text-body-2 font-weight-bold text-truncate">
+                                {{ selectedEventIsDraft ? 'New Event' : 'Event Details' }}
+                            </span>
                         </v-sheet>
-                    </v-expand-transition>
-
-                    <v-sheet class="d-flex ga-2 mt-1">
-                        <v-btn size="small" color="primary" :loading="searchLoading" @click="runSearch">Search</v-btn>
-                        <v-btn size="small" variant="outlined" @click="resetSearch">Reset</v-btn>
+                        <v-btn icon size="x-small" variant="text" @click="closeSelectedEventDetail">
+                            <v-icon size="14">mdi-close</v-icon>
+                        </v-btn>
                     </v-sheet>
 
-                    <v-sheet class="text-caption text-medium-emphasis mt-2">{{ searchResults.length }} result{{
-                        searchResults.length === 1 ? '' : 's' }}</v-sheet>
-                    <v-sheet v-if="searchError" class="text-caption text-error mt-1">{{ searchError }}</v-sheet>
-
-                    <v-list v-if="searchResultEvents.length > 0" density="compact" class="search-result-list mt-2">
-                        <v-list-item v-for="ev in searchResultEvents" :key="`search-${ev.id}`"
-                            :active="selectedEventId === ev.id" active-color="primary" rounded="lg"
-                            class="mb-1 px-2 py-2" @click="onEventClick(ev)">
-                            <template #prepend>
-                                <v-sheet width="4" rounded class="mr-3"
-                                    :style="{ background: sourceColorHex(ev.source), minHeight: '40px' }" />
-                            </template>
-                            <v-sheet class="flex-grow-1 min-width-0">
-                                <v-sheet class="d-flex align-center ga-2">
-                                    <v-sheet class="text-body-2 font-weight-medium text-truncate">{{ ev.title
-                                        }}</v-sheet>
-                                </v-sheet>
-                                <v-sheet class="text-caption text-medium-emphasis mt-1">{{ ev.date }} {{
-                                    getEventDisplayTime(ev) }}</v-sheet>
+                    <v-sheet class="calendar-event-detail-body">
+                        <template v-if="selectedEventEditable">
+                            <v-text-field v-model="eventDetailForm.title" class="calendar-detail-title"
+                                density="compact" variant="plain" hide-details placeholder="Untitled event"
+                                :autofocus="selectedEventIsDraft" :loading="eventDetailSaving"
+                                @blur="saveSelectedEventDetail" />
+                            <v-sheet v-if="selectedEventIsDraft" class="calendar-detail-draft-hint">
+                                Add a title to create this event.
                             </v-sheet>
-                        </v-list-item>
-                    </v-list>
-                </v-sheet>
+
+                            <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-calendar-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Date</span>
+                                    <v-text-field v-model="eventDetailForm.date" class="calendar-detail-field"
+                                        density="compact" variant="outlined" rounded="lg" type="date"
+                                        hide-details @blur="saveSelectedEventDetail" />
+                                </v-sheet>
+                            </v-sheet>
+
+                            <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-clock-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Time</span>
+                                    <v-sheet color="transparent" class="d-flex align-center ga-2">
+                                        <v-text-field :model-value="eventDetailForm.startTime"
+                                            class="calendar-detail-field" density="compact" variant="outlined"
+                                            rounded="lg" type="time" :max="eventDetailForm.endTime || undefined"
+                                            hide-details @update:model-value="updateEventStartTime"
+                                            @blur="saveSelectedEventDetail" />
+                                        <span class="calendar-detail-time-separator">to</span>
+                                        <v-text-field :model-value="eventDetailForm.endTime"
+                                            class="calendar-detail-field" density="compact" variant="outlined"
+                                            rounded="lg" type="time" :min="eventDetailForm.startTime || undefined"
+                                            hide-details @update:model-value="updateEventEndTime"
+                                            @blur="saveSelectedEventDetail" />
+                                    </v-sheet>
+                                </v-sheet>
+                            </v-sheet>
+
+                            <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-map-marker-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Location</span>
+                                    <v-text-field v-model="eventDetailForm.location" class="calendar-detail-field"
+                                        density="compact" variant="outlined" rounded="lg" hide-details
+                                        placeholder="Add location" @blur="saveSelectedEventDetail" />
+                                </v-sheet>
+                            </v-sheet>
+
+                            <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-link-variant</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Link</span>
+                                    <v-text-field v-model="eventDetailForm.link" class="calendar-detail-field"
+                                        density="compact" variant="outlined" rounded="lg" hide-details
+                                        placeholder="https://..." @blur="saveSelectedEventDetail" />
+                                </v-sheet>
+                            </v-sheet>
+
+                            <v-sheet class="calendar-detail-property align-start">
+                                <v-icon class="calendar-detail-property-icon mt-2" size="13">mdi-text-box-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Description</span>
+                                    <v-textarea v-model="eventDetailForm.description" class="calendar-detail-field"
+                                        density="compact" variant="outlined" rounded="lg" rows="3" auto-grow
+                                        hide-details placeholder="Add notes" @blur="saveSelectedEventDetail" />
+                                </v-sheet>
+                            </v-sheet>
+                        </template>
+
+                        <template v-else>
+                            <v-sheet class="calendar-detail-read-title">{{ selectedEventDetail.title }}</v-sheet>
+
+                            <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-clock-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Time</span>
+                                    <strong class="calendar-detail-value">{{ selectedEventDetail.date }} {{
+                                        getEventDisplayTime(selectedEventDetail) || '-' }}</strong>
+                                </v-sheet>
+                            </v-sheet>
+                            <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-map-marker-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Location</span>
+                                    <strong class="calendar-detail-value">{{ selectedEventDetail.location || '-' }}</strong>
+                                </v-sheet>
+                            </v-sheet>
+                            <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-link-variant</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Link</span>
+                                    <a v-if="selectedEventDetail.link" class="event-detail-link"
+                                        :href="selectedEventDetail.link" target="_blank" rel="noopener noreferrer">
+                                        {{ selectedEventDetail.link }}
+                                    </a>
+                                    <strong v-else class="calendar-detail-value">-</strong>
+                                </v-sheet>
+                            </v-sheet>
+                            <v-sheet class="calendar-detail-property align-start">
+                                <v-icon class="calendar-detail-property-icon mt-1" size="13">mdi-text-box-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Description</span>
+                                    <strong class="calendar-detail-value">{{ selectedEventDetail.description || '-' }}</strong>
+                                </v-sheet>
+                            </v-sheet>
+                        </template>
+
+                        <v-divider />
+
+                        <v-sheet class="calendar-detail-meta-row">
+                            <span>Source</span>
+                            <v-chip size="x-small" label>{{ selectedEventDetail.source }}</v-chip>
+                        </v-sheet>
+                        <v-sheet class="calendar-detail-meta-row">
+                            <span>Color</span>
+                            <v-menu v-if="selectedEventEditable" v-model="eventColorMenuOpen" location="top end">
+                                <template #activator="{ props: menuProps }">
+                                    <v-btn v-bind="menuProps" size="x-small" variant="text"
+                                        class="calendar-color-value-btn text-none">
+                                        <v-sheet width="10" height="10" rounded="circle"
+                                            :style="{ background: selectedEventColor }" />
+                                        <strong>{{ selectedEventColorLabel }}</strong>
+                                    </v-btn>
+                                </template>
+
+                                <v-card rounded="lg" class="calendar-color-menu pa-2" min-width="178">
+                                    <v-list density="compact" bg-color="transparent" class="pa-0">
+                                        <v-list-item v-for="option in calendarColorOptions" :key="`event-${option.hex}`"
+                                            rounded="lg" slim class="calendar-color-list-item"
+                                            :disabled="eventColorSaving" @click="setSelectedEventColor(option.hex)">
+                                            <template #prepend>
+                                                <v-sheet width="14" height="14" rounded="sm"
+                                                    :style="{ background: option.hex }" />
+                                            </template>
+                                            <v-list-item-title class="text-caption">{{ option.label }}</v-list-item-title>
+                                            <template v-if="selectedEventColor === option.hex" #append>
+                                                <v-icon size="14">mdi-check</v-icon>
+                                            </template>
+                                        </v-list-item>
+                                    </v-list>
+                                </v-card>
+                            </v-menu>
+                            <v-sheet v-else color="transparent" class="d-flex align-center ga-2">
+                                <v-sheet width="10" height="10" rounded="circle"
+                                    :style="{ background: selectedEventColor }" />
+                                <strong>{{ selectedEventColorLabel }}</strong>
+                            </v-sheet>
+                        </v-sheet>
+                        <v-sheet v-if="!selectedEventEditable" class="calendar-helper-text">
+                            This event is read-only because it was imported from another source.
+                        </v-sheet>
+                        <v-sheet v-else-if="eventDetailSaving" class="calendar-helper-text">
+                            Saving...
+                        </v-sheet>
+                        <v-sheet v-if="eventDetailError" class="text-caption text-error">
+                            {{ eventDetailError }}
+                        </v-sheet>
+                    </v-sheet>
+                </template>
+
+                <template v-else>
+                    <v-sheet class="pa-3 d-flex flex-column ga-2">
+                        <v-text-field v-model="searchForm.keyword"
+                            class="calendar-detail-field calendar-search-field" density="compact" variant="outlined"
+                            rounded="lg" hide-details clearable placeholder="Search events"
+                            prepend-inner-icon="mdi-magnify" :loading="searchLoading" @click:clear="clearSearch" />
+                    </v-sheet>
+
+                    <v-sheet class="px-3 py-2 d-flex flex-column ga-1 min-height-0">
+                        <v-sheet v-if="searchForm.keyword.trim()" class="calendar-search-count">{{
+                            searchResults.length }} result{{ searchResults.length === 1 ? '' : 's' }}</v-sheet>
+                        <v-sheet v-else class="calendar-search-count">
+                            Type a keyword to search events.
+                        </v-sheet>
+                        <v-sheet v-if="searchError" class="text-caption text-error mt-1">{{ searchError }}</v-sheet>
+
+                        <v-list v-if="searchResultEvents.length > 0" density="compact" class="search-result-list mt-1">
+                            <v-list-item v-for="ev in searchResultEvents" :key="`search-${ev.id}`"
+                                :active="selectedEventId === ev.id" rounded="lg" slim :ripple="false"
+                                class="calendar-search-item mb-1 px-2 py-0"
+                                @click="onEventClick(ev)">
+                                <template #prepend>
+                                    <v-sheet width="4" rounded="pill" class="calendar-search-item-strip mr-2"
+                                        :style="{ background: sourceColorHex(ev.source) }" />
+                                </template>
+                                <v-sheet color="transparent" class="flex-grow-1 min-width-0">
+                                    <v-sheet color="transparent" class="calendar-search-item-title text-truncate">{{
+                                        ev.title }}</v-sheet>
+                                    <v-sheet color="transparent" class="calendar-search-item-subtitle">{{
+                                        ev.date }} {{
+                                        getEventDisplayTime(ev) }}</v-sheet>
+                                </v-sheet>
+                            </v-list-item>
+                        </v-list>
+                    </v-sheet>
+                </template>
             </aside>
         </v-sheet>
 
-        <v-dialog v-model="sourceColorDialogOpen" max-width="420">
+        <v-dialog v-model="sourceColorDialogOpen" max-width="280">
             <v-card rounded="lg">
-                <v-card-title class="text-body-2 font-weight-bold">Edit Source Color</v-card-title>
+                <v-card-title class="text-body-2 font-weight-bold">Source Color</v-card-title>
                 <v-card-text>
-                    <v-sheet class="text-caption text-medium-emphasis mb-2">Source: {{ colorEditingSource }}</v-sheet>
-                    <v-color-picker v-model="colorEditingValue" mode="hexa" hide-inputs elevation="0" />
+                    <v-sheet class="calendar-helper-text mb-2">Source: {{ colorEditingSource }}</v-sheet>
+                    <v-list density="compact" bg-color="transparent" class="pa-0">
+                        <v-list-item v-for="option in calendarColorOptions" :key="`source-${option.hex}`" rounded="lg"
+                            slim class="calendar-color-list-item" :disabled="sourceColorSaving"
+                            @click="setSourceColor(option.hex)">
+                            <template #prepend>
+                                <v-sheet width="14" height="14" rounded="sm" :style="{ background: option.hex }" />
+                            </template>
+                            <v-list-item-title class="text-caption">{{ option.label }}</v-list-item-title>
+                            <template v-if="colorEditingValue === option.hex" #append>
+                                <v-icon size="14">mdi-check</v-icon>
+                            </template>
+                        </v-list-item>
+                    </v-list>
                 </v-card-text>
-                <v-card-actions class="justify-end px-4 pb-4">
-                    <v-btn size="small" variant="outlined" @click="sourceColorDialogOpen = false">Cancel</v-btn>
-                    <v-btn size="small" color="primary" :loading="sourceColorSaving"
-                        @click="confirmSourceColor">Confirm</v-btn>
-                </v-card-actions>
             </v-card>
         </v-dialog>
 
@@ -204,21 +330,13 @@
             {{ colorNotice }}
         </v-snackbar>
 
-        <v-menu v-model="eventContextMenuOpen" :target="[eventContextMenuX, eventContextMenuY]" location="bottom start">
-            <v-list density="compact" min-width="140">
-                <v-list-item prepend-icon="mdi-pencil" title="Modify" @click="modifyFromContextMenu" />
-            </v-list>
-        </v-menu>
-
-        <CalendarEventDialog v-model="dialogOpen" :event="editingEvent" :default-date="dialogDefaultDate"
-            :default-color="createEventDefaultColor" @submit="saveEvent" />
     </v-sheet>
 </template>
 
 <script setup lang="ts">
+    import { useTheme } from 'vuetify'
     import CalendarGrid from '@/components/calendar/CalendarGrid.vue'
     import CalendarEventPanel from '@/components/calendar/CalendarEventPanel.vue'
-    import CalendarEventDialog from '@/components/calendar/CalendarEventDialog.vue'
     import {
         createCalendarEvent,
         deleteCalendarEvent,
@@ -232,36 +350,45 @@
     import {
         fromDateKey,
         getEventDisplayTime,
-        getEventEndTime,
         getEventStartTime,
         getEventsForDate,
         toDateKey,
         toUnixSecondsByDateKey,
     } from '@/utils/calendar'
-    const SEARCH_MIN_DATE = '0000-01-01'
-    const SEARCH_MAX_DATE = '9999-12-31'
+    import { CALENDAR_COLOR_OPTIONS, getCalendarColorLabel, normalizeCalendarColor } from '@/utils/calendarColors'
     const ALL_EVENTS_START_TIME = 0
     const ALL_EVENTS_END_TIME = 4102444799
     const CALENDAR_PAGE_STORAGE_KEY = 'calendar:index:state:v1'
     const CALENDAR_POLL_INTERVAL_MS = 30000
     const CALENDAR_POLL_INTERVAL_GUARD_MS = 28000
     const CALENDAR_SCROLL_REFRESH_DEBOUNCE_MS = 320
+    const CALENDAR_WHEEL_STEP_DELTA = 90
+    const CALENDAR_WHEEL_LINE_DELTA = 32
+    const CALENDAR_WHEEL_PAGE_DELTA = 240
+    const CALENDAR_MAX_WHEEL_STEPS_PER_FRAME = 6
+    const CALENDAR_WHEEL_ACCUMULATOR_RESET_MS = 260
+    const theme = useTheme()
 
     interface CalendarPagePersistedState {
         viewStartDate: string
         searchForm: {
             keyword: string
-            source: string
-            startDate: string
-            endDate: string
         }
-        hasSearched: boolean
-        showAdvanced: boolean
         searchRailCollapsed: boolean
         activeSource: CalEvent['source'] | null
         highlightedSources: CalEvent['source'][]
         selectedCellDateKey: string | null
         selectedEventId: number | null
+    }
+
+    interface EventDetailForm {
+        title: string
+        date: string
+        startTime: string
+        endTime: string
+        location: string
+        description: string
+        link: string
     }
 
     const startOfWeek = (input: Date) => {
@@ -276,6 +403,10 @@
         return d
     }
 
+    const addMonths = (input: Date, months: number) => (
+        new Date(input.getFullYear(), input.getMonth() + months, input.getDate())
+    )
+
     const shiftVisibleMonth = (offset: number) => {
         const centerDate = addDays(viewStartDate.value, 21)
         const targetMonthStart = new Date(centerDate.getFullYear(), centerDate.getMonth() + offset, 1)
@@ -285,47 +416,64 @@
     const today = new Date()
     const viewStartDate = ref(startOfWeek(new Date(today.getFullYear(), today.getMonth(), 1)))
     const todayKey = toDateKey(today)
+    const calendarWorkspaceStyle = computed(() => ({
+        '--calendar-selected-date-bg': theme.current.value.dark ? '#202a33' : '#eaf3ff',
+        '--calendar-mini-header-color': theme.current.value.dark ? '#9a9a9a' : '#666666',
+        '--calendar-mini-muted-color': theme.current.value.dark ? '#747474' : '#9a9a9a',
+        '--calendar-source-action-color': theme.current.value.dark ? '#a8a8a8' : '#5f5f5f',
+        '--calendar-text-color': theme.current.value.dark ? '#f2f2f2' : '#1f1f1f',
+        '--calendar-muted-text-color': theme.current.value.dark ? '#b8b8b8' : '#5f5f5f',
+        '--calendar-subtle-text-color': theme.current.value.dark ? '#8a8a8a' : '#8a8a8a',
+        '--calendar-panel-bg': theme.current.value.dark ? 'rgba(var(--v-theme-on-surface), 0.018)' : '#ffffff',
+    }))
 
     const events = ref<CalEvent[]>([])
     const sourceScopedEvents = ref<CalEvent[]>([])
     const searchResults = ref<CalEvent[]>([])
+    const draftEvent = ref<CalEvent | null>(null)
     const selectedCell = ref<CalendarCell | null>(null)
     const selectedEventId = ref<number | null>(null)
+    const eventDetailForm = reactive<EventDetailForm>({
+        title: '',
+        date: '',
+        startTime: '',
+        endTime: '',
+        location: '',
+        description: '',
+        link: '',
+    })
+    const eventDetailSnapshot = ref('')
+    const eventDetailSaving = ref(false)
+    const eventDetailError = ref('')
     const activeSource = ref<CalEvent['source'] | null>(null)
     const sourceCatalog = ref<{ id: number; title: string; isVisible: boolean; colorHex: string }[]>([])
 
     const searchForm = reactive({
         keyword: '',
-        source: '',
-        startDate: SEARCH_MIN_DATE,
-        endDate: SEARCH_MAX_DATE,
     })
     const searchLoading = ref(false)
     const searchError = ref('')
-    const hasSearched = ref(false)
-    const showAdvanced = ref(false)
     const searchRailCollapsed = ref(false)
 
-    const dialogOpen = ref(false)
-    const editingEvent = ref<CalEvent | null>(null)
-    const dialogDefaultDate = ref('')
-    const eventContextMenuOpen = ref(false)
-    const eventContextMenuEvent = ref<CalEvent | null>(null)
-    const eventContextMenuX = ref(0)
-    const eventContextMenuY = ref(0)
-    const lastWheelAt = ref(0)
     const sourceColorDialogOpen = ref(false)
     const colorEditingSource = ref('')
-    const colorEditingValue = ref('#3b82f6')
+    const colorEditingValue = ref('#4ca8df')
     const sourceColorSaving = ref(false)
+    const eventColorMenuOpen = ref(false)
+    const eventColorSaving = ref(false)
     const colorNotice = ref('')
     const colorNoticeOpen = ref(false)
     const persistenceReady = ref(false)
     const calendarPollTimer = ref<ReturnType<typeof window.setInterval> | null>(null)
     const calendarScrollRefreshTimer = ref<ReturnType<typeof window.setTimeout> | null>(null)
+    const searchDebounceTimer = ref<ReturnType<typeof window.setTimeout> | null>(null)
     const calendarWheelScrolling = ref(false)
     let sourceEventsRequestToken = 0
     let visibleEventsRequestToken = 0
+    let draftEventSequence = -1
+    let calendarWheelDelta = 0
+    let calendarWheelFrameId: number | null = null
+    let lastCalendarWheelEventAt = 0
 
     type CalendarPollingWindow = Window & {
         __calendarIndexPollTimer__?: ReturnType<typeof window.setInterval> | null
@@ -356,8 +504,6 @@
 
         return options
     })
-    const dialogSourceItems = computed(() => sourceOptions.value.map(item => ({ title: item.label, value: item.value })))
-
     const sourceColorMap = computed(() => {
         const map = new Map<string, string>()
         sourceCatalog.value.forEach(item => map.set(item.title, item.colorHex))
@@ -389,16 +535,14 @@
             sourceScopedEvents.value = []
         }
 
-        if (searchForm.source && !availableSources.has(searchForm.source)) {
-            searchForm.source = ''
-        }
     }, { immediate: true })
 
     const sourceHighlighted = (source: CalEvent['source']) => highlightedSources.value.has(source)
 
+    const calendarColorOptions = CALENDAR_COLOR_OPTIONS
+
     const sourceColorHex = (source: string) =>
-        sourceColorMap.value.get(source)
-        ?? '#2563eb'
+        normalizeCalendarColor(sourceColorMap.value.get(source), '#4ca8df')
 
     const resolvedSourceColorMap = computed<Record<string, string>>(() => {
         const out: Record<string, string> = {}
@@ -434,7 +578,7 @@
         try {
             const updated = await updateCalendarSource(sourceMeta.id, { is_visible: nextVisible })
             sourceMeta.isVisible = updated.is_visible
-            sourceMeta.colorHex = `${updated.color ?? ''}`.trim() || sourceMeta.colorHex
+            sourceMeta.colorHex = normalizeCalendarColor(updated.color, sourceMeta.colorHex)
             highlightedSources.value = updated.is_visible
                 ? new Set([...prev, source])
                 : new Set(Array.from(prev).filter(item => item !== source))
@@ -445,9 +589,9 @@
         }
     }
 
-    const confirmSourceColor = async () => {
+    const setSourceColor = async (color: string) => {
         const source = colorEditingSource.value
-        const nextHex = `${colorEditingValue.value}`
+        const nextHex = normalizeCalendarColor(color, colorEditingValue.value)
         if (!source) return
 
         const sourceMeta = sourceCatalog.value.find(item => item.title === source)
@@ -457,9 +601,10 @@
         }
 
         sourceColorSaving.value = true
+        colorEditingValue.value = nextHex
         try {
             const updated = await updateCalendarSource(sourceMeta.id, { color: nextHex })
-            sourceMeta.colorHex = `${updated.color ?? ''}`.trim() || sourceMeta.colorHex
+            sourceMeta.colorHex = normalizeCalendarColor(updated.color, nextHex)
             sourceMeta.isVisible = updated.is_visible
             sourceColorDialogOpen.value = false
             showColorNotice(`Updated ${source} color.`)
@@ -509,6 +654,12 @@
 
     const visibleStart = computed(() => cells.value[0]?.dateKey ?? '')
     const visibleEnd = computed(() => cells.value[cells.value.length - 1]?.dateKey ?? '')
+    const expandedFetchStart = computed(() => (
+        visibleStart.value ? toDateKey(addMonths(fromDateKey(visibleStart.value), -2)) : ''
+    ))
+    const expandedFetchEnd = computed(() => (
+        visibleEnd.value ? toDateKey(addMonths(fromDateKey(visibleEnd.value), 2)) : ''
+    ))
     const searchResultEvents = computed(() =>
         [...searchResults.value].sort((a, b) => {
             const dateCmp = a.date.localeCompare(b.date)
@@ -517,41 +668,28 @@
     )
 
     const buildSearchQuery = () => {
-        const query: { start_time?: number; end_time?: number; source?: string; key_word?: string } = {}
-
         const keyword = searchForm.keyword.trim()
-        if (keyword) query.key_word = keyword
+        if (!keyword) return null
 
-        const source = `${searchForm.source ?? ''}`.trim()
-        if (source) query.source = source
-
-        const startDate = searchForm.startDate
-        const endDate = searchForm.endDate
-
-        query.start_time = startDate ? toUnixSecondsByDateKey(startDate, '00:00') : 0
-        query.end_time = endDate ? toUnixSecondsByDateKey(endDate, '23:59') + 59 : ALL_EVENTS_END_TIME
-
-        if (
-            !query.key_word
-            && !query.source
-            && !startDate
-            && !endDate
-        ) return null
-
-        return query
+        return {
+            key_word: keyword,
+            start_time: ALL_EVENTS_START_TIME,
+            end_time: ALL_EVENTS_END_TIME,
+        }
     }
 
     const runSearch = async (silent = false): Promise<boolean> => {
-        hasSearched.value = true
+        const query = buildSearchQuery()
+        if (!query) {
+            searchLoading.value = false
+            searchError.value = ''
+            searchResults.value = []
+            return false
+        }
+
         searchLoading.value = true
         if (!silent) searchError.value = ''
         try {
-            const query = buildSearchQuery()
-            if (!query) {
-                if (!silent) searchError.value = 'Please enter at least one search condition.'
-                searchResults.value = []
-                return false
-            }
             searchResults.value = await searchCalendarEvents(query)
             return true
         } catch (error) {
@@ -565,14 +703,40 @@
         }
     }
 
-    const resetSearch = async () => {
+    const clearSearchDebounceTimer = () => {
+        if (typeof window === 'undefined') return
+        if (!searchDebounceTimer.value) return
+        window.clearTimeout(searchDebounceTimer.value)
+        searchDebounceTimer.value = null
+    }
+
+    const scheduleKeywordSearch = () => {
+        clearSearchDebounceTimer()
+
+        if (!searchForm.keyword.trim()) {
+            searchLoading.value = false
+            searchError.value = ''
+            searchResults.value = []
+            return
+        }
+
+        if (typeof window === 'undefined') {
+            void runSearch(true)
+            return
+        }
+
+        searchLoading.value = true
+        searchDebounceTimer.value = window.setTimeout(() => {
+            searchDebounceTimer.value = null
+            void runSearch(true)
+        }, 260)
+    }
+
+    const clearSearch = () => {
+        clearSearchDebounceTimer()
         searchForm.keyword = ''
-        searchForm.source = ''
-        searchForm.startDate = SEARCH_MIN_DATE
-        searchForm.endDate = SEARCH_MAX_DATE
-        showAdvanced.value = false
         searchError.value = ''
-        hasSearched.value = false
+        searchLoading.value = false
         searchResults.value = []
     }
 
@@ -612,7 +776,7 @@
                 id: row.id,
                 title: row.title,
                 isVisible: row.is_visible,
-                colorHex: `${row.color ?? ''}`.trim() || '#2563eb',
+                colorHex: normalizeCalendarColor(row.color, '#4ca8df'),
             }))
         } catch (error) {
             console.error(error)
@@ -622,8 +786,8 @@
 
     const loadVisibleEvents = async (silent = false) => {
         const requestToken = ++visibleEventsRequestToken
-        const start = visibleStart.value
-        const end = visibleEnd.value
+        const start = expandedFetchStart.value
+        const end = expandedFetchEnd.value
         if (!silent) searchError.value = ''
         try {
             const rows = await getCalendarEvents({
@@ -646,8 +810,22 @@
         calendarScrollRefreshTimer.value = null
     }
 
+    const cancelCalendarWheelFrame = () => {
+        if (typeof window === 'undefined') return
+        if (calendarWheelFrameId === null) return
+        window.cancelAnimationFrame(calendarWheelFrameId)
+        calendarWheelFrameId = null
+    }
+
+    const resetCalendarWheelState = () => {
+        cancelCalendarWheelFrame()
+        calendarWheelDelta = 0
+        lastCalendarWheelEventAt = 0
+    }
+
     const cancelCalendarScrollRefresh = () => {
         clearCalendarScrollRefreshTimer()
+        resetCalendarWheelState()
         calendarWheelScrolling.value = false
     }
 
@@ -661,9 +839,40 @@
         clearCalendarScrollRefreshTimer()
         calendarScrollRefreshTimer.value = window.setTimeout(() => {
             calendarScrollRefreshTimer.value = null
+            calendarWheelDelta = 0
             calendarWheelScrolling.value = false
             void loadVisibleEvents(silent)
         }, CALENDAR_SCROLL_REFRESH_DEBOUNCE_MS)
+    }
+
+    const normalizeWheelDelta = (event: WheelEvent) => {
+        if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * CALENDAR_WHEEL_LINE_DELTA
+        if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * CALENDAR_WHEEL_PAGE_DELTA
+        return event.deltaY
+    }
+
+    const scheduleCalendarWheelFrame = () => {
+        if (typeof window === 'undefined') return
+        if (calendarWheelFrameId !== null) return
+        calendarWheelFrameId = window.requestAnimationFrame(applyCalendarWheelScroll)
+    }
+
+    function applyCalendarWheelScroll () {
+        calendarWheelFrameId = null
+        const absDelta = Math.abs(calendarWheelDelta)
+        if (absDelta < CALENDAR_WHEEL_STEP_DELTA) return
+
+        const direction = Math.sign(calendarWheelDelta)
+        const rawSteps = Math.trunc(absDelta / CALENDAR_WHEEL_STEP_DELTA) * direction
+        const steps = Math.max(-CALENDAR_MAX_WHEEL_STEPS_PER_FRAME, Math.min(CALENDAR_MAX_WHEEL_STEPS_PER_FRAME, rawSteps))
+
+        calendarWheelDelta -= steps * CALENDAR_WHEEL_STEP_DELTA
+        viewStartDate.value = addDays(viewStartDate.value, steps * 7)
+        scheduleCalendarScrollRefresh(true)
+
+        if (Math.abs(calendarWheelDelta) >= CALENDAR_WHEEL_STEP_DELTA) {
+            scheduleCalendarWheelFrame()
+        }
     }
 
     const pollCalendarData = async () => {
@@ -717,8 +926,12 @@
         pollingWindow.__calendarIndexPollTimer__ = calendarPollTimer.value
     }
 
+    const allCalendarEvents = computed(() => (
+        draftEvent.value ? [...events.value, draftEvent.value] : events.value
+    ))
+
     const visibleRangeEvents = computed(() =>
-        events.value.filter(e => {
+        allCalendarEvents.value.filter(e => {
             const end = e.endDate ?? e.date
             return end >= visibleStart.value && e.date <= visibleEnd.value
         })
@@ -731,48 +944,354 @@
         })
     )
 
-    const displayEvents = computed(() => visibleRangeEvents.value)
-
-    const selectedDayEvents = computed(() =>
-        selectedCell.value ? getEventsForDate(visibleRangeEvents.value, selectedCell.value.dateKey) : []
+    const displayEvents = computed(() =>
+        visibleRangeEvents.value.filter(e => sourceHighlighted(e.source))
     )
 
-    const panelEvents = computed(() => {
-        if (activeSource.value) {
-            return [...sourceScopedEvents.value]
-                .filter(e => e.source === activeSource.value)
-                .sort((a, b) => {
-                    const dateCmp = a.date.localeCompare(b.date)
-                    return dateCmp !== 0 ? dateCmp : getEventStartTime(a).localeCompare(getEventStartTime(b))
-                })
-        }
-
-        const sorted = [...filteredEvents.value].sort((a, b) => {
+    const sortPanelEvents = (items: CalEvent[]) => (
+        [...items].sort((a, b) => {
             const dateCmp = a.date.localeCompare(b.date)
             return dateCmp !== 0 ? dateCmp : getEventStartTime(a).localeCompare(getEventStartTime(b))
         })
-        if (!activeSource.value) return selectedDayEvents.value
-        return sorted
+    )
+
+    const selectedDayEvents = computed(() => {
+        if (!selectedCell.value) return []
+        return sortPanelEvents(getEventsForDate(filteredEvents.value, selectedCell.value.dateKey))
     })
 
-    const panelTitle = computed(() => {
-        if (activeSource.value) {
-            return `Source: ${activeSource.value}`
-        }
-        if (!selectedCell.value) return 'Events'
-        return `Date: ${selectedCell.value.dateKey}`
-    })
+    const panelEvents = computed(() => selectedDayEvents.value)
 
-    const panelSubtitle = computed(() => '')
+    const isDraftEvent = (event: CalEvent | null | undefined) => !!event && event.id < 0
 
     const selectedEventDetail = computed(() => {
         if (!selectedEventId.value) return null
         return (
+            draftEvent.value?.id === selectedEventId.value ? draftEvent.value : null
+        ) ?? (
             events.value.find(ev => ev.id === selectedEventId.value)
             ?? sourceScopedEvents.value.find(ev => ev.id === selectedEventId.value)
+            ?? searchResults.value.find(ev => ev.id === selectedEventId.value)
             ?? null
         )
     })
+
+    const selectedEventIsDraft = computed(() => isDraftEvent(selectedEventDetail.value))
+    const selectedEventEditable = computed(() => selectedEventDetail.value?.source === 'user')
+    const selectedEventColor = computed(() => {
+        const event = selectedEventDetail.value
+        return normalizeCalendarColor(event?.color, event ? sourceColorHex(event.source) : '#4ca8df')
+    })
+    const selectedEventColorLabel = computed(() => getCalendarColorLabel(selectedEventColor.value))
+
+    const normalizeTimeInputValue = (value: unknown) => `${value ?? ''}`
+
+    const normalizeEventDetailTimeRange = () => {
+        const { startTime, endTime } = eventDetailForm
+        if (!startTime || !endTime || endTime >= startTime) return
+        eventDetailForm.endTime = startTime
+    }
+
+    const updateEventStartTime = (value: unknown) => {
+        eventDetailForm.startTime = normalizeTimeInputValue(value)
+        normalizeEventDetailTimeRange()
+        eventDetailError.value = ''
+    }
+
+    const updateEventEndTime = (value: unknown) => {
+        const next = normalizeTimeInputValue(value)
+        eventDetailForm.endTime = eventDetailForm.startTime && next && next < eventDetailForm.startTime
+            ? eventDetailForm.startTime
+            : next
+        eventDetailError.value = ''
+    }
+
+    const eventDetailFormPayload = () => ({
+        title: eventDetailForm.title.trim(),
+        date: eventDetailForm.date,
+        startTime: eventDetailForm.startTime || '00:00',
+        endTime: eventDetailForm.endTime || eventDetailForm.startTime || '00:00',
+        location: eventDetailForm.location.trim(),
+        description: eventDetailForm.description.trim(),
+        link: eventDetailForm.link.trim(),
+    })
+
+    const syncEventDetailForm = (event: CalEvent | null) => {
+        eventDetailError.value = ''
+        if (!event) {
+            eventDetailSnapshot.value = ''
+            Object.assign(eventDetailForm, {
+                title: '',
+                date: '',
+                startTime: '',
+                endTime: '',
+                location: '',
+                description: '',
+                link: '',
+            })
+            return
+        }
+
+        Object.assign(eventDetailForm, {
+            title: event.title,
+            date: event.date,
+            startTime: event.startTime || '12:00',
+            endTime: event.endTime || event.startTime || '12:00',
+            location: event.location ?? '',
+            description: event.description ?? '',
+            link: event.link ?? '',
+        })
+        normalizeEventDetailTimeRange()
+        eventDetailSnapshot.value = JSON.stringify(eventDetailFormPayload())
+    }
+
+    const patchEventInList = (items: CalEvent[], eventId: number, patch: Partial<CalEvent>) => (
+        items.map(item => item.id === eventId ? { ...item, ...patch } : item)
+    )
+
+    const setSelectedEventColor = async (color: string) => {
+        const event = selectedEventDetail.value
+        if (!event || !selectedEventEditable.value || eventColorSaving.value) return
+
+        const nextHex = normalizeCalendarColor(color, sourceColorHex(event.source))
+        eventColorMenuOpen.value = false
+        if (selectedEventColor.value === nextHex) return
+
+        if (isDraftEvent(event)) {
+            draftEvent.value = { ...event, color: nextHex }
+            return
+        }
+
+        const previousEvents = [...events.value]
+        const previousSourceScopedEvents = [...sourceScopedEvents.value]
+        const previousSearchResults = [...searchResults.value]
+        const patch: Partial<CalEvent> = { color: nextHex }
+
+        events.value = patchEventInList(events.value, event.id, patch)
+        sourceScopedEvents.value = patchEventInList(sourceScopedEvents.value, event.id, patch)
+        searchResults.value = patchEventInList(searchResults.value, event.id, patch)
+
+        eventColorSaving.value = true
+        eventDetailError.value = ''
+        try {
+            await updateCalendarEvent(event.id, patch)
+            await refreshFromAllEventsOnce()
+        } catch (error) {
+            console.error(error)
+            events.value = previousEvents
+            sourceScopedEvents.value = previousSourceScopedEvents
+            searchResults.value = previousSearchResults
+            eventDetailError.value = 'Update event color failed.'
+        } finally {
+            eventColorSaving.value = false
+        }
+    }
+
+    const saveSelectedEventDetail = async () => {
+        const event = selectedEventDetail.value
+        if (!event || !selectedEventEditable.value || eventDetailSaving.value) return
+
+        const payload = eventDetailFormPayload()
+        const nextSnapshot = JSON.stringify(payload)
+        if (nextSnapshot === eventDetailSnapshot.value) return
+
+        if (payload.endTime < payload.startTime) {
+            eventDetailError.value = 'End time must be later than start time.'
+            return
+        }
+
+        const patch: Partial<CalEvent> = {
+            title: payload.title,
+            date: payload.date,
+            time: payload.startTime,
+            startTime: payload.startTime,
+            endTime: payload.endTime,
+            location: payload.location,
+            description: payload.description,
+            link: payload.link,
+            color: normalizeCalendarColor(event.color, sourceColorHex(event.source)),
+            source: event.source,
+            informType: event.informType,
+        }
+
+        if (isDraftEvent(event)) {
+            draftEvent.value = { ...event, ...patch }
+        }
+
+        if (!payload.title || !payload.date) {
+            if (isDraftEvent(event)) {
+                eventDetailError.value = ''
+                return
+            }
+            eventDetailError.value = 'Title and date are required.'
+            return
+        }
+
+        eventDetailSaving.value = true
+        eventDetailError.value = ''
+
+        if (isDraftEvent(event)) {
+            const previousDraftEvent = draftEvent.value
+            const createPayload: Omit<CalEvent, 'id'> = {
+                title: payload.title,
+                source: 'user',
+                color: normalizeCalendarColor(event.color, createEventDefaultColor.value),
+                date: payload.date,
+                time: payload.startTime,
+                startTime: payload.startTime,
+                endTime: payload.endTime,
+                location: payload.location,
+                description: payload.description,
+                link: payload.link,
+                informType: event.informType ?? 'none',
+            }
+
+            try {
+                const created = await createCalendarEvent(createPayload)
+                draftEvent.value = null
+                events.value = [...events.value, created]
+                if (activeSource.value === created.source) {
+                    sourceScopedEvents.value = [...sourceScopedEvents.value, created]
+                }
+                selectedEventId.value = created.id
+                eventDetailSnapshot.value = nextSnapshot
+                await refreshCalendarData()
+            } catch (error) {
+                console.error(error)
+                draftEvent.value = previousDraftEvent
+                eventDetailError.value = 'Save failed. Please check backend response.'
+                syncEventDetailForm(selectedEventDetail.value)
+            } finally {
+                eventDetailSaving.value = false
+            }
+            return
+        }
+
+        const previousEvents = [...events.value]
+        const previousSourceScopedEvents = [...sourceScopedEvents.value]
+        const previousSearchResults = [...searchResults.value]
+
+        events.value = patchEventInList(events.value, event.id, patch)
+        sourceScopedEvents.value = patchEventInList(sourceScopedEvents.value, event.id, patch)
+        searchResults.value = patchEventInList(searchResults.value, event.id, patch)
+
+        try {
+            await updateCalendarEvent(event.id, patch)
+            eventDetailSnapshot.value = nextSnapshot
+            await refreshFromAllEventsOnce()
+        } catch (error) {
+            console.error(error)
+            events.value = previousEvents
+            sourceScopedEvents.value = previousSourceScopedEvents
+            searchResults.value = previousSearchResults
+            eventDetailError.value = 'Save failed. Please check backend response.'
+            syncEventDetailForm(selectedEventDetail.value)
+        } finally {
+            eventDetailSaving.value = false
+        }
+    }
+
+    watch(selectedEventDetail, (event) => {
+        syncEventDetailForm(event)
+    }, { immediate: true })
+
+    const discardEmptyDraftEvent = () => {
+        const draft = draftEvent.value
+        if (!draft) return
+        if (eventDetailForm.title.trim()) return
+
+        draftEvent.value = null
+        eventDetailSnapshot.value = ''
+        eventDetailError.value = ''
+        if (selectedEventId.value === draft.id) selectedEventId.value = null
+    }
+
+    const closeSelectedEventDetail = () => {
+        discardEmptyDraftEvent()
+        selectedEventId.value = null
+    }
+
+    const focusDateKey = async (dateKey: string) => {
+        const inCurrentView = cells.value.some(c => c.dateKey === dateKey)
+        if (!inCurrentView) {
+            cancelCalendarScrollRefresh()
+            const targetDate = fromDateKey(dateKey)
+            viewStartDate.value = startOfWeek(new Date(targetDate.getFullYear(), targetDate.getMonth(), 1))
+            await nextTick()
+        }
+
+        const cell = cells.value.find(c => c.dateKey === dateKey)
+        if (cell) selectedCell.value = cell
+    }
+
+    const getEventSpanDays = (event: CalEvent) => {
+        if (!event.endDate) return 0
+        const startTime = fromDateKey(event.date).getTime()
+        const endTime = fromDateKey(event.endDate).getTime()
+        return Math.max(0, Math.round((endTime - startTime) / 86400000))
+    }
+
+    const moveEventToDate = async (payload: { event: CalEvent; dateKey: string }) => {
+        const { event, dateKey } = payload
+        if (event.source !== 'user' || isDraftEvent(event) || event.date === dateKey) return
+
+        const previousEvents = [...events.value]
+        const previousSourceScopedEvents = [...sourceScopedEvents.value]
+        const previousSearchResults = [...searchResults.value]
+        const spanDays = getEventSpanDays(event)
+        const patch: Partial<CalEvent> = {
+            date: dateKey,
+            endDate: spanDays > 0 ? toDateKey(addDays(fromDateKey(dateKey), spanDays)) : undefined,
+            time: event.startTime || event.time || '00:00',
+            startTime: event.startTime || event.time || '00:00',
+            endTime: event.endTime || event.startTime || event.time || '00:00',
+        }
+
+        events.value = patchEventInList(events.value, event.id, patch)
+        sourceScopedEvents.value = patchEventInList(sourceScopedEvents.value, event.id, patch)
+        searchResults.value = patchEventInList(searchResults.value, event.id, patch)
+        selectedEventId.value = event.id
+        searchError.value = ''
+        await focusDateKey(dateKey)
+
+        try {
+            await updateCalendarEvent(event.id, patch)
+            await refreshFromAllEventsOnce()
+        } catch (error) {
+            console.error(error)
+            events.value = previousEvents
+            sourceScopedEvents.value = previousSourceScopedEvents
+            searchResults.value = previousSearchResults
+            searchError.value = 'Move failed. Please check backend response.'
+            await focusDateKey(event.date)
+        }
+    }
+
+    const makeDraftEvent = (dateKey: string): CalEvent => ({
+        id: draftEventSequence--,
+        title: '',
+        source: 'user',
+        color: createEventDefaultColor.value,
+        time: '12:00',
+        startTime: '12:00',
+        endTime: '12:00',
+        date: dateKey,
+        location: '',
+        description: '',
+        link: '',
+        informType: 'none',
+    })
+
+    const startInlineCreate = async () => {
+        discardEmptyDraftEvent()
+
+        const targetDate = selectedCell.value?.dateKey ?? todayKey
+        const nextDraft = makeDraftEvent(targetDate)
+        draftEvent.value = nextDraft
+        selectedEventId.value = nextDraft.id
+        searchRailCollapsed.value = false
+        await focusDateKey(targetDate)
+    }
 
     const prevMonth = () => {
         cancelCalendarScrollRefresh()
@@ -784,45 +1303,34 @@
         shiftVisibleMonth(1)
     }
 
-    const goToday = () => {
-        cancelCalendarScrollRefresh()
-        const now = new Date()
-        viewStartDate.value = startOfWeek(new Date(now.getFullYear(), now.getMonth(), 1))
-        const cell = cells.value.find(c => c.dateKey === todayKey)
-        if (cell) selectedCell.value = cell
+    const goToday = async () => {
+        await focusDateKey(todayKey)
     }
 
     const onCellClick = (cell: CalendarCell) => {
+        discardEmptyDraftEvent()
         selectedCell.value = cell
         selectedEventId.value = null
     }
 
     const onEventClick = async (ev: CalEvent) => {
         selectedEventId.value = ev.id
-        const eventDate = fromDateKey(ev.date)
-        const inCurrentView = cells.value.some(c => c.dateKey === ev.date)
-        if (!inCurrentView) {
-            cancelCalendarScrollRefresh()
-            viewStartDate.value = startOfWeek(new Date(eventDate.getFullYear(), eventDate.getMonth(), 1))
-            await nextTick()
-        }
-        const cell = cells.value.find(c => c.dateKey === ev.date)
-        if (cell) selectedCell.value = cell
+        searchRailCollapsed.value = false
+        await focusDateKey(ev.date)
     }
 
     const onCalendarWheel = (event: WheelEvent) => {
-        if (Math.abs(event.deltaY) < 10) return
+        const normalizedDelta = normalizeWheelDelta(event)
+        if (Math.abs(normalizedDelta) < 1) return
 
         const now = Date.now()
-        if (now - lastWheelAt.value < 220) return
-        lastWheelAt.value = now
-        scheduleCalendarScrollRefresh(true)
-
-        if (event.deltaY > 0) {
-            viewStartDate.value = addDays(viewStartDate.value, 7)
-            return
+        if (now - lastCalendarWheelEventAt > CALENDAR_WHEEL_ACCUMULATOR_RESET_MS) {
+            calendarWheelDelta = 0
         }
-        viewStartDate.value = addDays(viewStartDate.value, -7)
+        lastCalendarWheelEventAt = now
+
+        calendarWheelDelta += normalizedDelta
+        scheduleCalendarWheelFrame()
     }
 
     const sourceChipStyle = (source: CalEvent['source']) => {
@@ -832,16 +1340,16 @@
             ? {
                 '--strip-accent': color,
                 background: 'transparent',
-                color: 'rgba(var(--v-theme-on-surface), 0.9)',
-                borderColor: selected ? `color-mix(in srgb, ${color} 45%, rgba(var(--v-theme-on-surface), 0.3))` : 'rgba(var(--v-theme-on-surface), 0.18)',
-                boxShadow: selected ? `inset 0 0 0 1px color-mix(in srgb, ${color} 50%, transparent)` : 'none'
+                color: 'var(--calendar-text-color)',
+                borderColor: selected ? color : 'rgb(var(--v-border-color))',
+                boxShadow: selected ? `inset 0 0 0 1px ${color}` : 'none'
             }
             : {
                 '--strip-accent': color,
                 background: 'transparent',
-                color: 'rgba(var(--v-theme-on-surface), 0.78)',
-                borderColor: selected ? `color-mix(in srgb, ${color} 38%, rgba(var(--v-theme-on-surface), 0.24))` : 'rgba(var(--v-theme-on-surface), 0.12)',
-                boxShadow: selected ? `inset 0 0 0 1px color-mix(in srgb, ${color} 42%, transparent)` : 'none'
+                color: 'var(--calendar-muted-text-color)',
+                borderColor: selected ? color : 'rgb(var(--v-border-color))',
+                boxShadow: selected ? `inset 0 0 0 1px ${color}` : 'none'
             }
     }
 
@@ -852,17 +1360,12 @@
             viewStartDate: toDateKey(viewStartDate.value),
             searchForm: {
                 keyword: searchForm.keyword,
-                source: searchForm.source,
-                startDate: searchForm.startDate,
-                endDate: searchForm.endDate,
             },
-            hasSearched: hasSearched.value,
-            showAdvanced: showAdvanced.value,
             searchRailCollapsed: searchRailCollapsed.value,
             activeSource: activeSource.value,
             highlightedSources: Array.from(highlightedSources.value),
             selectedCellDateKey: selectedCell.value?.dateKey ?? null,
-            selectedEventId: selectedEventId.value,
+            selectedEventId: selectedEventIsDraft.value ? null : selectedEventId.value,
         }
 
         localStorage.setItem(CALENDAR_PAGE_STORAGE_KEY, JSON.stringify(payload))
@@ -884,13 +1387,8 @@
             const savedForm = parsed.searchForm
             if (savedForm) {
                 searchForm.keyword = `${savedForm.keyword ?? ''}`
-                searchForm.source = `${savedForm.source ?? ''}`
-                searchForm.startDate = `${savedForm.startDate ?? SEARCH_MIN_DATE}`
-                searchForm.endDate = `${savedForm.endDate ?? SEARCH_MAX_DATE}`
             }
 
-            hasSearched.value = !!parsed.hasSearched
-            showAdvanced.value = !!parsed.showAdvanced
             searchRailCollapsed.value = !!parsed.searchRailCollapsed
             activeSource.value = parsed.activeSource ?? null
 
@@ -909,33 +1407,8 @@
         }
     }
 
-    const openCreate = (date: string) => {
-        editingEvent.value = null
-        dialogDefaultDate.value = date
-        dialogOpen.value = true
-    }
-
-    const openEdit = (ev: CalEvent) => {
-        eventContextMenuOpen.value = false
-        eventContextMenuEvent.value = null
-        editingEvent.value = ev
-        dialogOpen.value = true
-    }
-
-    const openEventContextMenu = (payload: { event: CalEvent; mouseEvent: MouseEvent }) => {
-        eventContextMenuEvent.value = payload.event
-        eventContextMenuX.value = payload.mouseEvent.clientX
-        eventContextMenuY.value = payload.mouseEvent.clientY
-        eventContextMenuOpen.value = true
-        selectedEventId.value = payload.event.id
-    }
-
-    const modifyFromContextMenu = () => {
-        const targetEvent = eventContextMenuEvent.value
-        eventContextMenuOpen.value = false
-        eventContextMenuEvent.value = null
-        if (!targetEvent) return
-        openEdit(targetEvent)
+    const openEventContextMenu = async (payload: { event: CalEvent; mouseEvent: MouseEvent }) => {
+        await onEventClick(payload.event)
     }
 
     const refreshCalendarData = async () => {
@@ -951,8 +1424,8 @@
             end_time: ALL_EVENTS_END_TIME,
         })
 
-        const start = visibleStart.value
-        const end = visibleEnd.value
+        const start = expandedFetchStart.value
+        const end = expandedFetchEnd.value
         events.value = allEvents.filter(event => {
             const eventEnd = event.endDate ?? event.date
             return eventEnd >= start && event.date <= end
@@ -963,33 +1436,13 @@
         }
     }
 
-    const saveEvent = async (form: Omit<CalEvent, 'id'>) => {
-        const previousEvents = [...events.value]
-        const previousSearchResults = [...searchResults.value]
-        try {
-            if (editingEvent.value) {
-                const editingId = editingEvent.value.id
-                await updateCalendarEvent(editingId, form)
-                await refreshFromAllEventsOnce()
-                dialogOpen.value = false
-                editingEvent.value = null
-                return
-            } else {
-                const created = await createCalendarEvent(form)
-                events.value = [...events.value, created]
-                await refreshCalendarData()
-            }
-            dialogOpen.value = false
-            editingEvent.value = null
-        } catch (error) {
-            events.value = previousEvents
-            searchResults.value = previousSearchResults
-            console.error(error)
-            searchError.value = 'Save failed. Please check backend response.'
-        }
-    }
-
     const deleteEvent = async (ev: CalEvent) => {
+        if (isDraftEvent(ev)) {
+            draftEvent.value = null
+            if (selectedEventId.value === ev.id) selectedEventId.value = null
+            return
+        }
+
         try {
             await deleteCalendarEvent(ev.id)
             await refreshCalendarData()
@@ -1016,13 +1469,8 @@
             highlightedSourceList,
             selectedCell,
             selectedEventId,
-            hasSearched,
-            showAdvanced,
             searchRailCollapsed,
             () => searchForm.keyword,
-            () => searchForm.source,
-            () => searchForm.startDate,
-            () => searchForm.endDate,
         ],
         () => {
             if (!persistenceReady.value) return
@@ -1030,6 +1478,8 @@
         },
         { deep: true }
     )
+
+    watch(() => searchForm.keyword, scheduleKeywordSearch)
 
     watch([visibleStart, visibleEnd], () => {
         if (calendarWheelScrolling.value || calendarScrollRefreshTimer.value) return
@@ -1050,11 +1500,63 @@
 
     onBeforeUnmount(() => {
         cancelCalendarScrollRefresh()
+        clearSearchDebounceTimer()
         stopCalendarPolling()
     })
 </script>
 
 <style scoped>
+    .calendar-workspace {
+        --calendar-content-radius: 8px;
+        --calendar-selected-date-bg: #eaf3ff;
+        --calendar-mini-header-color: #666666;
+        --calendar-mini-muted-color: #8f8f8f;
+        --calendar-source-action-color: #5f5f5f;
+        --calendar-text-color: #1f1f1f;
+        --calendar-muted-text-color: #5f5f5f;
+        --calendar-subtle-text-color: #8a8a8a;
+        --calendar-panel-bg: #ffffff;
+
+        background: rgb(var(--v-theme-surface));
+        color: var(--calendar-text-color);
+    }
+
+    .calendar-workspace :deep(.text-medium-emphasis) {
+        color: var(--calendar-muted-text-color) !important;
+    }
+
+    .calendar-workspace :deep(.text-disabled) {
+        color: var(--calendar-subtle-text-color) !important;
+    }
+
+    .calendar-center-panel {
+        background: var(--calendar-panel-bg);
+        border-top-left-radius: var(--calendar-content-radius);
+        border-top-right-radius: var(--calendar-content-radius);
+        border-bottom-left-radius: var(--calendar-content-radius);
+        overflow: hidden;
+    }
+
+    .calendar-toolbar,
+    .calendar-grid-shell {
+        background: transparent;
+    }
+
+    .calendar-right-panel {
+        width: 280px;
+        min-width: 280px;
+        overflow-y: auto;
+        background: rgb(var(--v-theme-surface));
+    }
+
+    .calendar-toolbar-actions :deep(.v-btn__overlay) {
+        display: none !important;
+    }
+
+    .calendar-toolbar-actions {
+        background: transparent !important;
+    }
+
     .source-chip {
         width: 100%;
         min-height: 30px;
@@ -1072,59 +1574,326 @@
         gap: 8px;
     }
 
+    .calendar-section-label {
+        background: transparent;
+        color: var(--calendar-muted-text-color);
+        font-size: 0.75rem;
+        line-height: 1rem;
+    }
+
+    .calendar-helper-text {
+        background: transparent;
+        color: var(--calendar-muted-text-color);
+        font-size: 0.75rem;
+        line-height: 1rem;
+    }
+
+    .source-action-btn {
+        width: 22px !important;
+        height: 22px !important;
+        min-width: 22px !important;
+        color: var(--calendar-source-action-color) !important;
+        background: transparent !important;
+    }
+
+    .source-action-btn :deep(.v-btn__overlay),
+    .source-action-btn :deep(.v-btn__underlay) {
+        display: none !important;
+    }
+
+    .source-action-btn :deep(.v-icon) {
+        color: var(--calendar-source-action-color) !important;
+    }
+
     .search-result-list {
         max-height: 320px;
         overflow-y: auto;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        border-radius: 10px;
-        background: rgba(var(--v-theme-surface), 0.5);
+        padding-block: 2px;
+        background: transparent;
     }
 
-    .event-details-card {
-        position: absolute;
-        right: 12px;
-        top: 44px;
-        width: 380px;
-        max-width: calc(100% - 24px);
-        max-height: calc(100% - 56px);
-        overflow: auto;
-        padding: 10px 12px;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-        background: rgba(var(--v-theme-surface), 0.96);
-        backdrop-filter: blur(6px);
-        z-index: 3;
+    .calendar-search-count {
+        background: transparent;
+        color: var(--calendar-muted-text-color);
+        font-size: 0.75rem;
+        line-height: 1rem;
     }
 
-    .event-detail-row {
+    .calendar-search-item {
+        min-height: 38px;
+    }
+
+    .calendar-search-item-strip {
+        align-self: stretch;
+        min-height: 26px;
+        margin-block: 5px;
+    }
+
+    .calendar-search-item-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        line-height: 1rem;
+    }
+
+    .calendar-search-item-subtitle {
+        color: var(--calendar-muted-text-color);
+        font-size: 0.6875rem;
+        line-height: 0.875rem;
+    }
+
+    .calendar-event-detail-body {
         display: flex;
-        gap: 8px;
+        flex-direction: column;
+        gap: 14px;
+        padding: 12px;
+        background: transparent;
+    }
+
+    .calendar-detail-title {
+        margin-top: -4px;
+    }
+
+    .calendar-detail-title :deep(.v-field__input) {
+        min-height: 34px;
+        padding: 0;
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.25;
+    }
+
+    .calendar-detail-draft-hint {
+        margin-top: -10px;
+        background: transparent;
+        color: var(--calendar-muted-text-color);
+        font-size: 11px;
+    }
+
+    .calendar-detail-property {
+        display: grid;
+        grid-template-columns: 14px minmax(0, 1fr);
+        align-items: center;
+        column-gap: 6px;
+        row-gap: 5px;
+        min-width: 0;
+        background: transparent;
+    }
+
+    .calendar-detail-property-icon {
+        grid-column: 1;
+        grid-row: 1;
+        align-self: center;
+        margin-top: 0 !important;
+        color: var(--calendar-muted-text-color);
+    }
+
+    .calendar-detail-property-content {
+        display: contents;
+        min-width: 0;
+        background: transparent;
+    }
+
+    .calendar-detail-label {
+        display: block;
+        grid-column: 2;
+        margin-bottom: 0;
+        color: var(--calendar-muted-text-color);
+        font-size: 11px;
+        line-height: 1;
+    }
+
+    .calendar-detail-property-content> :not(.calendar-detail-label) {
+        grid-column: 1 / -1;
+        width: 100%;
+    }
+
+    .calendar-detail-field,
+    .calendar-detail-field :deep(.v-input__control) {
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+    }
+
+    .calendar-detail-field :deep(.v-field) {
+        border: 1px solid transparent;
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        transition: border-color 0.16s ease;
+    }
+
+    .calendar-detail-field :deep(.v-field__outline) {
+        display: none;
+    }
+
+    .calendar-detail-field :deep(.v-field__field),
+    .calendar-detail-field :deep(input),
+    .calendar-detail-field :deep(textarea) {
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+
+    .calendar-detail-field :deep(.v-field--active),
+    .calendar-detail-field :deep(.v-field--focused),
+    .calendar-detail-field :deep(.v-field--active .v-field__field),
+    .calendar-detail-field :deep(.v-field--focused .v-field__field),
+    .calendar-detail-field :deep(.v-field--active .v-field__input),
+    .calendar-detail-field :deep(.v-field--focused .v-field__input) {
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+
+    .calendar-detail-field :deep(.v-field__field) {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .calendar-detail-field :deep(.v-field__overlay) {
+        display: none !important;
+    }
+
+    .calendar-detail-field {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .calendar-detail-field :deep(.v-field:hover) {
+        border-color: rgb(var(--v-border-color));
+        background: transparent !important;
+    }
+
+    .calendar-detail-field :deep(.v-field--focused) {
+        border-color: var(--calendar-text-color);
+        background: transparent !important;
+    }
+
+    .calendar-detail-field :deep(.v-field__input) {
+        box-sizing: border-box;
+        flex: 1 1 auto;
+        min-height: 32px;
+        min-width: 0;
+        max-width: none;
+        width: 100%;
+        padding-top: 0;
+        padding-bottom: 0;
+        font-size: 13px;
+        background: transparent !important;
+        background-color: transparent !important;
+    }
+
+    .calendar-detail-field :deep(input[type="date"].v-field__input),
+    .calendar-detail-field :deep(input[type="time"].v-field__input) {
+        appearance: none;
+        -webkit-appearance: none;
+        display: block;
+        position: relative;
+        padding-right: 32px;
+    }
+
+    .calendar-detail-field :deep(input[type="date"]::-webkit-calendar-picker-indicator),
+    .calendar-detail-field :deep(input[type="time"]::-webkit-calendar-picker-indicator) {
+        position: absolute;
+        top: 50%;
+        right: 8px;
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        transform: translateY(-50%);
+        cursor: pointer;
+    }
+
+    .calendar-detail-field :deep(textarea.v-field__input) {
+        padding-top: 8px;
+        padding-bottom: 8px;
+        line-height: 1.45;
+    }
+
+    .calendar-detail-time-separator {
+        color: var(--calendar-muted-text-color);
+        font-size: 11px;
+        line-height: 32px;
+    }
+
+    .calendar-detail-read-title {
+        overflow-wrap: anywhere;
+        background: transparent;
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.25;
+    }
+
+    .calendar-detail-value {
+        font-size: 13px;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+    }
+
+    .calendar-detail-meta-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 24px;
+        background: transparent;
+        color: var(--calendar-muted-text-color);
         font-size: 12px;
-        line-height: 1.4;
-        margin-top: 6px;
+    }
+
+    .calendar-detail-meta-row strong {
+        font-weight: 600;
+    }
+
+    .calendar-color-value-btn {
+        min-width: 0;
+        padding: 0 6px;
+        color: var(--calendar-text-color);
+    }
+
+    .calendar-color-value-btn :deep(.v-btn__content) {
+        gap: 6px;
+    }
+
+    .calendar-color-list-item {
+        min-height: 30px;
+    }
+
+    .calendar-color-menu {
+        background: rgb(var(--v-theme-surface));
     }
 
     .event-detail-link {
         color: rgb(var(--v-theme-primary));
         text-decoration: none;
         word-break: break-all;
+        font-size: 13px;
+        font-weight: 600;
     }
 
     .event-detail-link:hover {
         text-decoration: underline;
     }
 
+    .mini-weekday {
+        color: var(--calendar-mini-header-color);
+        font-size: 10px;
+        line-height: 14px;
+        text-align: center;
+    }
+
     .mini-day-btn {
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border: 1px solid rgb(var(--v-border-color));
         border-radius: 6px;
         background: transparent;
-        color: rgba(var(--v-theme-on-surface), 0.88);
+        color: var(--calendar-text-color);
         font-size: 10px;
         height: 24px;
         cursor: pointer;
     }
 
     .mini-day-btn.muted {
-        opacity: 0.4;
+        background: transparent;
+        color: var(--calendar-mini-muted-color);
+        border-color: transparent;
     }
 
     .mini-day-btn.today {
@@ -1132,7 +1901,8 @@
     }
 
     .mini-day-btn.active {
-        background: rgba(var(--v-theme-primary), 0.15);
+        background: var(--calendar-selected-date-bg);
         border-color: rgb(var(--v-theme-primary));
+        color: var(--calendar-text-color);
     }
 </style>

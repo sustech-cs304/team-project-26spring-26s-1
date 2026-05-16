@@ -4,7 +4,7 @@
         <!-- 中间内容区：垂直居中 -->
         <v-sheet color="transparent"
             class="flex-grow-1 d-flex flex-column align-center justify-center min-height-0 overflow-hidden">
-            <v-container max-width="800" class="px-6 d-flex flex-column align-center min-height-0">
+            <v-container max-width="800" class="chat-empty-guide px-6 d-flex flex-column align-center min-height-0">
                 <div class="text-display-small font-weight-bold pa-0 mb-10">有什么我能帮你的吗？</div>
                 <ConversationStarters @select="startConversation" />
             </v-container>
@@ -98,3 +98,15 @@
         startConversation(text, attachments.map(toPendingAttachment))
     }
 </script>
+
+<style scoped>
+    .chat-empty-guide {
+        transform: translateY(-48px);
+    }
+
+    @media (max-height: 720px) {
+        .chat-empty-guide {
+            transform: translateY(-28px);
+        }
+    }
+</style>

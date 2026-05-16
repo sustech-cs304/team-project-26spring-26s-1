@@ -24,19 +24,26 @@
                             <template #activator="{ props: menuProps }">
                                 <v-btn type="button" v-bind="menuProps" variant="outlined" height="40" min-width="92"
                                     class="px-2 text-none d-flex align-center justify-space-between">
-                                    <span class="text-caption text-medium-emphasis">Color</span>
+                                    <span class="calendar-dialog-muted-text">Color</span>
                                     <v-sheet width="18" height="18" rounded="sm" border class="ms-2"
                                         :style="{ backgroundColor: form.color }" />
                                 </v-btn>
                             </template>
 
-                            <v-card rounded="lg" class="pa-3" width="320">
-                                <v-color-picker v-model="pendingColor" mode="hexa" hide-inputs elevation="0" />
-                                <div class="d-flex justify-end mt-2">
-                                    <v-btn size="small" color="primary" variant="flat" @click="confirmColor">
-                                        Confirm
-                                    </v-btn>
-                                </div>
+                            <v-card rounded="lg" class="pa-2" width="180">
+                                <v-list density="compact" bg-color="transparent" class="pa-0">
+                                    <v-list-item v-for="option in calendarColorOptions" :key="option.hex" rounded="lg"
+                                        slim @click="confirmColor(option.hex)">
+                                        <template #prepend>
+                                            <v-sheet width="14" height="14" rounded="sm"
+                                                :style="{ background: option.hex }" />
+                                        </template>
+                                        <v-list-item-title class="text-caption">{{ option.label }}</v-list-item-title>
+                                        <template v-if="form.color === option.hex" #append>
+                                            <v-icon size="14">mdi-check</v-icon>
+                                        </template>
+                                    </v-list-item>
+                                </v-list>
                             </v-card>
                         </v-menu>
                     </div>
@@ -82,6 +89,7 @@
 
 <script setup lang="ts">
     import type { CalEvent } from '@/types/calendar'
+    import { CALENDAR_COLOR_OPTIONS, normalizeCalendarColor } from '@/utils/calendarColors'
 
     interface EventForm {
         title: string
@@ -108,7 +116,7 @@
 
     const makeEmpty = (): EventForm => ({
         title: '',
-        color: props.defaultColor ?? '#2563eb',
+        color: normalizeCalendarColor(props.defaultColor, '#4ca8df'),
         date: props.defaultDate ?? '',
         startTime: '12:00',
         endTime: '12:00',
@@ -119,7 +127,7 @@
 
     const form = ref<EventForm>(makeEmpty())
     const colorMenuOpen = ref(false)
-    const pendingColor = ref(form.value.color)
+    const calendarColorOptions = CALENDAR_COLOR_OPTIONS
 
     const parseTimeToMinutes = (time: string): number | null => {
         if (!time) return null
@@ -151,7 +159,7 @@
         if (props.event) {
             form.value = {
                 title: props.event.title,
-                color: props.event.color || '#2563eb',
+                color: normalizeCalendarColor(props.event.color, '#4ca8df'),
                 date: props.event.date,
                 startTime: props.event.startTime || '12:00',
                 endTime: props.event.endTime || props.event.startTime || '12:00',
@@ -165,12 +173,12 @@
             empty.endTime = empty.startTime
             form.value = { ...empty }
         }
-        pendingColor.value = form.value.color
+        form.value.color = normalizeCalendarColor(form.value.color)
         colorMenuOpen.value = false
     })
 
-    const confirmColor = () => {
-        form.value.color = pendingColor.value
+    const confirmColor = (color: string) => {
+        form.value.color = normalizeCalendarColor(color)
         colorMenuOpen.value = false
     }
 
@@ -191,3 +199,11 @@
         emit('update:modelValue', false)
     }
 </script>
+
+<style scoped>
+    .calendar-dialog-muted-text {
+        color: var(--calendar-muted-text-color, #5f5f5f);
+        font-size: 0.75rem;
+        line-height: 1rem;
+    }
+</style>

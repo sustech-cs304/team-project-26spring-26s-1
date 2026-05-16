@@ -59,6 +59,50 @@
                     :ripple="false" @click="handleOpenCreate" />
             </template>
 
+            <div v-if="currentView === 'tasks' && selectedTask" class="task-app-title">
+                {{ selectedTask.name }}
+            </div>
+
+            <template #append>
+                <div v-if="currentView === 'tasks' && selectedTask" class="d-flex align-center ga-1 pr-2">
+                    <v-btn :icon="selectedTask.status === 'running' ? 'mdi-progress-clock' : 'mdi-play'" variant="text"
+                        size="small" :ripple="false" :aria-label="selectedTask.status === 'running' ? '运行中' : '运行任务'"
+                        :loading="triggering" :disabled="selectedTask.status === 'running'" @click="triggerNow" />
+                    <v-menu location="bottom end" :offset="4">
+                        <template #activator="{ props }">
+                            <v-btn v-bind="props" icon="mdi-dots-horizontal" variant="text" size="small"
+                                :ripple="false" />
+                        </template>
+                        <v-list rounded="lg" density="compact" width="136" class="py-1">
+                            <v-list-item title="编辑" density="compact" @click="handleOpenEdit">
+                                <template #prepend>
+                                    <v-icon size="16">mdi-pencil-outline</v-icon>
+                                </template>
+                            </v-list-item>
+                            <v-list-item title="复制" density="compact" @click="handleOpenDuplicate">
+                                <template #prepend>
+                                    <v-icon size="16">mdi-content-copy</v-icon>
+                                </template>
+                            </v-list-item>
+                            <v-list-item :title="selectedTask.status === 'disabled' ? '启用' : '禁用'"
+                                density="compact" @click="toggleTaskStatus">
+                                <template #prepend>
+                                    <v-icon size="16">
+                                        {{ selectedTask.status === 'disabled' ? 'mdi-play-circle-outline' :
+                                            'mdi-pause-circle-outline' }}
+                                    </v-icon>
+                                </template>
+                            </v-list-item>
+                            <v-divider />
+                            <v-list-item title="删除" base-color="error" density="compact" @click="deleteDialog = true">
+                                <template #prepend>
+                                    <v-icon size="16">mdi-delete-outline</v-icon>
+                                </template>
+                            </v-list-item>
+                        </v-list>
+                    </v-menu>
+                </div>
+            </template>
         </v-app-bar>
 
         <v-main class="task-main h-100 overflow-hidden min-height-0">
@@ -298,6 +342,19 @@
 
     .task-app-bar :deep(.v-toolbar__content) {
         position: relative;
+    }
+
+    .task-app-title {
+        position: absolute;
+        left: 50%;
+        max-width: min(42vw, 520px);
+        overflow: hidden;
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.25rem;
+        text-overflow: ellipsis;
+        transform: translateX(-50%);
+        white-space: nowrap;
     }
 
     .task-main {

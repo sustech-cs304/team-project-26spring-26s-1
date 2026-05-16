@@ -38,12 +38,14 @@
             <v-list nav density="compact" v-else-if="displayConversations.length > 0">
                 <v-list-item v-for="conv in displayConversations" :key="conv.conversation_id" :title="conv.title"
                     :to="`/c/${conv.conversation_id}`" rounded="lg" slim prepend-gap="6" :ripple="false"
-                    class="conv-item">
+                    class="conv-item" @contextmenu.prevent.stop="openConversationMenu(conv.conversation_id)">
                     <template #prepend>
                         <v-icon size="x-small" v-if="conv.is_pinned && !searchMode">mdi-pin</v-icon>
                     </template>
                     <template #append>
-                        <v-menu :close-on-content-click="true" location="end">
+                        <v-menu :model-value="conversationMenuId === conv.conversation_id"
+                            :close-on-content-click="true" location="end"
+                            @update:model-value="updateConversationMenu(conv.conversation_id, $event)">
                             <template #activator="{ props: menuProps }">
                                 <v-btn v-bind="menuProps" icon="mdi-dots-vertical" size="x-small" variant="text"
                                     :ripple="false" class="conv-menu-btn" @click.prevent.stop />
@@ -159,6 +161,7 @@
     const appStore = useAppStore()
     const drawer = ref(true)
     const loading = ref(false)
+    const conversationMenuId = ref<string | null>(null)
     const CONVERSATION_POLL_INTERVAL_MS = 5000
     let conversationPollTimer: ReturnType<typeof window.setInterval> | null = null
     let conversationsRequest: Promise<void> | null = null
@@ -365,6 +368,7 @@
     const renamingConv = ref<Conversation | null>(null)
 
     const handleRename = (conv: Conversation) => {
+        conversationMenuId.value = null
         renamingConv.value = conv
         renameValue.value = conv.title
         renameDialog.value = true
@@ -390,6 +394,7 @@
 
     // Pin
     const handleTogglePin = async (conv: Conversation) => {
+        conversationMenuId.value = null
         const newStatus = !conv.is_pinned
         // Optimistic update
         conv.is_pinned = newStatus
@@ -404,6 +409,7 @@
 
     // Delete
     const handleDelete = async (conv: Conversation) => {
+        conversationMenuId.value = null
         if (!confirm(`确定要删除对话 "${conv.title}" 吗？`)) return
 
         try {
@@ -442,6 +448,14 @@
     const newConversation = () => {
         router.push('/c/')
     }
+
+    function openConversationMenu (conversationId: string) {
+        conversationMenuId.value = conversationId
+    }
+
+    function updateConversationMenu (conversationId: string, opened: boolean) {
+        conversationMenuId.value = opened ? conversationId : null
+    }
 </script>
 
 <style scoped>
@@ -465,7 +479,9 @@
         opacity: 0;
     }
 
-    .conv-item:hover .conv-menu-btn {
+    .conv-item:hover .conv-menu-btn,
+    .conv-menu-btn:focus-visible,
+    .conv-menu-btn[aria-expanded="true"] {
         opacity: 1;
     }
 
