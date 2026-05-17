@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from agent.core.state import ResumePayload
 from agent.core.runnable_config import runnable_config_bool
+from agent.credentials_store import EnvVaultAccessError, read_credential_values
 from agent.config import (
     ConfigMissingError,
     get_config,
@@ -40,6 +42,7 @@ Provide JSON output like this:
 
 WORKSPACE_DIR = Path("./workspace")
 MAX_EXECUTION_OUTPUT_CHARS = 12000
+_ENV_VAR_CREDENTIAL_TYPE = "env_var"
 SUPPORTED_LANGUAGE_ALIASES = {
     "py": "python",
     "python": "python",
@@ -152,6 +155,13 @@ async def _settle_returncode(
     return process.returncode
 
 
+async def _build_execution_env() -> dict[str, str]:
+    global_vars = await read_credential_values(_ENV_VAR_CREDENTIAL_TYPE)
+    env = dict(os.environ)
+    env.update(global_vars)
+    return env
+
+
 async def _run_script(code: str, language: str, timeout_s: float) -> str:
     workspace_dir = WORKSPACE_DIR.resolve()
     workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -172,11 +182,17 @@ async def _run_script(code: str, language: str, timeout_s: float) -> str:
     stdout: bytes | None = None
     timed_out = False
     try:
+        try:
+            env = await _build_execution_env()
+        except EnvVaultAccessError as exc:
+            return _truncate_output(f"Unable to execute {language} code because the credential store is unavailable: {exc}")
+
         command = _build_command(language, str(script_path_obj))
         try:
             process = await asyncio.create_subprocess_exec(
                 *command,
                 cwd=str(workspace_dir),
+                env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
