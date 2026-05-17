@@ -30,7 +30,7 @@
 
 
 
-                <v-card class="pa-4" color="grey-darken-4" rounded="lg">
+                <v-card class="pa-4" rounded="lg">
 
 
 

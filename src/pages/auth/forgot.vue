@@ -8,7 +8,7 @@
           </v-avatar>
         </div>
 
-        <v-card class="pa-4" color="grey-darken-4" rounded="lg">
+        <v-card class="pa-4" rounded="lg">
           <div class="d-flex align-center justify-center mb-4 text-center">
             <v-icon icon="mdi-email-fast-outline" color="cyan-darken-2" size="24" class="mr-2" />
             <span class="text-body-1 font-weight-medium">Reset your password</span>

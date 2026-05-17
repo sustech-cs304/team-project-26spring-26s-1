@@ -49,7 +49,7 @@
 
                     <div v-if="currentTab === 'store'" class="store-filter-row">
                         <v-chip v-for="tag in categoryOptions" :key="tag.value ?? 'all'"
-                            :variant="activeTagId === tag.value ? 'tonal' : 'outlined'" size="small" rounded="lg"
+                            :variant="activeTagId === tag.value ? 'tonal' : 'text'" size="small" rounded="lg"
                             :ripple="false" @click="activeTagId = tag.value">
                             {{ tag.label }}
                         </v-chip>
@@ -77,13 +77,13 @@
                                         @click="openDetail(skill)">
                                         <template #top-right>
                                             <v-chip size="x-small" rounded="lg"
-                                                :variant="skill.install ? 'tonal' : 'outlined'">
+                                                variant="tonal">
                                                 {{ getInstallStatusText(skill.install) }}
                                             </v-chip>
                                         </template>
 
                                         <template #bottom-right>
-                                            <v-btn size="x-small" :variant="skill.install ? 'outlined' : 'tonal'"
+                                            <v-btn size="x-small" variant="tonal"
                                                 rounded="lg"
                                                 :prepend-icon="skill.install ? 'mdi-trash-can-outline' : 'mdi-download-outline'"
                                                 :loading="actionSkillId === skill.id && actionMode === getSkillActionMode(skill)"
@@ -120,7 +120,7 @@
                                         </template>
 
                                         <template #bottom-right>
-                                            <v-btn size="x-small" variant="outlined" rounded="lg"
+                                            <v-btn size="x-small" variant="tonal" rounded="lg"
                                                 prepend-icon="mdi-trash-can-outline"
                                                 :loading="actionSkillId === skill.id && actionMode === 'remove'"
                                                 @click.stop="removeSkill(skill)">
@@ -985,6 +985,10 @@
         font-weight: 600;
     }
 
+    .store-filter-row :deep(.v-chip--variant-text) {
+        background: rgba(var(--v-theme-on-surface), 0.035);
+    }
+
     .store-filter-row :deep(.v-chip--variant-tonal) {
         background: rgba(var(--v-theme-on-surface), 0.08);
         color: rgb(var(--v-theme-on-surface));
@@ -994,7 +998,7 @@
         border-radius: 10px !important;
         background: rgba(var(--v-theme-on-surface), 0.04);
         color: rgb(var(--v-theme-on-surface));
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border: 1px solid rgba(var(--v-border-color), 0.16);
     }
 
     :deep(.v-pagination .v-btn--active) {

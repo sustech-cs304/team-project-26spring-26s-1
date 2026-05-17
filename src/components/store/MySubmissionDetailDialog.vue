@@ -38,7 +38,7 @@
                     </v-sheet>
 
                     <div v-if="skill.tags.length" class="submission-tags">
-                        <v-chip v-for="tag in skill.tags" :key="tag.id" size="x-small" rounded="lg" variant="outlined">
+                        <v-chip v-for="tag in skill.tags" :key="tag.id" size="x-small" rounded="lg" variant="tonal">
                             {{ tag.name }}
                         </v-chip>
                     </div>
@@ -130,7 +130,7 @@
         overflow: hidden;
         max-height: min(86vh, 820px);
         flex-direction: column;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border: 1px solid rgba(var(--v-border-color), 0.16);
     }
 
     .submission-header {
@@ -139,7 +139,7 @@
         justify-content: space-between;
         gap: 12px;
         padding: 12px 14px;
-        border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-bottom: 1px solid rgba(var(--v-border-color), 0.14);
     }
 
     .submission-title {
@@ -185,6 +185,6 @@
 
     .submission-actions {
         padding: 8px 14px 12px;
-        border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-top: 1px solid rgba(var(--v-border-color), 0.14);
     }
 </style>

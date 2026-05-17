@@ -26,7 +26,7 @@
                                     class="px-2 text-none d-flex align-center justify-space-between">
                                     <span class="calendar-dialog-muted-text">Color</span>
                                     <v-sheet width="18" height="18" rounded="sm" border class="ms-2"
-                                        :style="{ backgroundColor: form.color }" />
+                                        :style="{ backgroundColor: form.color ?? visualDefaultColor }" />
                                 </v-btn>
                             </template>
 
@@ -89,11 +89,11 @@
 
 <script setup lang="ts">
     import type { CalEvent } from '@/types/calendar'
-    import { CALENDAR_COLOR_OPTIONS, normalizeCalendarColor } from '@/utils/calendarColors'
+    import { CALENDAR_COLOR_OPTIONS, normalizeCalendarColor, normalizeOptionalCalendarColor } from '@/utils/calendarColors'
 
     interface EventForm {
         title: string
-        color: string
+        color: string | null
         date: string
         startTime: string
         endTime: string
@@ -106,7 +106,7 @@
         modelValue: boolean
         event?: CalEvent | null
         defaultDate?: string
-        defaultColor?: string
+        defaultColor?: string | null
     }>()
 
     const emit = defineEmits<{
@@ -116,7 +116,7 @@
 
     const makeEmpty = (): EventForm => ({
         title: '',
-        color: normalizeCalendarColor(props.defaultColor, '#4ca8df'),
+        color: null,
         date: props.defaultDate ?? '',
         startTime: '12:00',
         endTime: '12:00',
@@ -128,6 +128,7 @@
     const form = ref<EventForm>(makeEmpty())
     const colorMenuOpen = ref(false)
     const calendarColorOptions = CALENDAR_COLOR_OPTIONS
+    const visualDefaultColor = computed(() => normalizeCalendarColor(props.defaultColor, '#4ca8df'))
 
     const parseTimeToMinutes = (time: string): number | null => {
         if (!time) return null
@@ -159,7 +160,7 @@
         if (props.event) {
             form.value = {
                 title: props.event.title,
-                color: normalizeCalendarColor(props.event.color, '#4ca8df'),
+                color: normalizeOptionalCalendarColor(props.event.color),
                 date: props.event.date,
                 startTime: props.event.startTime || '12:00',
                 endTime: props.event.endTime || props.event.startTime || '12:00',
@@ -173,7 +174,6 @@
             empty.endTime = empty.startTime
             form.value = { ...empty }
         }
-        form.value.color = normalizeCalendarColor(form.value.color)
         colorMenuOpen.value = false
     })
 

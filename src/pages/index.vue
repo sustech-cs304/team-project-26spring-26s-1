@@ -9,7 +9,7 @@
                                 <div class="d-flex align-center ga-2">
                                     <v-chip size="small" variant="tonal" color="primary">Home</v-chip>
                                     <v-chip size="small" variant="tonal">
-                                        {{ isDev ? '开发模式：手动进入引导' : onboardingCompleted ? '已完成首次引导' : '待完成首次引导' }}
+                                        {{ onboardingCompleted ? '已完成首次引导' : '待完成首次引导' }}
                                     </v-chip>
                                 </div>
                                 <div>
@@ -33,10 +33,14 @@
                         </div>
 
                         <div class="d-flex flex-wrap align-center ga-3 mt-6">
-                            <v-btn color="primary" size="small" rounded="lg" @click="openOnboarding">
-                                {{ onboardingCompleted ? '重新打开引导' : '开始使用' }}
+                            <v-btn v-if="!onboardingCompleted" color="primary" size="small" rounded="lg"
+                                @click="openOnboarding">
+                                开始使用
                             </v-btn>
-                            <v-btn variant="tonal" size="small" rounded="lg" to="/c">
+                            <v-btn v-else color="primary" size="small" rounded="lg" to="/c">
+                                前往聊天
+                            </v-btn>
+                            <v-btn v-if="!onboardingCompleted" variant="tonal" size="small" rounded="lg" to="/c">
                                 前往聊天
                             </v-btn>
                             <v-btn variant="text" size="small" rounded="lg" to="/settings">
@@ -80,15 +84,6 @@
                             </v-card>
                         </v-col>
                     </v-row>
-
-                    <v-card v-if="isDev" rounded="lg" variant="tonal" class="pa-4">
-                        <div class="d-flex flex-wrap align-center ga-3">
-                            <span class="text-caption text-medium-emphasis">开发调试：默认 BaseURL 使用云端</span>
-                            <v-switch v-model="defaultBaseURLIsCloud" hide-details density="compact"
-                                @update:model-value="onToggle" />
-                            <code class="text-caption">{{ currentBaseURL }}</code>
-                        </div>
-                    </v-card>
                 </div>
             </v-container>
         </v-sheet>
@@ -96,23 +91,10 @@
 </template>
 
 <script setup lang="ts">
-    import { ref } from 'vue'
-    import { baseURL, getDefaultBaseURLIsCloud, setDefaultBaseURLIsCloud } from '@/utils/http'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
 
     const router = useRouter()
     const { onboardingCompleted } = useOnboardingConfig()
-
-    // TODO: 上线前移除开发模式相关代码
-    // const isDev = import.meta.env.DEV
-    const isDev = true
-    const defaultBaseURLIsCloud = ref(getDefaultBaseURLIsCloud())
-    const currentBaseURL = ref(baseURL)
-
-    function onToggle (value: boolean | null) {
-        setDefaultBaseURLIsCloud(Boolean(value))
-        currentBaseURL.value = baseURL
-    }
 
     function openOnboarding () {
         router.push('/onboarding')

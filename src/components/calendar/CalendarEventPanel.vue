@@ -30,7 +30,7 @@
                     </div>
                     <div class="event-item-subtitle">{{ eventDateLabel(ev.date) }}</div>
                 </div>
-                <template #append>
+                <template v-if="canManageEvent(ev)" #append>
                     <div class="event-item-actions d-flex align-center ga-0">
                         <v-btn icon size="x-small" variant="text" style="width: 22px; height: 22px; min-width: 22px;"
                             @click.stop="$emit('edit', ev)">
@@ -75,6 +75,7 @@
     }>()
 
     const sourceColor = (source: CalEvent['source']) => normalizeCalendarColor(props.sourceColorMap?.[source], '#4ca8df')
+    const canManageEvent = (event: CalEvent) => ['user', 'agent'].includes(`${event.source}`)
     const panelClass = computed(() => (
         props.embedded
             ? 'flex-grow-1 min-height-0'

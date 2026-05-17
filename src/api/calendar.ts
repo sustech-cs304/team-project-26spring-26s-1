@@ -13,10 +13,10 @@ const toHHMM = (date: Date): string => {
     return `${hh}:${mm}`
 }
 
-const toApiColor = (event: Pick<CalEvent, 'color' | 'source'>): string => {
+const toApiColor = (event: Pick<CalEvent, 'color'>): string | null => {
     const raw = `${event.color ?? ''}`.trim()
     if (raw) return raw
-    return '#2563eb'
+    return null
 }
 
 const toCreatePayload = (event: Omit<CalEvent, 'id'>): CalendarEventCreateItem => {
@@ -55,8 +55,8 @@ const toModifyPayload = (id: number, data: Partial<CalEvent>): CalendarEventModi
         payload.end_time = toUnixSecondsByDateKey(endDateKey, end)
     }
 
-    if (data.color !== undefined || data.source !== undefined) {
-        payload.color = toApiColor({ color: data.color, source: data.source ?? 'life' })
+    if (data.color !== undefined) {
+        payload.color = toApiColor({ color: data.color })
     }
 
     return payload
@@ -79,7 +79,7 @@ const fromApiItem = (item: CalendarEventApiItem): CalEvent => {
         sourceId: sourceMeta?.id,
         sourceVisible: sourceMeta?.is_visible,
         informType: item.inform_type,
-        color: `${item.color ?? ''}`.trim() || '#2563eb',
+        color: `${item.color ?? ''}`.trim() || null,
         time: startTime,
         startTime,
         endTime,

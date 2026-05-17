@@ -135,7 +135,7 @@
 <style scoped>
     .upload-skill-dialog {
         overflow: hidden;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border: 1px solid rgba(var(--v-border-color), 0.16);
     }
 
     .upload-skill-header {
@@ -144,7 +144,7 @@
         justify-content: space-between;
         gap: 12px;
         padding: 12px 14px;
-        border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-bottom: 1px solid rgba(var(--v-border-color), 0.14);
     }
 
     .upload-skill-body {
@@ -168,6 +168,6 @@
 
     .upload-skill-actions {
         padding: 8px 14px 12px;
-        border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-top: 1px solid rgba(var(--v-border-color), 0.14);
     }
 </style>

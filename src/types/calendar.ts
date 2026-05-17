@@ -10,7 +10,7 @@ export interface CalEvent {
     /** Backend field mirror */
     informType?: CalendarInformType
     /** Backend field mirror */
-    color?: string
+    color?: string | null
     /** HH:MM or HH:MM - HH:MM */
     time: string
     /** HH:MM */
@@ -41,12 +41,12 @@ export interface CalendarSourceItem {
     id: number
     title: string
     is_visible: boolean
-    color: string
+    color: string | null
 }
 
 export interface CalendarSourceUpdate {
     is_visible?: boolean
-    color?: string
+    color?: string | null
 }
 
 export interface CalendarEventQuery {
@@ -79,7 +79,7 @@ export interface CalendarEventCreateItem {
     start_time: number
     end_time: number
     inform_type: CalendarInformType
-    color: string
+    color: string | null
 }
 
 export interface CalendarEventModifyItem extends Partial<CalendarEventCreateItem> {
@@ -92,7 +92,7 @@ export interface CalendarEventApiItem {
     start_time: number
     end_time: number
     source: string | CalendarSourceItem
-    color: string
+    color: string | null
     location: string
     link: string
     description: string

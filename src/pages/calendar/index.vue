@@ -29,7 +29,7 @@
                         <v-sheet class="calendar-section-label mb-2">Source</v-sheet>
                         <v-sheet class="d-flex flex-column ga-2">
                             <v-chip v-for="src in sourceOptions" :key="src.value" class="source-chip" size="small" label
-                                :variant="activeSource === src.value ? 'flat' : 'outlined'"
+                                :variant="activeSource === src.value ? 'flat' : 'tonal'"
                                 :style="sourceChipStyle(src.value)" @click="toggleSourceSelection(src.value)">
                                 <v-sheet color="transparent" class="d-flex align-center w-100 ga-2">
                                     <v-sheet class="flex-shrink-0" width="4" rounded="pill"
@@ -40,11 +40,11 @@
                                         :aria-label="sourceHighlighted(src.value) ? 'Hide highlight' : 'Show highlight'"
                                         @click.stop="toggleSourceHighlight(src.value)">
                                         <v-icon size="14">{{ sourceHighlighted(src.value) ? 'mdi-eye' : 'mdi-eye-off'
-                                        }}</v-icon>
+                                            }}</v-icon>
                                     </v-btn>
                                     <v-btn icon size="x-small" variant="text" class="source-action-btn"
-                                        style="margin-right: -4px;"
-                                        aria-label="Edit source color" @click.stop="openSourceColorDialog(src.value)">
+                                        style="margin-right: -4px;" aria-label="Edit source color"
+                                        @click.stop="openSourceColorDialog(src.value)">
                                         <v-icon size="14">mdi-palette</v-icon>
                                     </v-btn>
                                 </v-sheet>
@@ -55,10 +55,12 @@
 
                 <CalendarEventPanel embedded :show-header="false" :events="panelEvents"
                     :selected-event-id="selectedEventId" :source-color-map="resolvedSourceColorMap"
-                    @select="onEventClick" @edit="onEventClick" @delete="deleteEvent" @contextmenu="openEventContextMenu" />
+                    @select="onEventClick" @edit="onEventClick" @delete="deleteEvent"
+                    @contextmenu="openEventContextMenu" />
             </v-sheet>
 
-            <v-sheet class="calendar-center-panel flex-grow-1 d-flex flex-column min-width-0 min-height-0 overflow-hidden">
+            <v-sheet
+                class="calendar-center-panel flex-grow-1 d-flex flex-column min-width-0 min-height-0 overflow-hidden">
                 <v-sheet class="calendar-toolbar px-4 py-2 border-b d-flex align-center justify-end flex-shrink-0">
                     <v-sheet color="transparent" class="calendar-toolbar-actions d-flex align-center ga-2">
                         <v-btn icon size="small" variant="text" @click="goToday">
@@ -71,19 +73,20 @@
                         </v-btn>
                         <v-btn icon size="small" variant="text" @click="searchRailCollapsed = !searchRailCollapsed">
                             <v-icon size="14">{{ searchRailCollapsed ? 'mdi-dock-right' : 'mdi-dock-window' }}</v-icon>
-                            <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show right panel' :
+                            <v-tooltip activator="parent" location="bottom">{{ searchRailCollapsed ? 'Show right panel'
+                                :
                                 'Hide right panel' }}</v-tooltip>
                         </v-btn>
                     </v-sheet>
                 </v-sheet>
 
-                <section class="calendar-grid-shell flex-grow-1 d-flex flex-column min-width-0 min-height-0 border-s border-e border-b"
+                <section
+                    class="calendar-grid-shell flex-grow-1 d-flex flex-column min-width-0 min-height-0 border-b"
                     style="overflow: hidden; position: relative;" @wheel.prevent="onCalendarWheel">
-                    <CalendarGrid :cells="cells" :events="displayEvents"
-                        :selected-cell="selectedCell" :source-color-map="resolvedSourceColorMap"
-                        :selected-event-id="selectedEventId"
-                        @cell-click="onCellClick" @event-click="onEventClick"
-                        @event-context-menu="openEventContextMenu" @event-drop="moveEventToDate" />
+                    <CalendarGrid :cells="cells" :events="displayEvents" :selected-cell="selectedCell"
+                        :source-color-map="resolvedSourceColorMap" :selected-event-id="selectedEventId"
+                        @cell-click="onCellClick" @event-click="onEventClick" @event-context-menu="openEventContextMenu"
+                        @event-drop="moveEventToDate" />
                 </section>
             </v-sheet>
 
@@ -118,8 +121,8 @@
                                 <v-sheet class="calendar-detail-property-content">
                                     <span class="calendar-detail-label">Date</span>
                                     <v-text-field v-model="eventDetailForm.date" class="calendar-detail-field"
-                                        density="compact" variant="outlined" rounded="lg" type="date"
-                                        hide-details @blur="saveSelectedEventDetail" />
+                                        density="compact" variant="outlined" rounded="lg" type="date" hide-details
+                                        @blur="saveSelectedEventDetail" />
                                 </v-sheet>
                             </v-sheet>
 
@@ -164,7 +167,8 @@
                             </v-sheet>
 
                             <v-sheet class="calendar-detail-property align-start">
-                                <v-icon class="calendar-detail-property-icon mt-2" size="13">mdi-text-box-outline</v-icon>
+                                <v-icon class="calendar-detail-property-icon mt-2"
+                                    size="13">mdi-text-box-outline</v-icon>
                                 <v-sheet class="calendar-detail-property-content">
                                     <span class="calendar-detail-label">Description</span>
                                     <v-textarea v-model="eventDetailForm.description" class="calendar-detail-field"
@@ -189,7 +193,8 @@
                                 <v-icon class="calendar-detail-property-icon" size="13">mdi-map-marker-outline</v-icon>
                                 <v-sheet class="calendar-detail-property-content">
                                     <span class="calendar-detail-label">Location</span>
-                                    <strong class="calendar-detail-value">{{ selectedEventDetail.location || '-' }}</strong>
+                                    <strong class="calendar-detail-value">{{ selectedEventDetail.location || '-'
+                                        }}</strong>
                                 </v-sheet>
                             </v-sheet>
                             <v-sheet class="calendar-detail-property">
@@ -204,10 +209,12 @@
                                 </v-sheet>
                             </v-sheet>
                             <v-sheet class="calendar-detail-property align-start">
-                                <v-icon class="calendar-detail-property-icon mt-1" size="13">mdi-text-box-outline</v-icon>
+                                <v-icon class="calendar-detail-property-icon mt-1"
+                                    size="13">mdi-text-box-outline</v-icon>
                                 <v-sheet class="calendar-detail-property-content">
                                     <span class="calendar-detail-label">Description</span>
-                                    <strong class="calendar-detail-value">{{ selectedEventDetail.description || '-' }}</strong>
+                                    <strong class="calendar-detail-value">{{ selectedEventDetail.description || '-'
+                                        }}</strong>
                                 </v-sheet>
                             </v-sheet>
                         </template>
@@ -232,6 +239,18 @@
 
                                 <v-card rounded="lg" class="calendar-color-menu pa-2" min-width="178">
                                     <v-list density="compact" bg-color="transparent" class="pa-0">
+                                        <v-list-item rounded="lg" slim class="calendar-color-list-item"
+                                            :disabled="eventColorSaving" @click="setSelectedEventColor(null)">
+                                            <template #prepend>
+                                                <v-sheet width="14" height="14" rounded="sm"
+                                                    :style="{ background: selectedEventDetail ? sourceColorHex(selectedEventDetail.source) : '#4ca8df' }" />
+                                            </template>
+                                            <v-list-item-title class="text-caption">Source color</v-list-item-title>
+                                            <template v-if="!selectedEventOwnColor" #append>
+                                                <v-icon size="14">mdi-check</v-icon>
+                                            </template>
+                                        </v-list-item>
+                                        <v-divider class="my-1" />
                                         <v-list-item v-for="option in calendarColorOptions" :key="`event-${option.hex}`"
                                             rounded="lg" slim class="calendar-color-list-item"
                                             :disabled="eventColorSaving" @click="setSelectedEventColor(option.hex)">
@@ -239,8 +258,9 @@
                                                 <v-sheet width="14" height="14" rounded="sm"
                                                     :style="{ background: option.hex }" />
                                             </template>
-                                            <v-list-item-title class="text-caption">{{ option.label }}</v-list-item-title>
-                                            <template v-if="selectedEventColor === option.hex" #append>
+                                            <v-list-item-title class="text-caption">{{ option.label
+                                                }}</v-list-item-title>
+                                            <template v-if="selectedEventOwnColor === option.hex" #append>
                                                 <v-icon size="14">mdi-check</v-icon>
                                             </template>
                                         </v-list-item>
@@ -267,10 +287,10 @@
 
                 <template v-else>
                     <v-sheet class="pa-3 d-flex flex-column ga-2">
-                        <v-text-field v-model="searchForm.keyword"
-                            class="calendar-detail-field calendar-search-field" density="compact" variant="outlined"
-                            rounded="lg" hide-details clearable placeholder="Search events"
-                            prepend-inner-icon="mdi-magnify" :loading="searchLoading" @click:clear="clearSearch" />
+                        <v-text-field v-model="searchForm.keyword" class="calendar-detail-field calendar-search-field"
+                            density="compact" variant="outlined" rounded="lg" hide-details clearable
+                            placeholder="Search events" prepend-inner-icon="mdi-magnify" :loading="searchLoading"
+                            @click:clear="clearSearch" />
                     </v-sheet>
 
                     <v-sheet class="px-3 py-2 d-flex flex-column ga-1 min-height-0">
@@ -284,8 +304,7 @@
                         <v-list v-if="searchResultEvents.length > 0" density="compact" class="search-result-list mt-1">
                             <v-list-item v-for="ev in searchResultEvents" :key="`search-${ev.id}`"
                                 :active="selectedEventId === ev.id" rounded="lg" slim :ripple="false"
-                                class="calendar-search-item mb-1 px-2 py-0"
-                                @click="onEventClick(ev)">
+                                class="calendar-search-item mb-1 px-2 py-0" @click="onEventClick(ev)">
                                 <template #prepend>
                                     <v-sheet width="4" rounded="pill" class="calendar-search-item-strip mr-2"
                                         :style="{ background: sourceColorHex(ev.source) }" />
@@ -295,7 +314,7 @@
                                         ev.title }}</v-sheet>
                                     <v-sheet color="transparent" class="calendar-search-item-subtitle">{{
                                         ev.date }} {{
-                                        getEventDisplayTime(ev) }}</v-sheet>
+                                            getEventDisplayTime(ev) }}</v-sheet>
                                 </v-sheet>
                             </v-list-item>
                         </v-list>
@@ -355,7 +374,7 @@
         toDateKey,
         toUnixSecondsByDateKey,
     } from '@/utils/calendar'
-    import { CALENDAR_COLOR_OPTIONS, getCalendarColorLabel, normalizeCalendarColor } from '@/utils/calendarColors'
+    import { CALENDAR_COLOR_OPTIONS, getCalendarColorLabel, normalizeCalendarColor, normalizeOptionalCalendarColor } from '@/utils/calendarColors'
     const ALL_EVENTS_START_TIME = 0
     const ALL_EVENTS_END_TIME = 4102444799
     const CALENDAR_PAGE_STORAGE_KEY = 'calendar:index:state:v1'
@@ -423,8 +442,7 @@
         '--calendar-source-action-color': theme.current.value.dark ? '#a8a8a8' : '#5f5f5f',
         '--calendar-text-color': theme.current.value.dark ? '#f2f2f2' : '#1f1f1f',
         '--calendar-muted-text-color': theme.current.value.dark ? '#b8b8b8' : '#5f5f5f',
-        '--calendar-subtle-text-color': theme.current.value.dark ? '#8a8a8a' : '#8a8a8a',
-        '--calendar-panel-bg': theme.current.value.dark ? 'rgba(var(--v-theme-on-surface), 0.018)' : '#ffffff',
+        '--calendar-panel-bg': theme.current.value.dark ? '#121212' : '#ffffff',
     }))
 
     const events = ref<CalEvent[]>([])
@@ -551,8 +569,6 @@
         })
         return out
     })
-
-    const createEventDefaultColor = computed(() => sourceColorHex('user'))
 
     const showColorNotice = (message: string) => {
         colorNotice.value = message
@@ -963,26 +979,32 @@
     const panelEvents = computed(() => selectedDayEvents.value)
 
     const isDraftEvent = (event: CalEvent | null | undefined) => !!event && event.id < 0
+    const isManageableEvent = (event: CalEvent | null | undefined) => {
+        return !!event && ['user', 'agent'].includes(`${event.source}`)
+    }
 
     const selectedEventDetail = computed(() => {
         if (!selectedEventId.value) return null
         return (
             draftEvent.value?.id === selectedEventId.value ? draftEvent.value : null
         ) ?? (
-            events.value.find(ev => ev.id === selectedEventId.value)
-            ?? sourceScopedEvents.value.find(ev => ev.id === selectedEventId.value)
-            ?? searchResults.value.find(ev => ev.id === selectedEventId.value)
-            ?? null
-        )
+                events.value.find(ev => ev.id === selectedEventId.value)
+                ?? sourceScopedEvents.value.find(ev => ev.id === selectedEventId.value)
+                ?? searchResults.value.find(ev => ev.id === selectedEventId.value)
+                ?? null
+            )
     })
 
     const selectedEventIsDraft = computed(() => isDraftEvent(selectedEventDetail.value))
-    const selectedEventEditable = computed(() => selectedEventDetail.value?.source === 'user')
+    const selectedEventEditable = computed(() => isManageableEvent(selectedEventDetail.value))
+    const selectedEventOwnColor = computed(() => normalizeOptionalCalendarColor(selectedEventDetail.value?.color))
     const selectedEventColor = computed(() => {
         const event = selectedEventDetail.value
-        return normalizeCalendarColor(event?.color, event ? sourceColorHex(event.source) : '#4ca8df')
+        return selectedEventOwnColor.value ?? (event ? sourceColorHex(event.source) : '#4ca8df')
     })
-    const selectedEventColorLabel = computed(() => getCalendarColorLabel(selectedEventColor.value))
+    const selectedEventColorLabel = computed(() => (
+        selectedEventOwnColor.value ? getCalendarColorLabel(selectedEventOwnColor.value) : 'Source'
+    ))
 
     const normalizeTimeInputValue = (value: unknown) => `${value ?? ''}`
 
@@ -1049,13 +1071,13 @@
         items.map(item => item.id === eventId ? { ...item, ...patch } : item)
     )
 
-    const setSelectedEventColor = async (color: string) => {
+    const setSelectedEventColor = async (color: string | null) => {
         const event = selectedEventDetail.value
         if (!event || !selectedEventEditable.value || eventColorSaving.value) return
 
-        const nextHex = normalizeCalendarColor(color, sourceColorHex(event.source))
+        const nextHex = color ? normalizeCalendarColor(color, sourceColorHex(event.source)) : null
         eventColorMenuOpen.value = false
-        if (selectedEventColor.value === nextHex) return
+        if (normalizeOptionalCalendarColor(event.color) === nextHex) return
 
         if (isDraftEvent(event)) {
             draftEvent.value = { ...event, color: nextHex }
@@ -1109,8 +1131,6 @@
             location: payload.location,
             description: payload.description,
             link: payload.link,
-            color: normalizeCalendarColor(event.color, sourceColorHex(event.source)),
-            source: event.source,
             informType: event.informType,
         }
 
@@ -1135,7 +1155,7 @@
             const createPayload: Omit<CalEvent, 'id'> = {
                 title: payload.title,
                 source: 'user',
-                color: normalizeCalendarColor(event.color, createEventDefaultColor.value),
+                color: normalizeOptionalCalendarColor(event.color),
                 date: payload.date,
                 time: payload.startTime,
                 startTime: payload.startTime,
@@ -1271,7 +1291,7 @@
         id: draftEventSequence--,
         title: '',
         source: 'user',
-        color: createEventDefaultColor.value,
+        color: null,
         time: '12:00',
         startTime: '12:00',
         endTime: '12:00',
@@ -1341,14 +1361,14 @@
                 '--strip-accent': color,
                 background: 'transparent',
                 color: 'var(--calendar-text-color)',
-                borderColor: selected ? color : 'rgb(var(--v-border-color))',
+                borderColor: selected ? color : 'rgba(var(--v-border-color), 0.24)',
                 boxShadow: selected ? `inset 0 0 0 1px ${color}` : 'none'
             }
             : {
                 '--strip-accent': color,
                 background: 'transparent',
                 color: 'var(--calendar-muted-text-color)',
-                borderColor: selected ? color : 'rgb(var(--v-border-color))',
+                borderColor: selected ? color : 'rgba(var(--v-border-color), 0.18)',
                 boxShadow: selected ? `inset 0 0 0 1px ${color}` : 'none'
             }
     }
@@ -1437,6 +1457,8 @@
     }
 
     const deleteEvent = async (ev: CalEvent) => {
+        if (!isManageableEvent(ev)) return
+
         if (isDraftEvent(ev)) {
             draftEvent.value = null
             if (selectedEventId.value === ev.id) selectedEventId.value = null
@@ -1514,19 +1536,10 @@
         --calendar-source-action-color: #5f5f5f;
         --calendar-text-color: #1f1f1f;
         --calendar-muted-text-color: #5f5f5f;
-        --calendar-subtle-text-color: #8a8a8a;
         --calendar-panel-bg: #ffffff;
 
         background: rgb(var(--v-theme-surface));
         color: var(--calendar-text-color);
-    }
-
-    .calendar-workspace :deep(.text-medium-emphasis) {
-        color: var(--calendar-muted-text-color) !important;
-    }
-
-    .calendar-workspace :deep(.text-disabled) {
-        color: var(--calendar-subtle-text-color) !important;
     }
 
     .calendar-center-panel {
@@ -1564,6 +1577,7 @@
         position: relative;
         font-weight: 500;
         border-radius: 8px;
+        border: 1px solid rgba(var(--v-border-color), 0.18) !important;
         padding-left: 8px;
     }
 
@@ -1881,7 +1895,7 @@
     }
 
     .mini-day-btn {
-        border: 1px solid rgb(var(--v-border-color));
+        border: 1px solid rgba(var(--v-border-color), 0.26);
         border-radius: 6px;
         background: transparent;
         color: var(--calendar-text-color);
@@ -1897,12 +1911,12 @@
     }
 
     .mini-day-btn.today {
-        border-color: rgb(var(--v-theme-primary));
+        border-color: rgba(var(--v-theme-primary), 0.7);
     }
 
     .mini-day-btn.active {
         background: var(--calendar-selected-date-bg);
-        border-color: rgb(var(--v-theme-primary));
+        border-color: rgba(var(--v-theme-primary), 0.72);
         color: var(--calendar-text-color);
     }
 </style>

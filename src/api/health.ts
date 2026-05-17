@@ -10,44 +10,25 @@ function withTimeout (timeoutMs: number) {
     }
 }
 
-function buildHealthURLs () {
-    const apiHealthURL = `${baseURL}/health`
+export async function checkBackendHealth (): Promise<boolean> {
+    const healthURL = `${baseURL}/health`
+
+    const request = withTimeout(500)
 
     try {
-        const rootHealthURL = new URL(baseURL)
-        rootHealthURL.pathname = '/health'
-        rootHealthURL.search = ''
-        rootHealthURL.hash = ''
+        const response = await fetch(healthURL, {
+            method: 'GET',
+            cache: 'no-store',
+            credentials: 'include',
+            headers: {
+                Accept: 'application/json',
+            },
+            signal: request.signal,
+        })
 
-        return Array.from(new Set([apiHealthURL, rootHealthURL.toString()]))
-    } catch {
-        return [apiHealthURL]
-    }
-}
-
-export async function checkBackendHealth (): Promise<boolean> {
-    const healthURLs = buildHealthURLs()
-
-    for (const url of healthURLs) {
-        const request = withTimeout(2500)
-
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                cache: 'no-store',
-                credentials: 'include',
-                headers: {
-                    Accept: 'application/json',
-                },
-                signal: request.signal,
-            })
-
-            if (response.ok) return true
-        } catch {
-            // Try the next known health endpoint candidate.
-        } finally {
-            request.cleanup()
-        }
+        if (response.ok) return true
+    } finally {
+        request.cleanup()
     }
 
     return false

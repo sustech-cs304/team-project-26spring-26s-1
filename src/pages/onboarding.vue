@@ -1,27 +1,27 @@
 ﻿<template>
     <v-container fluid class="d-flex flex-column h-100 pa-0 onboarding-shell" @click="handleScreenClick">
-        <v-sheet color="transparent" class="flex-grow-1 overflow-y-auto">
-            <v-container max-width="860" class="px-6 py-6">
-                <div class="d-flex flex-column ga-4">
-                    <v-sheet rounded="lg" color="surface" elevation="1" class="pa-6">
+        <v-sheet color="transparent" class="flex-grow-1 overflow-hidden min-height-0">
+            <v-container max-width="860" class="px-6 py-3 h-100">
+                <div class="d-flex flex-column ga-2 h-100 min-height-0">
+                    <v-sheet rounded="lg" color="surface" elevation="1" class="pa-3">
                         <div>
                             <div>
-                                <div class="d-flex align-center ga-2 mb-3">
-                                    <v-chip size="small" variant="tonal" color="primary">Onboarding</v-chip>
-                                    <v-chip size="small" variant="tonal">{{ currentStep + 1 }}/{{ steps.length
-                                        }}</v-chip>
+                                <div class="d-flex align-center ga-2 mb-2">
+                                    <v-chip size="x-small" variant="tonal" color="primary">Onboarding</v-chip>
+                                    <v-chip size="x-small" variant="tonal">{{ currentStep + 1 }}/{{ steps.length
+                                    }}</v-chip>
                                 </div>
-                                <div class="text-h5 font-weight-bold mb-2" style="line-height:1.2;">
+                                <div class="text-subtitle-1 font-weight-bold mb-1">
                                     {{ currentMeta.title }}
                                 </div>
-                                <div class="text-body-2 text-medium-emphasis" style="max-width:560px;line-height:1.7;">
+                                <div class="text-caption text-medium-emphasis" style="max-width:560px;">
                                     {{ currentMeta.description }}
                                 </div>
                             </div>
                         </div>
 
-                        <div class="d-flex flex-wrap ga-2 mt-5">
-                            <v-chip v-for="(step, index) in steps" :key="step.key" size="small"
+                        <div class="d-flex flex-wrap ga-2 mt-2">
+                            <v-chip v-for="(step, index) in steps" :key="step.key" size="x-small"
                                 :color="index === currentStep ? 'primary' : undefined"
                                 :variant="index === currentStep ? 'flat' : 'tonal'">
                                 {{ index + 1 }}. {{ step.shortLabel }}
@@ -29,11 +29,13 @@
                         </div>
                     </v-sheet>
 
-                    <v-window v-model="currentStep" class="flex-grow-1" :touch="false">
-                        <v-window-item v-for="(step, index) in steps" :key="step.key" :value="index">
-                            <v-card rounded="lg" color="surface" elevation="1" class="pa-6">
+                    <v-window v-model="currentStep" class="flex-grow-1 min-height-0 onboarding-step-window"
+                        :touch="false">
+                        <v-window-item v-for="(step, index) in steps" :key="step.key" :value="index"
+                            class="h-100 min-height-0">
+                            <v-card rounded="lg" color="surface" elevation="1" class="pa-3 h-100 overflow-y-auto">
                                 <template v-if="step.key === 'welcome'">
-                                    <div class="d-flex flex-column ga-4">
+                                    <div class="d-flex flex-column ga-3">
                                         <div class="text-subtitle-1 font-weight-bold">欢迎使用 OpenCrab</div>
                                         <v-row density="comfortable">
                                             <v-col cols="12" md="4">
@@ -68,9 +70,9 @@
                                             <div class="text-caption text-medium-emphasis">例如：我是南科大计科大二学生，最近在补操作系统和算法。
                                             </div>
                                         </div>
-                                        <v-textarea v-model="userProfile.oneLineProfile" variant="outlined"
-                                            density="compact" rounded="lg" rows="4" counter="120" maxlength="120"
-                                            placeholder="输入一句能让 agent 快速了解你的描述" />
+                                        <v-textarea v-model="userProfile.oneLineProfile" variant="solo-filled" flat
+                                            density="compact" rounded="lg" rows="3" counter="120" maxlength="120"
+                                            placeholder="输入一句能让 agent 快速了解你的描述" hide-details="auto" />
                                         <div v-if="userProfile.oneLineProfile.trim().length === 0"
                                             class="text-caption text-medium-emphasis">
                                             这一项是必填的，后续 agent 会参考这里的描述理解你的背景。
@@ -79,40 +81,40 @@
                                 </template>
 
                                 <template v-else-if="step.key === 'identity'">
-                                    <div class="d-flex flex-column ga-5">
+                                    <div class="d-flex flex-column ga-3">
                                         <div>
                                             <div class="text-subtitle-1 font-weight-bold mb-2">学校、年龄层与专业</div>
                                         </div>
-                                        <v-row density="comfortable">
+                                        <v-row density="compact">
                                             <v-col cols="12" md="4">
-                                                <div class="text-caption text-medium-emphasis mb-2">身份</div>
+                                                <div class="text-caption text-medium-emphasis mb-1">身份</div>
                                                 <v-select v-model="userProfile.identity" density="compact"
-                                                    variant="outlined" rounded="lg" :items="identityOptions"
+                                                    variant="solo-filled" flat rounded="lg" :items="identityOptions"
                                                     item-title="label" item-value="value" hide-details />
                                             </v-col>
                                             <v-col cols="12" md="4">
-                                                <div class="text-caption text-medium-emphasis mb-2">学校</div>
+                                                <div class="text-caption text-medium-emphasis mb-1">学校</div>
                                                 <v-select v-model="userProfile.school" density="compact"
-                                                    variant="outlined" rounded="lg" :items="schoolOptions"
+                                                    variant="solo-filled" flat rounded="lg" :items="schoolOptions"
                                                     item-title="label" item-value="value" hide-details />
                                             </v-col>
                                             <v-col cols="12" md="4">
-                                                <div class="text-caption text-medium-emphasis mb-2">年龄层</div>
+                                                <div class="text-caption text-medium-emphasis mb-1">年龄层</div>
                                                 <v-select v-model="userProfile.ageBand" density="compact"
-                                                    variant="outlined" rounded="lg" :items="ageBandOptions"
+                                                    variant="solo-filled" flat rounded="lg" :items="ageBandOptions"
                                                     item-title="label" item-value="value" hide-details />
                                             </v-col>
                                         </v-row>
                                         <div>
-                                            <div class="text-caption text-medium-emphasis mb-2">专业</div>
-                                            <v-select v-model="userProfile.major" density="compact" variant="outlined"
-                                                rounded="lg" :items="majorOptions" item-title="label" item-value="value"
-                                                hide-details />
+                                            <div class="text-caption text-medium-emphasis mb-1">专业</div>
+                                            <v-select v-model="userProfile.major" density="compact"
+                                                variant="solo-filled" flat rounded="lg" :items="majorOptions"
+                                                item-title="label" item-value="value" hide-details />
                                         </div>
                                     </div>
                                 </template>
                                 <template v-else-if="step.key === 'campus'">
-                                    <div class="d-flex flex-column ga-4">
+                                    <div class="d-flex flex-column ga-3">
                                         <div>
                                             <div>
                                                 <div class="text-subtitle-1 font-weight-bold mb-2">SUSTech 教务配置</div>
@@ -120,17 +122,17 @@
                                             </div>
                                         </div>
 
-                                        <v-row density="comfortable">
+                                        <v-row density="compact">
                                             <v-col cols="12" md="6">
-                                                <div class="text-caption text-medium-emphasis mb-2">学号</div>
+                                                <div class="text-caption text-medium-emphasis mb-1">学号</div>
                                                 <v-text-field v-model="campusAuth.studentId" density="compact"
-                                                    variant="outlined" rounded="lg" placeholder="例如 12110001"
+                                                    variant="solo-filled" flat rounded="lg" placeholder="例如 12110001"
                                                     hide-details />
                                             </v-col>
                                             <v-col cols="12" md="6">
-                                                <div class="text-caption text-medium-emphasis mb-2">密码</div>
+                                                <div class="text-caption text-medium-emphasis mb-1">密码</div>
                                                 <v-text-field v-model="campusAuth.password" density="compact"
-                                                    variant="outlined" rounded="lg"
+                                                    variant="solo-filled" flat rounded="lg"
                                                     :type="showCampusPassword ? 'text' : 'password'" hide-details>
                                                     <template #append-inner>
                                                         <v-btn size="x-small" variant="text" icon
@@ -146,39 +148,249 @@
                                 </template>
 
                                 <template v-else-if="step.key === 'model'">
-                                    <div class="d-flex flex-column ga-4">
-                                        <div>
-                                            <div class="text-subtitle-1 font-weight-bold mb-2">模型配置</div>
-                                            <div class="text-caption text-medium-emphasis">可跳过，后续可在设置页继续配置。</div>
+                                    <div class="d-flex flex-column ga-2">
+                                        <div class="d-flex align-center justify-space-between ga-3">
+                                            <div class="text-subtitle-1 font-weight-bold">模型连接</div>
+                                            <v-btn size="x-small" variant="tonal" rounded="lg"
+                                                :prepend-icon="showSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                                @click="showSecrets = !showSecrets">
+                                                {{ showSecrets ? '隐藏密钥' : '显示密钥' }}
+                                            </v-btn>
                                         </div>
-                                        <v-row density="comfortable">
-                                            <v-col cols="12">
-                                                <div class="text-caption text-medium-emphasis mb-2">Base URL</div>
-                                                <v-text-field v-model="modelEndpoint.baseUrl" density="compact"
-                                                    variant="outlined" rounded="lg"
-                                                    placeholder="https://api.openai.com/v1" hide-details />
-                                            </v-col>
-                                            <v-col cols="12" md="6">
-                                                <div class="text-caption text-medium-emphasis mb-2">API Key</div>
-                                                <v-text-field v-model="modelEndpoint.apiKey" density="compact"
-                                                    variant="outlined" rounded="lg"
-                                                    :type="showApiKey ? 'text' : 'password'" hide-details>
-                                                    <template #append-inner>
-                                                        <v-btn size="x-small" variant="text" icon
-                                                            @click="showApiKey = !showApiKey">
-                                                            <v-icon size="16">{{ showApiKey ? 'mdi-eye-off' : 'mdi-eye'
-                                                                }}</v-icon>
-                                                        </v-btn>
-                                                    </template>
-                                                </v-text-field>
-                                            </v-col>
-                                            <v-col cols="12" md="6">
-                                                <div class="text-caption text-medium-emphasis mb-2">Model Name</div>
-                                                <v-text-field v-model="modelEndpoint.modelName" density="compact"
-                                                    variant="outlined" rounded="lg"
-                                                    placeholder="gpt-4.1-mini / deepseek-chat / qwen" hide-details />
-                                            </v-col>
-                                        </v-row>
+
+                                        <v-sheet color="transparent" class="d-flex flex-column ga-2">
+                                            <div>
+                                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                                    <div class="text-subtitle-2 font-weight-bold">主模型</div>
+                                                    <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
+                                                </div>
+                                                <v-row density="compact" class="my-n1">
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.agent.baseUrl"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="Base URL" placeholder="Base url (不需要写/v1)"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.agent.apiKey"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" md="4" class="py-1">
+                                                        <v-combobox v-model="serviceConfig.agent.model"
+                                                            :items="modelOptions.agent" density="compact"
+                                                            variant="solo-filled" flat rounded="lg" label="Model"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" md="3" class="py-1">
+                                                        <v-text-field v-model.number="serviceConfig.agent.maxTokenCount"
+                                                            type="number" density="compact" variant="solo-filled" flat
+                                                            rounded="lg" label="Max Tokens" hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" md="5" class="py-1">
+                                                        <div class="d-flex align-center justify-end ga-2 h-100">
+                                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                                prepend-icon="mdi-format-list-bulleted"
+                                                                :loading="modelLoading.agentList"
+                                                                :disabled="modelLoading.agentTest"
+                                                                @click="fetchProviderModels('agent')">
+                                                                拉取模型
+                                                            </v-btn>
+                                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                                prepend-icon="mdi-connection"
+                                                                :loading="modelLoading.agentTest"
+                                                                :disabled="modelLoading.agentList"
+                                                                @click="testProviderConnection('agent')">
+                                                                测试连接
+                                                            </v-btn>
+                                                        </div>
+                                                    </v-col>
+                                                </v-row>
+                                            </div>
+
+                                            <v-divider class="my-1" />
+
+                                            <div>
+                                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                                    <div class="text-subtitle-2 font-weight-bold">副模型</div>
+                                                    <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
+                                                </div>
+                                                <v-row density="compact" class="my-n1">
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.utility.baseUrl"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="Base URL" placeholder="Base url (不需要写/v1)"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.utility.apiKey"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" md="4" class="py-1">
+                                                        <v-combobox v-model="serviceConfig.utility.model"
+                                                            :items="modelOptions.utility" density="compact"
+                                                            variant="solo-filled" flat rounded="lg" label="Model"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" md="3" class="py-1">
+                                                        <v-text-field
+                                                            v-model.number="serviceConfig.utility.maxTokenCount"
+                                                            type="number" density="compact" variant="solo-filled" flat
+                                                            rounded="lg" label="Max Tokens" hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" md="5" class="py-1">
+                                                        <div class="d-flex align-center justify-end ga-2 h-100">
+                                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                                prepend-icon="mdi-format-list-bulleted"
+                                                                :loading="modelLoading.utilityList"
+                                                                :disabled="modelLoading.utilityTest"
+                                                                @click="fetchProviderModels('utility')">
+                                                                拉取模型
+                                                            </v-btn>
+                                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                                prepend-icon="mdi-connection"
+                                                                :loading="modelLoading.utilityTest"
+                                                                :disabled="modelLoading.utilityList"
+                                                                @click="testProviderConnection('utility')">
+                                                                测试连接
+                                                            </v-btn>
+                                                        </div>
+                                                    </v-col>
+                                                </v-row>
+                                            </div>
+                                        </v-sheet>
+                                    </div>
+                                </template>
+
+                                <template v-else-if="step.key === 'retrieval'">
+                                    <div class="d-flex flex-column ga-2">
+                                        <div class="d-flex align-center justify-space-between ga-3">
+                                            <div class="text-subtitle-1 font-weight-bold">知识检索</div>
+                                            <v-btn size="x-small" variant="tonal" rounded="lg"
+                                                :prepend-icon="showSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                                @click="showSecrets = !showSecrets">
+                                                {{ showSecrets ? '隐藏密钥' : '显示密钥' }}
+                                            </v-btn>
+                                        </div>
+
+                                        <v-sheet color="transparent" class="d-flex flex-column ga-2">
+                                            <div>
+                                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                                    <div class="text-subtitle-2 font-weight-bold">Embed</div>
+                                                    <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
+                                                </div>
+                                                <v-row density="compact" class="my-n1">
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.embed.baseUrl"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="Base URL" hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.embed.apiKey"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" md="7" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.embed.model"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="Model" hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" md="5" class="py-1">
+                                                        <v-text-field v-model.number="serviceConfig.embed.dims"
+                                                            type="number" density="compact" variant="solo-filled" flat
+                                                            rounded="lg" label="Dims" hide-details="auto" />
+                                                    </v-col>
+                                                </v-row>
+                                            </div>
+
+                                            <v-divider class="my-1" />
+
+                                            <div>
+                                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                                    <div class="text-subtitle-2 font-weight-bold">Rerank</div>
+                                                    <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
+                                                </div>
+                                                <v-row density="compact" class="my-n1">
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.rerank.baseUrl"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="Base URL" hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.rerank.apiKey"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.rerank.model"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="Model" hide-details="auto" />
+                                                    </v-col>
+                                                </v-row>
+                                            </div>
+                                        </v-sheet>
+                                    </div>
+                                </template>
+
+                                <template v-else-if="step.key === 'services'">
+                                    <div class="d-flex flex-column ga-2">
+                                        <div class="d-flex align-center justify-space-between ga-3">
+                                            <div class="text-subtitle-1 font-weight-bold">语音与文档解析</div>
+                                            <v-btn size="x-small" variant="tonal" rounded="lg"
+                                                :prepend-icon="showSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                                @click="showSecrets = !showSecrets">
+                                                {{ showSecrets ? '隐藏密钥' : '显示密钥' }}
+                                            </v-btn>
+                                        </div>
+
+                                        <v-sheet color="transparent" class="d-flex flex-column ga-2">
+                                            <div>
+                                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                                    <div class="text-subtitle-2 font-weight-bold">ASR</div>
+                                                    <v-chip size="x-small" variant="tonal">Qwen</v-chip>
+                                                </div>
+                                                <v-row density="compact" class="my-n1">
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.asr.baseUrl"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="Base URL" hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.asr.apiKey"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                </v-row>
+                                            </div>
+
+                                            <v-divider class="my-1" />
+
+                                            <div>
+                                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                                    <div class="text-subtitle-2 font-weight-bold">MinerU</div>
+                                                    <v-chip size="x-small" variant="tonal">File</v-chip>
+                                                </div>
+                                                <v-row density="compact" class="my-n1">
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.mineru.baseUrl"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="Base URL" hide-details="auto" />
+                                                    </v-col>
+                                                    <v-col cols="12" class="py-1">
+                                                        <v-text-field v-model="serviceConfig.mineru.apiKey"
+                                                            density="compact" variant="solo-filled" flat rounded="lg"
+                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            hide-details="auto" />
+                                                    </v-col>
+                                                </v-row>
+                                            </div>
+                                        </v-sheet>
                                     </div>
                                 </template>
 
@@ -189,7 +401,7 @@
                                                 <div class="text-subtitle-1 font-weight-bold mb-2">知识库下载</div>
                                             </div>
                                             <v-chip size="small" variant="tonal" color="primary">{{ knowledgePack.packId
-                                                }}</v-chip>
+                                            }}</v-chip>
                                         </div>
 
                                         <v-card rounded="lg" variant="tonal" class="pa-4">
@@ -202,7 +414,7 @@
                                                 </div>
                                                 <v-btn color="primary" size="small" rounded="lg"
                                                     :loading="isKnowledgeSubmitting"
-                                                    :disabled="knowledgeSync.status === 'running'"
+                                                    :disabled="knowledgeSync.status === 'running' || !hasCompleteServiceConfig"
                                                     @click="triggerKnowledgeDownload">
                                                     {{ knowledgeButtonLabel }}
                                                 </v-btn>
@@ -211,7 +423,7 @@
                                                 height="8" />
                                             <div class="d-flex align-center justify-space-between mt-3">
                                                 <span class="text-caption text-medium-emphasis">{{ knowledgeStatusText
-                                                    }}</span>
+                                                }}</span>
                                                 <span class="text-caption text-medium-emphasis">{{
                                                     Math.round(knowledgeProgress) }}%</span>
                                             </div>
@@ -300,7 +512,7 @@
             </v-container>
         </v-sheet>
 
-        <v-sheet color="surface" class="px-6 py-4">
+        <v-sheet color="surface" class="px-6 py-3">
             <v-container max-width="860" class="pa-0 d-flex align-center justify-space-between ga-3 flex-wrap">
                 <v-btn variant="text" size="small" rounded="lg" :disabled="currentStep === 0 || isCompleting"
                     @click="goPrevious">
@@ -330,13 +542,15 @@
 
 <script setup lang="ts">
     import confetti from 'canvas-confetti'
-    import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+    import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
     import { patchCas } from '@/api/cas'
-    import { patchConfig } from '@/api/config'
+    import { patchConfig, type AppConfig, type DeepPartial } from '@/api/config'
     import { defaultRagSyncState, getApiErrorMessage, getRagSyncStatus, triggerRagSync, type RagSyncState } from '@/api/rag'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
+    import { requestOpenAIModels } from '@/composables/useOpenAIModelTools'
 
-    type StepKey = 'welcome' | 'profile' | 'identity' | 'campus' | 'model' | 'knowledge' | 'finish'
+    type StepKey = 'welcome' | 'profile' | 'identity' | 'campus' | 'model' | 'retrieval' | 'services' | 'knowledge' | 'finish'
+    type ModelEndpointRole = 'agent' | 'utility'
 
     interface StepMeta {
         key: StepKey
@@ -350,7 +564,9 @@
         { key: 'profile', shortLabel: '画像', title: '先让 agent 认识你', description: '用一句话介绍自己，方便后续交流更贴近你的背景。' },
         { key: 'identity', shortLabel: '身份', title: '确认学校、年龄层与专业', description: '补充你的基本信息，帮助我们提供更合适的内容。' },
         { key: 'campus', shortLabel: '校园', title: '配置 SUSTech 教务账号', description: '如果你需要校园相关能力，可以在这里完成设置。' },
-        { key: 'model', shortLabel: '模型', title: '配置你的模型连接', description: '填好模型信息后，就可以正常开始使用对话能力。' },
+        { key: 'model', shortLabel: '模型', title: '配置模型连接', description: '主模型和副模型会支撑对话与轻量任务。' },
+        { key: 'retrieval', shortLabel: '检索', title: '配置知识检索', description: 'Embed 和 Rerank 会用于知识库更新与资料召回。' },
+        { key: 'services', shortLabel: '服务', title: '配置语音与文档解析', description: 'ASR 和 MinerU 会用于语音输入、文件解析和后续工作流。' },
         { key: 'knowledge', shortLabel: '知识库', title: '准备知识包', description: '先把知识内容准备好，后续使用会更顺畅。' },
         { key: 'finish', shortLabel: '完成', title: '一切准备就绪', description: '看看 OpenCrab 会怎样帮你更轻松地学习、安排任务和获得支持。' },
     ]
@@ -367,23 +583,33 @@
     const {
         userProfile,
         campusAuth,
-        modelEndpoint,
+        serviceConfig,
         knowledgePack,
         saveKnowledgePack,
         saveUserProfile,
         saveCampusAuth,
-        saveModelEndpoint,
+        saveServiceConfig,
         markOnboardingCompleted,
     } = useOnboardingConfig()
 
     const currentStep = ref(0)
     const celebrationCanvas = ref<HTMLCanvasElement | null>(null)
-    const showApiKey = ref(false)
+    const showSecrets = ref(false)
     const showCampusPassword = ref(false)
     const isCompleting = ref(false)
     const snackbar = ref({ show: false, text: '', color: 'success' })
     const knowledgeSync = ref<RagSyncState>(defaultRagSyncState())
     const isKnowledgeSubmitting = ref(false)
+    const modelOptions = reactive<Record<ModelEndpointRole, string[]>>({
+        agent: [],
+        utility: [],
+    })
+    const modelLoading = reactive({
+        agentList: false,
+        agentTest: false,
+        utilityList: false,
+        utilityTest: false,
+    })
 
     let knowledgePollTimer: ReturnType<typeof setInterval> | null = null
     let redirectTimer: ReturnType<typeof setTimeout> | null = null
@@ -397,11 +623,36 @@
     const hasCompleteCampusAuth = computed(() =>
         !!campusAuth.studentId.trim() && !!campusAuth.password.trim()
     )
-    const hasAnyModelAuthValue = computed(() =>
-        !!modelEndpoint.apiKey.trim() || !!modelEndpoint.modelName.trim()
-    )
+    const positiveNumber = (value: number) => Number.isFinite(value) && value > 0
     const hasCompleteModelConfig = computed(() =>
-        !!modelEndpoint.baseUrl.trim() && !!modelEndpoint.apiKey.trim() && !!modelEndpoint.modelName.trim()
+        !!serviceConfig.agent.baseUrl.trim()
+        && !!serviceConfig.agent.apiKey.trim()
+        && !!serviceConfig.agent.model.trim()
+        && positiveNumber(serviceConfig.agent.maxTokenCount)
+        && !!serviceConfig.utility.baseUrl.trim()
+        && !!serviceConfig.utility.apiKey.trim()
+        && !!serviceConfig.utility.model.trim()
+        && positiveNumber(serviceConfig.utility.maxTokenCount)
+    )
+    const hasCompleteRetrievalConfig = computed(() =>
+        !!serviceConfig.embed.baseUrl.trim()
+        && !!serviceConfig.embed.apiKey.trim()
+        && !!serviceConfig.embed.model.trim()
+        && positiveNumber(serviceConfig.embed.dims)
+        && !!serviceConfig.rerank.baseUrl.trim()
+        && !!serviceConfig.rerank.apiKey.trim()
+        && !!serviceConfig.rerank.model.trim()
+    )
+    const hasCompleteServiceToolsConfig = computed(() =>
+        !!serviceConfig.asr.baseUrl.trim()
+        && !!serviceConfig.asr.apiKey.trim()
+        && !!serviceConfig.mineru.baseUrl.trim()
+        && !!serviceConfig.mineru.apiKey.trim()
+    )
+    const hasCompleteServiceConfig = computed(() =>
+        hasCompleteModelConfig.value
+        && hasCompleteRetrievalConfig.value
+        && hasCompleteServiceToolsConfig.value
     )
 
     const canProceed = computed(() => {
@@ -411,7 +662,11 @@
             case 'campus':
                 return !hasAnyCampusAuthValue.value || hasCompleteCampusAuth.value
             case 'model':
-                return !hasAnyModelAuthValue.value || hasCompleteModelConfig.value
+                return hasCompleteModelConfig.value
+            case 'retrieval':
+                return hasCompleteRetrievalConfig.value
+            case 'services':
+                return hasCompleteServiceToolsConfig.value
             case 'knowledge':
                 return knowledgePack.status === 'ready'
             default:
@@ -445,9 +700,24 @@
         return '等待开始下载'
     })
 
-    const footerHint = computed(() => currentMeta.value.key === 'knowledge' && knowledgePack.status !== 'ready'
-        ? '需要先完成知识包准备'
-        : '')
+    const footerHint = computed(() => {
+        if (currentMeta.value.key === 'model' && !hasCompleteModelConfig.value) {
+            return '需要填完整主模型和副模型'
+        }
+        if (currentMeta.value.key === 'retrieval' && !hasCompleteRetrievalConfig.value) {
+            return '需要填完整 Embed 和 Rerank'
+        }
+        if (currentMeta.value.key === 'services' && !hasCompleteServiceToolsConfig.value) {
+            return '需要填完整 ASR 和 MinerU'
+        }
+        if (currentMeta.value.key === 'knowledge' && !hasCompleteServiceConfig.value) {
+            return '需要先完成配置'
+        }
+        if (currentMeta.value.key === 'knowledge' && knowledgePack.status !== 'ready') {
+            return '需要先完成知识库更新'
+        }
+        return ''
+    })
 
     const knowledgeSummary = computed(() => {
         if (knowledgeSync.value.status !== 'success' && knowledgePack.status !== 'ready') return ''
@@ -476,6 +746,48 @@
         snackbar.value = { show: true, text, color }
     }
 
+    function getModelEndpointLabel (role: ModelEndpointRole) {
+        return role === 'agent' ? '主模型' : '副模型'
+    }
+
+    async function requestProviderModels (role: ModelEndpointRole) {
+        const target = serviceConfig[role]
+        return requestOpenAIModels(target, getModelEndpointLabel(role))
+    }
+
+    async function fetchProviderModels (role: ModelEndpointRole) {
+        const loadingKey = role === 'agent' ? 'agentList' : 'utilityList'
+        modelLoading[loadingKey] = true
+
+        try {
+            const models = await requestProviderModels(role)
+            modelOptions[role] = models
+            if (!models.length) {
+                showNotice(`${getModelEndpointLabel(role)}连接成功，但没有返回模型列表`, 'warning')
+                return
+            }
+            showNotice(`已拉取 ${models.length} 个模型`)
+        } catch (error) {
+            showNotice(error instanceof Error ? error.message : '拉取模型失败', 'error')
+        } finally {
+            modelLoading[loadingKey] = false
+        }
+    }
+
+    async function testProviderConnection (role: ModelEndpointRole) {
+        const loadingKey = role === 'agent' ? 'agentTest' : 'utilityTest'
+        modelLoading[loadingKey] = true
+
+        try {
+            await requestProviderModels(role)
+            showNotice(`${getModelEndpointLabel(role)}连接正常`)
+        } catch (error) {
+            showNotice(error instanceof Error ? error.message : '连接测试失败', 'error')
+        } finally {
+            modelLoading[loadingKey] = false
+        }
+    }
+
     function goNext () {
         if (!canProceed.value) {
             showNotice('请先完成当前步骤', 'warning')
@@ -495,7 +807,7 @@
             ...campusAuth,
             enabled: hasCompleteCampusAuth.value,
         })
-        saveModelEndpoint({ ...modelEndpoint })
+        saveServiceConfig({ ...serviceConfig })
         saveKnowledgePack({ ...knowledgePack })
         void syncCurrentStepToBackend(steps[currentStep.value]?.key)
     }
@@ -509,11 +821,11 @@
             syncJobs.push(syncCampusAuthToBackend())
         }
 
-        if ((stepKey === 'model' || stepKey === 'finish')
-            && modelEndpoint.baseUrl.trim()
-            && modelEndpoint.apiKey.trim()
-            && modelEndpoint.modelName.trim()) {
-            syncJobs.push(syncModelConfigToBackend())
+        if (
+            ['model', 'retrieval', 'services', 'knowledge', 'finish'].includes(stepKey)
+            && hasCompleteServiceConfig.value
+        ) {
+            syncJobs.push(syncServiceConfigToBackend())
         }
 
         if (!syncJobs.length) return
@@ -532,19 +844,62 @@
         }
     }
 
-    async function syncModelConfigToBackend () {
-        try {
-            await patchConfig({
-                api: {
-                    agent: {
-                        base_url: modelEndpoint.baseUrl.trim(),
-                        api_key: modelEndpoint.apiKey.trim(),
-                        model: modelEndpoint.modelName.trim(),
-                    },
+    function buildServiceConfigPatch (): DeepPartial<AppConfig> {
+        return {
+            api: {
+                agent: {
+                    type: 'OpenAI',
+                    base_url: serviceConfig.agent.baseUrl.trim(),
+                    api_key: serviceConfig.agent.apiKey.trim(),
+                    model: serviceConfig.agent.model.trim(),
+                    max_token_count: serviceConfig.agent.maxTokenCount,
                 },
-            })
+                utility: {
+                    type: 'OpenAI',
+                    base_url: serviceConfig.utility.baseUrl.trim(),
+                    api_key: serviceConfig.utility.apiKey.trim(),
+                    model: serviceConfig.utility.model.trim(),
+                    max_token_count: serviceConfig.utility.maxTokenCount,
+                },
+                embed: {
+                    type: 'OpenAI',
+                    base_url: serviceConfig.embed.baseUrl.trim(),
+                    api_key: serviceConfig.embed.apiKey.trim(),
+                    model: serviceConfig.embed.model.trim(),
+                    dims: serviceConfig.embed.dims,
+                },
+                rerank: {
+                    type: 'OpenAI',
+                    base_url: serviceConfig.rerank.baseUrl.trim(),
+                    api_key: serviceConfig.rerank.apiKey.trim(),
+                    model: serviceConfig.rerank.model.trim(),
+                },
+                asr: {
+                    type: 'Qwen',
+                    base_url: serviceConfig.asr.baseUrl.trim(),
+                    api_key: serviceConfig.asr.apiKey.trim(),
+                },
+            },
+            file: {
+                upload_path: './uploads',
+                rag_path: './rag',
+                mineru: {
+                    base_url: serviceConfig.mineru.baseUrl.trim(),
+                    api_key: serviceConfig.mineru.apiKey.trim(),
+                },
+            },
+        }
+    }
+
+    async function syncServiceConfigToBackend (options?: { silent?: boolean }) {
+        try {
+            await patchConfig(buildServiceConfigPatch())
+            return true
         } catch (error) {
-            showNotice(getApiErrorMessage(error, '模型配置同步失败，本地草稿已保留'), 'warning')
+            if (!options?.silent) {
+                showNotice(getApiErrorMessage(error, '配置同步失败，本地草稿已保留'), 'warning')
+            }
+            return false
         }
     }
 
@@ -637,15 +992,26 @@
 
     async function triggerKnowledgeDownload () {
         if (isKnowledgeSubmitting.value || knowledgeSync.value.status === 'running') return
+        if (!hasCompleteServiceConfig.value) {
+            showNotice('请先填完整配置，再更新知识库', 'warning')
+            return
+        }
 
         isKnowledgeSubmitting.value = true
-        saveKnowledgePack({
-            packId: 'sustech-cs',
-            status: 'downloading',
-            lastTriggeredAt: new Date().toISOString(),
-        })
 
         try {
+            const synced = await syncServiceConfigToBackend({ silent: true })
+            if (!synced) {
+                showNotice('配置还没有同步成功，暂时不能更新知识库', 'warning')
+                return
+            }
+
+            saveKnowledgePack({
+                packId: 'sustech-cs',
+                status: 'downloading',
+                lastTriggeredAt: new Date().toISOString(),
+            })
+
             const state = await triggerRagSync()
             applyKnowledgeSyncState(state)
 
@@ -785,5 +1151,15 @@
     .onboarding-shell {
         position: relative;
         overflow: hidden;
+    }
+
+    .onboarding-step-window :deep(.v-window__container),
+    .onboarding-step-window :deep(.v-window-item) {
+        height: 100%;
+        min-height: 0;
+    }
+
+    .onboarding-shell :deep(.v-field) {
+        font-size: 0.875rem;
     }
 </style>

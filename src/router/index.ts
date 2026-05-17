@@ -16,8 +16,6 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (import.meta.env.DEV) return true
-
   const publicPrefixes = ['/onboarding', '/auth']
   const isPublicRoute = publicPrefixes.some(prefix => to.path.startsWith(prefix))
   if (isPublicRoute) return true

@@ -59,6 +59,11 @@ export const normalizeCalendarColor = (value?: string | null, fallback = DEFAULT
     return normalizedFallback ? closestPaletteColor(normalizedFallback) : DEFAULT_CALENDAR_COLOR
 }
 
+export const normalizeOptionalCalendarColor = (value?: string | null): string | null => {
+    const normalized = normalizeHexString(value)
+    return normalized ? closestPaletteColor(normalized) : null
+}
+
 export const getCalendarColorLabel = (value?: string | null): string => {
     const normalized = normalizeCalendarColor(value)
     return CALENDAR_COLOR_OPTIONS.find(option => option.hex === normalized)?.label ?? 'Blue'

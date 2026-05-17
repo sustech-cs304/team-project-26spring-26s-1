@@ -1,12 +1,12 @@
 import { computed, reactive, watch } from 'vue'
 
-export const ONBOARDING_VERSION = '2026-04-home-onboarding-v1'
+export const ONBOARDING_VERSION = '2026-05-service-config-v1'
 
 const STORAGE_KEYS = {
     onboardingState: 'opencrab.onboarding.state',
     userProfile: 'opencrab.onboarding.userProfile',
     campusAuth: 'opencrab.onboarding.campusAuth',
-    modelEndpoint: 'opencrab.onboarding.modelEndpoint',
+    serviceConfig: 'opencrab.onboarding.serviceConfig',
     knowledgePack: 'opencrab.onboarding.knowledgePack',
 } as const
 
@@ -31,10 +31,42 @@ export interface CampusAuthConfig {
 }
 
 export interface ModelEndpointConfig {
-    provider: 'OpenAI' | 'DeepSeek' | 'Local Ollama'
     baseUrl: string
     apiKey: string
-    modelName: string
+    model: string
+    maxTokenCount: number
+}
+
+export interface EmbedEndpointConfig {
+    baseUrl: string
+    apiKey: string
+    model: string
+    dims: number
+}
+
+export interface RerankEndpointConfig {
+    baseUrl: string
+    apiKey: string
+    model: string
+}
+
+export interface AsrEndpointConfig {
+    baseUrl: string
+    apiKey: string
+}
+
+export interface MineruConfig {
+    baseUrl: string
+    apiKey: string
+}
+
+export interface ServiceConfig {
+    agent: ModelEndpointConfig
+    utility: ModelEndpointConfig
+    embed: EmbedEndpointConfig
+    rerank: RerankEndpointConfig
+    asr: AsrEndpointConfig
+    mineru: MineruConfig
 }
 
 export interface KnowledgePackConfig {
@@ -64,10 +96,34 @@ const defaultCampusAuth = (): CampusAuthConfig => ({
 })
 
 const defaultModelEndpoint = (): ModelEndpointConfig => ({
-    provider: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
+    baseUrl: '',
     apiKey: '',
-    modelName: '',
+    model: '',
+    maxTokenCount: 128000,
+})
+
+const defaultServiceConfig = (): ServiceConfig => ({
+    agent: defaultModelEndpoint(),
+    utility: defaultModelEndpoint(),
+    embed: {
+        baseUrl: 'https://api.siliconflow.cn/v1',
+        apiKey: '',
+        model: 'BAAI/bge-m3',
+        dims: 1536,
+    },
+    rerank: {
+        baseUrl: 'https://api.siliconflow.cn/v1',
+        apiKey: '',
+        model: 'BAAI/bge-reranker-v2-m3',
+    },
+    asr: {
+        baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference/',
+        apiKey: '',
+    },
+    mineru: {
+        baseUrl: 'https://mineru.net/api/v1/agent',
+        apiKey: '',
+    },
 })
 
 const defaultKnowledgePack = (): KnowledgePackConfig => ({
@@ -86,10 +142,37 @@ function readStorage<T> (key: string, fallback: T): T {
     try {
         const raw = window.localStorage.getItem(key)
         if (!raw) return fallback
-        return { ...fallback, ...JSON.parse(raw) } as T
+        return mergeWithFallback(fallback, JSON.parse(raw))
     } catch {
         return fallback
     }
+}
+
+function mergeWithFallback<T> (fallback: T, value: unknown): T {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return fallback
+    }
+
+    const output = { ...(fallback as Record<string, unknown>) }
+
+    for (const [key, nextValue] of Object.entries(value)) {
+        const fallbackValue = output[key]
+
+        if (
+            fallbackValue
+            && typeof fallbackValue === 'object'
+            && !Array.isArray(fallbackValue)
+            && nextValue
+            && typeof nextValue === 'object'
+            && !Array.isArray(nextValue)
+        ) {
+            output[key] = mergeWithFallback(fallbackValue, nextValue)
+        } else {
+            output[key] = nextValue
+        }
+    }
+
+    return output as T
 }
 
 function writeStorage<T> (key: string, value: T): void {
@@ -100,7 +183,7 @@ function writeStorage<T> (key: string, value: T): void {
 const onboardingState = reactive<OnboardingState>(readStorage(STORAGE_KEYS.onboardingState, defaultOnboardingState()))
 const userProfile = reactive<UserProfileConfig>(readStorage(STORAGE_KEYS.userProfile, defaultUserProfile()))
 const campusAuth = reactive<CampusAuthConfig>(readStorage(STORAGE_KEYS.campusAuth, defaultCampusAuth()))
-const modelEndpoint = reactive<ModelEndpointConfig>(readStorage(STORAGE_KEYS.modelEndpoint, defaultModelEndpoint()))
+const serviceConfig = reactive<ServiceConfig>(readStorage(STORAGE_KEYS.serviceConfig, defaultServiceConfig()))
 const knowledgePack = reactive<KnowledgePackConfig>(readStorage(STORAGE_KEYS.knowledgePack, defaultKnowledgePack()))
 
 if (knowledgePack.status === 'downloading') {
@@ -119,8 +202,8 @@ watch(campusAuth, (value) => {
     writeStorage(STORAGE_KEYS.campusAuth, value)
 }, { deep: true })
 
-watch(modelEndpoint, (value) => {
-    writeStorage(STORAGE_KEYS.modelEndpoint, value)
+watch(serviceConfig, (value) => {
+    writeStorage(STORAGE_KEYS.serviceConfig, value)
 }, { deep: true })
 
 watch(knowledgePack, (value) => {
@@ -163,8 +246,8 @@ export function useOnboardingConfig () {
         Object.assign(campusAuth, payload)
     }
 
-    function saveModelEndpoint (payload: Partial<ModelEndpointConfig>): void {
-        Object.assign(modelEndpoint, payload)
+    function saveServiceConfig (payload: Partial<ServiceConfig>): void {
+        Object.assign(serviceConfig, payload)
     }
 
     function saveKnowledgePack (payload: Partial<KnowledgePackConfig>): void {
@@ -176,11 +259,11 @@ export function useOnboardingConfig () {
         onboardingCompleted,
         userProfile,
         campusAuth,
-        modelEndpoint,
+        serviceConfig,
         knowledgePack,
         saveUserProfile,
         saveCampusAuth,
-        saveModelEndpoint,
+        saveServiceConfig,
         saveKnowledgePack,
         markOnboardingCompleted,
         resetOnboardingCompletion,

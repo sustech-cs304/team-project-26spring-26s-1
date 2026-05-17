@@ -16,7 +16,7 @@
     import type { CSSProperties } from 'vue'
     import type { CalEvent } from '@/types/calendar'
     import { getEventChipTimeLabel } from '@/utils/calendar'
-    import { normalizeCalendarColor } from '@/utils/calendarColors'
+    import { normalizeCalendarColor, normalizeOptionalCalendarColor } from '@/utils/calendarColors'
 
     const props = withDefaults(defineProps<{ event: CalEvent; draggable?: boolean; selected?: boolean; sourceColorMap?: Record<string, string> }>(), {
         draggable: false,
@@ -32,7 +32,7 @@
     const chipEl = ref<HTMLElement | { $el?: HTMLElement } | null>(null)
     const timeLabel = computed(() => getEventChipTimeLabel(props.event))
     const sourceColor = computed(() => normalizeCalendarColor(props.sourceColorMap?.[props.event.source], '#4ca8df'))
-    const fillColor = computed(() => normalizeCalendarColor(props.event.color, '#4ca8df'))
+    const fillColor = computed(() => normalizeOptionalCalendarColor(props.event.color) ?? sourceColor.value)
     const chipStyle = computed<CSSProperties>(() => ({
         minHeight: '20px',
         maxHeight: '20px',

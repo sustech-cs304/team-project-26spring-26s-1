@@ -1,26 +1,26 @@
 <template>
-    <v-layout class="settings-workspace h-100 overflow-hidden min-height-0">
-        <v-navigation-drawer permanent width="250" color="surface" floating class="settings-sidebar min-height-0">
+    <v-layout class="h-100 overflow-hidden min-height-0 bg-surface">
+        <v-navigation-drawer permanent width="250" color="surface" floating class="min-height-0">
             <v-list density="compact" class="pa-2" nav>
                 <v-list-item v-for="tab in tabs" :key="tab.id" :prepend-icon="tab.icon" :title="tab.label"
-                    :active="activeTab === tab.id" active-class="theme-active-list-item" rounded="lg" slim
-                    prepend-gap="8" :ripple="false" @click="activeTab = tab.id" />
+                    :active="activeTab === tab.id" rounded="lg" slim prepend-gap="8" :ripple="false"
+                    @click="activeTab = tab.id" />
             </v-list>
         </v-navigation-drawer>
 
-        <v-app-bar flat height="48" color="background" class="settings-app-bar">
+        <v-app-bar flat height="48" color="background" rounded="ts-lg">
             <template #prepend>
                 <v-icon size="18" class="ml-3">{{ activeTabMeta.icon }}</v-icon>
             </template>
 
-            <div class="settings-app-title">
+            <v-app-bar-title class="text-center text-body-2 font-weight-bold">
                 {{ activeTabMeta.label }}
-            </div>
+            </v-app-bar-title>
         </v-app-bar>
 
-        <v-main class="settings-main h-100 overflow-hidden min-height-0">
-            <div class="settings-route-panel">
-                <div class="settings-content-shell">
+        <v-main class="h-100 overflow-hidden min-height-0 bg-background rounded-bs-lg">
+            <v-sheet color="background" height="100%" class="overflow-y-auto">
+                <v-sheet color="transparent" max-width="720" width="100%" class="mx-auto pa-4 pb-8">
                     <template v-if="isConfigTab(activeTab)">
 
                         <div v-if="loadingConfig" class="d-flex justify-center py-16">
@@ -38,80 +38,324 @@
                         </div>
 
                         <div v-else-if="activeTab === 'llm'">
-                            <div class="settings-section-title">LLM Configuration</div>
-                            <div class="settings-section-description mb-4">
-                                Edit the backend `api.agent` endpoint used as the primary model.
+                            <div class="text-body-1 font-weight-bold">Model Configuration</div>
+                            <div class="text-body-2 text-medium-emphasis mb-4">
+                                Configure the primary model for conversation and the utility model for lightweight work.
                             </div>
 
-                            <div class="d-flex align-center ga-2 flex-wrap mb-5">
-                                <v-chip size="small" rounded="lg" variant="tonal">
-                                    {{ llm.provider }}
-                                </v-chip>
-                                <div class="settings-help-text">
-                                    Provider type is kept from backend config and is not editable here.
+                            <div class="d-flex justify-end mb-2">
+                                <v-btn size="x-small" variant="tonal" rounded="lg"
+                                    :prepend-icon="visibility.modelSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                    @click="visibility.modelSecrets = !visibility.modelSecrets">
+                                    {{ visibility.modelSecrets ? 'Hide keys' : 'Show keys' }}
+                                </v-btn>
+                            </div>
+
+                            <div class="mb-2">
+                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                    <div class="text-body-1 font-weight-bold">Primary Model</div>
+                                    <v-chip size="x-small" variant="tonal">{{ modelConfig.agent.provider }}</v-chip>
                                 </div>
+                                <v-row density="compact" class="my-n1">
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="modelConfig.agent.baseUrl" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="Base URL"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="modelConfig.agent.apiKey" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="API Key"
+                                            :type="visibility.modelSecrets ? 'text' : 'password'" hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="4" class="py-1">
+                                        <v-combobox v-model="modelConfig.agent.model" :items="modelOptions.agent"
+                                            density="compact" variant="solo-filled" flat rounded="lg" label="Model"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="3" class="py-1">
+                                        <v-text-field v-model.number="modelConfig.agent.maxTokenCount" type="number"
+                                            density="compact" variant="solo-filled" flat rounded="lg" label="Max Tokens"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="5" class="py-1">
+                                        <div class="d-flex align-center justify-end ga-2 h-100">
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-format-list-bulleted"
+                                                :loading="modelToolLoading.agentList"
+                                                :disabled="modelToolLoading.agentTest"
+                                                @click="fetchProviderModels('agent')">
+                                                Pull models
+                                            </v-btn>
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-connection" :loading="modelToolLoading.agentTest"
+                                                :disabled="modelToolLoading.agentList"
+                                                @click="testProviderConnection('agent')">
+                                                Test
+                                            </v-btn>
+                                        </div>
+                                    </v-col>
+                                </v-row>
                             </div>
 
-                            <div class="settings-field">
-                                <div class="settings-field-label">Base URL</div>
-                                <v-text-field v-model="llm.baseUrl" density="compact" variant="solo-filled" flat
-                                    rounded="lg" hide-details="auto" />
-                                <div class="settings-help-text mt-1">
-                                    Supports reverse proxy or custom relay endpoints.
+                            <v-divider class="my-3" />
+
+                            <div class="mb-2">
+                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                    <div class="text-body-1 font-weight-bold">Utility Model</div>
+                                    <v-chip size="x-small" variant="tonal">{{ modelConfig.utility.provider }}</v-chip>
                                 </div>
+                                <v-row density="compact" class="my-n1">
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="modelConfig.utility.baseUrl" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="Base URL"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="modelConfig.utility.apiKey" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="API Key"
+                                            :type="visibility.modelSecrets ? 'text' : 'password'" hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="4" class="py-1">
+                                        <v-combobox v-model="modelConfig.utility.model" :items="modelOptions.utility"
+                                            density="compact" variant="solo-filled" flat rounded="lg" label="Model"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="3" class="py-1">
+                                        <v-text-field v-model.number="modelConfig.utility.maxTokenCount" type="number"
+                                            density="compact" variant="solo-filled" flat rounded="lg" label="Max Tokens"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="5" class="py-1">
+                                        <div class="d-flex align-center justify-end ga-2 h-100">
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-format-list-bulleted"
+                                                :loading="modelToolLoading.utilityList"
+                                                :disabled="modelToolLoading.utilityTest"
+                                                @click="fetchProviderModels('utility')">
+                                                Pull models
+                                            </v-btn>
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-connection" :loading="modelToolLoading.utilityTest"
+                                                :disabled="modelToolLoading.utilityList"
+                                                @click="testProviderConnection('utility')">
+                                                Test
+                                            </v-btn>
+                                        </div>
+                                    </v-col>
+                                </v-row>
                             </div>
 
-                            <div class="settings-field">
-                                <div class="settings-field-label">API Key</div>
-                                <v-text-field v-model="llm.apiKey" density="compact" variant="solo-filled" flat
-                                    rounded="lg" hide-details="auto" :type="visibility.llmApiKey ? 'text' : 'password'"
-                                    :append-inner-icon="visibility.llmApiKey ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-                                    @click:append-inner="visibility.llmApiKey = !visibility.llmApiKey" />
+                            <div class="d-flex justify-end mt-4">
+                                <v-btn size="small" rounded="lg" variant="tonal" :loading="saving.models"
+                                    @click="saveModelConfiguration">
+                                    Save Models
+                                </v-btn>
                             </div>
-
-                            <div class="settings-field">
-                                <div class="settings-field-label">Model Name</div>
-                                <v-text-field v-model="llm.modelName" density="compact" variant="solo-filled" flat
-                                    rounded="lg" hide-details="auto" />
-                            </div>
-
-                            <v-divider class="settings-divider" />
-                            <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.llm"
-                                @click="saveLlmConfiguration">
-                                Save Configuration
-                            </v-btn>
                         </div>
 
-                        <div v-else-if="activeTab === 'file'">
-                            <div class="settings-section-title">File Configuration</div>
-                            <div class="settings-section-description mb-6">
-                                Only the `file.mineru.api_key` value is editable from the frontend.
+                        <div v-else-if="activeTab === 'retrieval'">
+                            <div class="text-body-1 font-weight-bold">Retrieval Configuration</div>
+                            <div class="text-body-2 text-medium-emphasis mb-4">
+                                Configure embedding and reranking endpoints used by knowledge updates.
                             </div>
 
-                            <div class="settings-field">
-                                <div class="settings-field-label">MinerU API Key</div>
-                                <v-text-field v-model="fileConfig.mineruApiKey" density="compact" variant="solo-filled"
-                                    flat rounded="lg" hide-details="auto"
-                                    :type="visibility.fileApiKey ? 'text' : 'password'"
-                                    :append-inner-icon="visibility.fileApiKey ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-                                    @click:append-inner="visibility.fileApiKey = !visibility.fileApiKey" />
+                            <div class="d-flex justify-end mb-2">
+                                <v-btn size="x-small" variant="tonal" rounded="lg"
+                                    :prepend-icon="visibility.retrievalSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                    @click="visibility.retrievalSecrets = !visibility.retrievalSecrets">
+                                    {{ visibility.retrievalSecrets ? 'Hide keys' : 'Show keys' }}
+                                </v-btn>
                             </div>
 
-                            <v-divider class="settings-divider" />
-                            <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.file"
-                                @click="saveFileConfiguration">
-                                Save File Configuration
-                            </v-btn>
+                            <div class="mb-2">
+                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                    <div class="text-body-1 font-weight-bold">Embed</div>
+                                    <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
+                                </div>
+                                <v-row density="compact" class="my-n1">
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="retrievalConfig.embed.baseUrl" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="Base URL"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="retrievalConfig.embed.apiKey" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="API Key"
+                                            :type="visibility.retrievalSecrets ? 'text' : 'password'"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="4" class="py-1">
+                                        <v-combobox v-model="retrievalConfig.embed.model" :items="modelOptions.embed"
+                                            density="compact" variant="solo-filled" flat rounded="lg" label="Model"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="3" class="py-1">
+                                        <v-text-field v-model.number="retrievalConfig.embed.dims" type="number"
+                                            density="compact" variant="solo-filled" flat rounded="lg" label="Dims"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="5" class="py-1">
+                                        <div class="d-flex align-center justify-end ga-2 h-100">
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-format-list-bulleted"
+                                                :loading="modelToolLoading.embedList"
+                                                :disabled="modelToolLoading.embedTest"
+                                                @click="fetchProviderModels('embed')">
+                                                Pull models
+                                            </v-btn>
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-connection" :loading="modelToolLoading.embedTest"
+                                                :disabled="modelToolLoading.embedList"
+                                                @click="testProviderConnection('embed')">
+                                                Test
+                                            </v-btn>
+                                        </div>
+                                    </v-col>
+                                </v-row>
+                            </div>
+
+                            <v-divider class="my-3" />
+
+                            <div class="mb-2">
+                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                    <div class="text-body-1 font-weight-bold">Rerank</div>
+                                    <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
+                                </div>
+                                <v-row density="compact" class="my-n1">
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="retrievalConfig.rerank.baseUrl" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="Base URL"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="retrievalConfig.rerank.apiKey" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="API Key"
+                                            :type="visibility.retrievalSecrets ? 'text' : 'password'"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="7" class="py-1">
+                                        <v-combobox v-model="retrievalConfig.rerank.model" :items="modelOptions.rerank"
+                                            density="compact" variant="solo-filled" flat rounded="lg" label="Model"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="5" class="py-1">
+                                        <div class="d-flex align-center justify-end ga-2 h-100">
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-format-list-bulleted"
+                                                :loading="modelToolLoading.rerankList"
+                                                :disabled="modelToolLoading.rerankTest"
+                                                @click="fetchProviderModels('rerank')">
+                                                Pull models
+                                            </v-btn>
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-connection" :loading="modelToolLoading.rerankTest"
+                                                :disabled="modelToolLoading.rerankList"
+                                                @click="testProviderConnection('rerank')">
+                                                Test
+                                            </v-btn>
+                                        </div>
+                                    </v-col>
+                                </v-row>
+                            </div>
+
+                            <div class="d-flex justify-end mt-4">
+                                <v-btn size="small" rounded="lg" variant="tonal" :loading="saving.retrieval"
+                                    @click="saveRetrievalConfiguration">
+                                    Save Retrieval
+                                </v-btn>
+                            </div>
+                        </div>
+
+                        <div v-else-if="activeTab === 'services'">
+                            <div class="text-body-1 font-weight-bold">Service Configuration</div>
+                            <div class="text-body-2 text-medium-emphasis mb-4">
+                                Configure speech recognition and document parsing services.
+                            </div>
+
+                            <div class="d-flex justify-end mb-2">
+                                <v-btn size="x-small" variant="tonal" rounded="lg"
+                                    :prepend-icon="visibility.serviceSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                    @click="visibility.serviceSecrets = !visibility.serviceSecrets">
+                                    {{ visibility.serviceSecrets ? 'Hide keys' : 'Show keys' }}
+                                </v-btn>
+                            </div>
+
+                            <div class="mb-2">
+                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                    <div class="text-body-1 font-weight-bold">ASR</div>
+                                    <v-chip size="x-small" variant="tonal">Qwen</v-chip>
+                                </div>
+                                <v-row density="compact" class="my-n1">
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="serviceTools.asr.baseUrl" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="Base URL"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="7" class="py-1">
+                                        <v-text-field v-model="serviceTools.asr.apiKey" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="API Key"
+                                            :type="visibility.serviceSecrets ? 'text' : 'password'"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="5" class="py-1">
+                                        <div class="d-flex align-center justify-end h-100">
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-connection" :loading="serviceToolLoading.asr"
+                                                @click="testServiceConnection('asr')">
+                                                Test
+                                            </v-btn>
+                                        </div>
+                                    </v-col>
+                                </v-row>
+                            </div>
+
+                            <v-divider class="my-3" />
+
+                            <div class="mb-2">
+                                <div class="d-flex align-center justify-space-between ga-2 mb-1">
+                                    <div class="text-body-1 font-weight-bold">MinerU</div>
+                                    <v-chip size="x-small" variant="tonal">File</v-chip>
+                                </div>
+                                <v-row density="compact" class="my-n1">
+                                    <v-col cols="12" class="py-1">
+                                        <v-text-field v-model="serviceTools.mineru.baseUrl" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="Base URL"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="7" class="py-1">
+                                        <v-text-field v-model="serviceTools.mineru.apiKey" density="compact"
+                                            variant="solo-filled" flat rounded="lg" label="API Key"
+                                            :type="visibility.serviceSecrets ? 'text' : 'password'"
+                                            hide-details="auto" />
+                                    </v-col>
+                                    <v-col cols="12" md="5" class="py-1">
+                                        <div class="d-flex align-center justify-end h-100">
+                                            <v-btn size="small" variant="tonal" rounded="lg"
+                                                prepend-icon="mdi-connection" :loading="serviceToolLoading.mineru"
+                                                @click="testServiceConnection('mineru')">
+                                                Test
+                                            </v-btn>
+                                        </div>
+                                    </v-col>
+                                </v-row>
+                            </div>
+
+                            <div class="d-flex justify-end mt-4">
+                                <v-btn size="small" rounded="lg" variant="tonal" :loading="saving.services"
+                                    @click="saveServicesConfiguration">
+                                    Save Services
+                                </v-btn>
+                            </div>
                         </div>
 
                         <div v-else-if="activeTab === 'onebot'">
-                            <div class="settings-section-title">OneBot</div>
-                            <div class="settings-section-description mb-6">
+                            <div class="text-body-1 font-weight-bold">OneBot</div>
+                            <div class="text-body-2 text-medium-emphasis mb-6">
                                 Edit the backend-managed OneBot token and superuser list.
                             </div>
 
-                            <div class="settings-field">
-                                <div class="settings-field-label">Bot Token</div>
+                            <div class="mb-4">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Bot Token</div>
                                 <v-text-field v-model="onebot.token" density="compact" variant="solo-filled" flat
                                     rounded="lg" hide-details="auto"
                                     :type="visibility.onebotToken ? 'text' : 'password'"
@@ -119,31 +363,33 @@
                                     @click:append-inner="visibility.onebotToken = !visibility.onebotToken" />
                             </div>
 
-                            <div class="settings-field">
-                                <div class="settings-field-label">Superuser IDs</div>
+                            <div class="mb-4">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Superuser IDs
+                                </div>
                                 <v-textarea v-model="onebot.superuserIdsText" density="compact" variant="solo-filled"
                                     flat rounded="lg" hide-details="auto" rows="4" auto-grow
                                     placeholder="123456&#10;789012" />
-                                <div class="settings-help-text mt-1">
+                                <div class="text-caption text-medium-emphasis mt-1">
                                     Enter one OneBot superuser ID per line. Commas are also supported.
                                 </div>
                             </div>
 
-                            <v-divider class="settings-divider" />
-                            <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.onebot"
-                                @click="saveOnebotConfiguration">
-                                Save OneBot Settings
-                            </v-btn>
+                            <div class="d-flex justify-end">
+                                <v-btn size="small" rounded="lg" variant="tonal" :loading="saving.onebot"
+                                    @click="saveOnebotConfiguration">
+                                    Save OneBot Settings
+                                </v-btn>
+                            </div>
                         </div>
 
                         <div v-else-if="activeTab === 'telegram'">
-                            <div class="settings-section-title">Telegram</div>
-                            <div class="settings-section-description mb-6">
+                            <div class="text-body-1 font-weight-bold">Telegram</div>
+                            <div class="text-body-2 text-medium-emphasis mb-6">
                                 Edit the backend-managed Telegram bot token and superuser list.
                             </div>
 
-                            <div class="settings-field">
-                                <div class="settings-field-label">Bot Token</div>
+                            <div class="mb-4">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Bot Token</div>
                                 <v-text-field v-model="telegram.token" density="compact" variant="solo-filled" flat
                                     rounded="lg" hide-details="auto"
                                     :type="visibility.telegramToken ? 'text' : 'password'"
@@ -151,70 +397,68 @@
                                     @click:append-inner="visibility.telegramToken = !visibility.telegramToken" />
                             </div>
 
-                            <div class="settings-field">
-                                <div class="settings-field-label">Superuser IDs</div>
+                            <div class="mb-4">
+                                <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Superuser IDs
+                                </div>
                                 <v-textarea v-model="telegram.superuserIdsText" density="compact" variant="solo-filled"
                                     flat rounded="lg" hide-details="auto" rows="4" auto-grow
                                     placeholder="123456&#10;789012" />
-                                <div class="settings-help-text mt-1">
+                                <div class="text-caption text-medium-emphasis mt-1">
                                     Enter one Telegram user ID per line. Commas are also supported.
                                 </div>
                             </div>
 
-                            <v-divider class="settings-divider" />
-                            <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.telegram"
-                                @click="saveTelegramConfiguration">
-                                Save Telegram Settings
-                            </v-btn>
+                            <div class="d-flex justify-end">
+                                <v-btn size="small" rounded="lg" variant="tonal" :loading="saving.telegram"
+                                    @click="saveTelegramConfiguration">
+                                    Save Telegram Settings
+                                </v-btn>
+                            </div>
                         </div>
                     </template>
 
                     <div v-else-if="activeTab === 'credentials'">
-                        <div class="settings-section-title">Credential Vault</div>
-                        <div class="settings-section-description mb-4">
+                        <div class="text-body-1 font-weight-bold">Credential Vault</div>
+                        <div class="text-body-2 text-medium-emphasis mb-4">
                             Securely store and manage your SUSTech authentication credentials.
                         </div>
 
-                        <v-alert rounded="lg" variant="tonal" type="info" density="compact" class="mb-5">
-                            Credentials are kept locally for the current frontend flow and synced to the backend CAS
-                            configuration when you save.
-                        </v-alert>
-
-                        <div class="settings-field">
-                            <div class="settings-field-label">Student ID</div>
+                        <div class="mb-4">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Student ID</div>
                             <v-text-field v-model="creds.studentId" density="compact" variant="solo-filled" flat
                                 rounded="lg" placeholder="e.g. 12110001" hide-details="auto" />
                         </div>
 
-                        <div class="settings-field">
-                            <div class="settings-field-label">Password</div>
+                        <div class="mb-4">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Password</div>
                             <v-text-field v-model="creds.password" density="compact" variant="solo-filled" flat
                                 rounded="lg" hide-details="auto" :type="showPassword ? 'text' : 'password'"
                                 :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
                                 @click:append-inner="showPassword = !showPassword" />
                         </div>
 
-                        <v-divider class="settings-divider" />
-                        <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" :loading="saving.credentials"
-                            @click="saveCredentialVault">
-                            Save Credentials
-                        </v-btn>
+                        <div class="d-flex justify-end">
+                            <v-btn size="small" rounded="lg" variant="tonal" :loading="saving.credentials"
+                                @click="saveCredentialVault">
+                                Save Credentials
+                            </v-btn>
+                        </div>
                     </div>
 
                     <div v-else-if="activeTab === 'appearance'">
-                        <div class="settings-section-title">Appearance</div>
-                        <div class="settings-section-description mb-6">
+                        <div class="text-body-1 font-weight-bold">Appearance</div>
+                        <div class="text-body-2 text-medium-emphasis mb-6">
                             Customize the look and feel of the application.
                         </div>
 
-                        <div class="settings-field">
-                            <div class="settings-field-label">Theme</div>
+                        <div class="mb-4">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Theme</div>
                             <v-item-group v-model="appearance.theme" mandatory>
                                 <v-row density="compact">
                                     <v-col v-for="option in themeOptions" :key="option.value" cols="12" sm="4">
                                         <v-item v-slot="{ isSelected, toggle }" :value="option.value">
-                                            <v-card rounded="lg" elevation="0" border class="settings-option-card"
-                                                :class="{ 'settings-option-card--active': isSelected }" @click="toggle">
+                                            <v-card rounded="lg" elevation="0" border
+                                                :variant="isSelected ? 'tonal' : 'flat'" @click="toggle">
                                                 <v-card-text class="pa-3">
                                                     <div class="d-flex align-center ga-2">
                                                         <v-icon size="18">{{ option.icon }}</v-icon>
@@ -230,116 +474,150 @@
                                     </v-col>
                                 </v-row>
                             </v-item-group>
-                            <div class="settings-help-text mt-1">
+                            <div class="text-caption text-medium-emphasis mt-1">
                                 System mode follows your OS appearance settings.
                             </div>
                         </div>
 
-                        <v-divider class="settings-divider" />
-                        <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" @click="saveAppearance">
-                            Save Appearance
-                        </v-btn>
                     </div>
 
                     <div v-else-if="activeTab === 'notifications'">
-                        <div class="settings-section-title">Notifications</div>
-                        <div class="settings-section-description mb-6">
+                        <div class="text-body-1 font-weight-bold">Notifications</div>
+                        <div class="text-body-2 text-medium-emphasis mb-4">
                             Control when and how you receive notifications.
                         </div>
 
-                        <v-card rounded="lg" elevation="0" border class="mb-4">
-                            <v-list bg-color="transparent" density="comfortable">
-                                <v-list-item prepend-icon="mdi-bell-outline" title="Enable Notifications"
-                                    subtitle="Master toggle for all notification types.">
+                        <v-list bg-color="transparent" density="compact" class="pa-0 mb-4">
+                            <v-list-item rounded="lg" slim variant="tonal" class="mb-1">
+                                <template #prepend>
+                                    <v-icon size="18">mdi-bell-outline</v-icon>
+                                </template>
+                                <v-list-item-title>Enable Notifications</v-list-item-title>
+                                <v-list-item-subtitle>Master toggle for all notification types.</v-list-item-subtitle>
+                                <template #append>
+                                    <v-switch v-model="notif.enabled" density="compact" hide-details />
+                                </template>
+                            </v-list-item>
+
+                            <template v-for="item in notifItems" :key="item.key">
+                                <v-list-item rounded="lg" slim variant="tonal" class="mb-1" :disabled="!notif.enabled">
+                                    <template #prepend>
+                                        <v-icon size="18">{{ item.icon }}</v-icon>
+                                    </template>
+                                    <v-list-item-title>{{ item.label }}</v-list-item-title>
+                                    <v-list-item-subtitle>{{ item.description }}</v-list-item-subtitle>
                                     <template #append>
-                                        <v-switch v-model="notif.enabled" density="compact" hide-details
-                                            inset />
+                                        <v-switch v-model="notif[item.key]" density="compact" hide-details
+                                            :disabled="!notif.enabled" />
                                     </template>
                                 </v-list-item>
-                            </v-list>
-                        </v-card>
+                            </template>
+                        </v-list>
 
-                        <v-card rounded="lg" elevation="0" border class="mb-5 overflow-hidden">
-                            <v-list bg-color="transparent" density="comfortable">
-                                <template v-for="(item, index) in notifItems" :key="item.key">
-                                    <v-list-item :prepend-icon="item.icon" :title="item.label"
-                                        :subtitle="item.description">
-                                        <template #append>
-                                            <v-switch v-model="notif[item.key]" density="compact" hide-details
-                                                inset :disabled="!notif.enabled" />
-                                        </template>
-                                    </v-list-item>
-                                    <v-divider v-if="index < notifItems.length - 1" />
-                                </template>
-                            </v-list>
-                        </v-card>
-
-                        <v-divider class="settings-divider" />
-                        <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button"
-                            @click="saveNotificationSettings">
-                            Save Notification Settings
-                        </v-btn>
+                        <div class="d-flex justify-end">
+                            <v-btn size="small" rounded="lg" variant="tonal" @click="saveNotificationSettings">
+                                Save Notification Settings
+                            </v-btn>
+                        </div>
                     </div>
 
                     <div v-else-if="activeTab === 'preferences'">
-                        <div class="settings-section-title">System Preferences</div>
-                        <div class="settings-section-description mb-6">
+                        <div class="text-body-1 font-weight-bold">System Preferences</div>
+                        <div class="text-body-2 text-medium-emphasis mb-4">
                             Configure system-level behavior of the agent.
                         </div>
 
-                        <div class="settings-field">
-                            <div class="settings-field-label">Wake Shortcut</div>
-                            <v-text-field
-                                :model-value="prefs.recording ? 'Listening for a shortcut...' : prefs.shortcut"
-                                density="compact" variant="solo-filled" flat rounded="lg" hide-details readonly
-                                prepend-inner-icon="mdi-keyboard-outline"
-                                :focused="prefs.recording" />
-                            <div class="d-flex align-center ga-2 mt-3">
+                        <div class="mb-4">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Wake Shortcut</div>
+                            <div class="d-flex align-center ga-2">
+                                <v-text-field
+                                    :model-value="prefs.recording ? 'Listening for a shortcut...' : prefs.shortcut"
+                                    density="compact" variant="solo-filled" flat rounded="lg" hide-details readonly
+                                    prepend-inner-icon="mdi-keyboard-outline" :focused="prefs.recording" />
                                 <v-btn variant="tonal" rounded="lg" size="small" :disabled="prefs.recording"
                                     @click="startRecording">
                                     {{ prefs.recording ? 'Recording...' : 'Record' }}
                                 </v-btn>
-                                <v-chip v-if="prefs.recording" size="small" rounded="lg" variant="tonal"
-                                    color="warning">
-                                    Press a key combination...
-                                </v-chip>
+                            </div>
+                            <div v-if="prefs.recording" class="text-caption text-medium-emphasis mt-1">
+                                Press a key combination...
                             </div>
                         </div>
 
-                        <v-card variant="outlined" rounded="lg" class="mb-5">
-                            <v-list bg-color="transparent" density="comfortable">
-                                <v-list-item prepend-icon="mdi-power" title="Launch on Startup"
-                                    subtitle="Automatically start Agent when system boots.">
-                                    <template #append>
-                                        <v-switch v-model="prefs.startup" density="compact" hide-details
-                                            inset />
-                                    </template>
-                                </v-list-item>
-                            </v-list>
-                        </v-card>
+                        <v-list bg-color="transparent" density="compact" class="pa-0 mb-4">
+                            <v-list-item rounded="lg" slim variant="tonal">
+                                <template #prepend>
+                                    <v-icon size="18">mdi-power</v-icon>
+                                </template>
+                                <v-list-item-title>Launch on Startup</v-list-item-title>
+                                <v-list-item-subtitle>Automatically start OpenCrab when system
+                                    boots.</v-list-item-subtitle>
+                                <template #append>
+                                    <v-switch v-model="prefs.startup" density="compact" hide-details />
+                                </template>
+                            </v-list-item>
+                        </v-list>
 
-                        <div class="settings-field">
-                            <div class="settings-field-label">Default Workspace Path</div>
-                            <div class="d-flex ga-2">
+                        <div class="mb-4">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Default Workspace
+                                Path</div>
+                            <div class="d-flex align-center ga-2">
                                 <v-text-field v-model="prefs.workspacePath" density="compact" variant="solo-filled" flat
                                     rounded="lg" hide-details="auto" class="flex-grow-1" />
-                                <v-btn variant="text" rounded="lg" size="small" prepend-icon="mdi-folder-outline"
+                                <v-btn variant="tonal" rounded="lg" size="small" prepend-icon="mdi-folder-outline"
                                     @click="browseWorkspace">
                                     Browse
                                 </v-btn>
                             </div>
-                            <div class="settings-help-text mt-1">
+                            <div class="text-caption text-medium-emphasis mt-1">
                                 Agent will organize files, download courseware, and store data in this directory.
                             </div>
                         </div>
 
-                        <v-divider class="settings-divider" />
-                        <v-btn size="small" rounded="lg" variant="tonal" class="settings-save-button" @click="savePreferences">
-                            Save Preferences
-                        </v-btn>
+                        <div class="d-flex justify-end">
+                            <v-btn size="small" rounded="lg" variant="tonal" @click="savePreferences">
+                                Save Preferences
+                            </v-btn>
+                        </div>
                     </div>
-                </div>
-            </div>
+
+                    <div v-else-if="activeTab === 'developer'">
+                        <div class="text-body-1 font-weight-bold">Developer</div>
+                        <div class="text-body-2 text-medium-emphasis mb-4">
+                            Development-only controls for API routing and onboarding.
+                        </div>
+
+                        <v-list bg-color="transparent" density="compact" class="pa-0 mb-4">
+                            <v-list-item rounded="lg" slim variant="tonal">
+                                <template #prepend>
+                                    <v-icon size="18">mdi-cloud-sync-outline</v-icon>
+                                </template>
+                                <v-list-item-title>Use Cloud API by Default</v-list-item-title>
+                                <v-list-item-subtitle>{{ developer.currentBaseURL }}</v-list-item-subtitle>
+                                <template #append>
+                                    <v-switch v-model="developer.defaultBaseURLIsCloud" density="compact" hide-details
+                                        @update:model-value="onDeveloperApiToggle" />
+                                </template>
+                            </v-list-item>
+                        </v-list>
+
+                        <div class="mb-4">
+                            <div class="text-caption font-weight-medium text-medium-emphasis mb-1">Onboarding</div>
+                            <div class="d-flex align-center justify-space-between ga-3">
+                                <div class="text-caption text-medium-emphasis">
+                                    The onboarding flow appears automatically on first setup. Open it here when you need
+                                    to
+                                    rerun it.
+                                </div>
+                                <v-btn size="small" rounded="lg" variant="tonal" prepend-icon="mdi-map-outline"
+                                    @click="openOnboardingFromDeveloper">
+                                    Open Onboarding
+                                </v-btn>
+                            </div>
+                        </div>
+                    </div>
+                </v-sheet>
+            </v-sheet>
         </v-main>
 
         <v-snackbar v-model="notice.show" :color="notice.color" timeout="2600" location="top">
@@ -350,24 +628,30 @@
 
 <script setup lang="ts">
     import { patchCas } from '@/api/cas'
-    import { getConfig, patchConfig, type AppConfig, type DeepPartial, type LLMEndpointConfig, type LLMProviderType } from '@/api/config'
+    import { getConfig, patchConfig, type AppConfig, type ASREndpointConfig, type DeepPartial, type EmbedEndpointConfig, type FileConfig, type LLMEndpointConfig, type LLMProviderType, type RerankerEndpointConfig } from '@/api/config'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
+    import { requestOpenAIModels } from '@/composables/useOpenAIModelTools'
+    import { baseURL, getDefaultBaseURLIsCloud, setDefaultBaseURLIsCloud } from '@/utils/http'
     import { useRoute } from 'vue-router'
     import { useTheme } from 'vuetify'
     import { getStoredThemePreference, setStoredThemePreference, type ThemePreference } from '@/utils/theme'
 
     type SettingsTabId =
         | 'llm'
-        | 'file'
+        | 'retrieval'
+        | 'services'
         | 'onebot'
         | 'telegram'
         | 'credentials'
         | 'appearance'
         | 'notifications'
         | 'preferences'
+        | 'developer'
 
     type NoticeColor = 'success' | 'error' | 'warning'
     type NotificationKey = 'taskComplete' | 'taskFailed' | 'calendarReminder'
+    type OpenAIProviderKey = 'agent' | 'utility' | 'embed' | 'rerank'
+    type ServiceToolKey = 'asr' | 'mineru'
 
     interface NotificationItem {
         key: NotificationKey
@@ -377,19 +661,22 @@
     }
 
     const route = useRoute()
+    const router = useRouter()
     const theme = useTheme()
     const activeTab = ref<SettingsTabId>('llm')
-    const { campusAuth, saveCampusAuth } = useOnboardingConfig()
+    const { campusAuth, saveCampusAuth, saveServiceConfig } = useOnboardingConfig()
 
     const tabs: { id: SettingsTabId, icon: string, label: string }[] = [
-        { id: 'llm', icon: 'mdi-brain', label: 'LLM Configuration' },
-        { id: 'file', icon: 'mdi-file-outline', label: 'File' },
+        { id: 'llm', icon: 'mdi-brain', label: 'Models' },
+        { id: 'retrieval', icon: 'mdi-database-search-outline', label: 'Retrieval' },
+        { id: 'services', icon: 'mdi-tools', label: 'Services' },
         { id: 'onebot', icon: 'mdi-robot-outline', label: 'OneBot' },
         { id: 'telegram', icon: 'mdi-send-outline', label: 'Telegram' },
         { id: 'credentials', icon: 'mdi-shield-check', label: 'Credential Vault' },
         { id: 'appearance', icon: 'mdi-palette-outline', label: 'Appearance' },
         { id: 'notifications', icon: 'mdi-bell-outline', label: 'Notifications' },
         { id: 'preferences', icon: 'mdi-wrench-outline', label: 'System Preferences' },
+        { id: 'developer', icon: 'mdi-code-braces', label: 'Developer' },
     ]
 
     const activeTabMeta = computed(() =>
@@ -416,31 +703,91 @@
     const loadingConfig = ref(true)
     const loadError = ref('')
     const loadedConfig = shallowRef<AppConfig | null>(null)
-
     const saving = reactive({
-        llm: false,
-        file: false,
+        models: false,
+        retrieval: false,
+        services: false,
         onebot: false,
         telegram: false,
         credentials: false,
     })
 
     const visibility = reactive({
-        llmApiKey: false,
-        fileApiKey: false,
+        modelSecrets: false,
+        retrievalSecrets: false,
+        serviceSecrets: false,
         onebotToken: false,
         telegramToken: false,
     })
 
-    const llm = reactive({
-        provider: 'OpenAI' as LLMProviderType,
-        baseUrl: '',
-        apiKey: '',
-        modelName: '',
+    const modelConfig = reactive({
+        agent: {
+            provider: 'OpenAI' as LLMProviderType,
+            baseUrl: '',
+            apiKey: '',
+            model: '',
+            maxTokenCount: 128000,
+        },
+        utility: {
+            provider: 'OpenAI' as LLMProviderType,
+            baseUrl: '',
+            apiKey: '',
+            model: '',
+            maxTokenCount: 128000,
+        },
     })
 
-    const fileConfig = reactive({
-        mineruApiKey: '',
+    const retrievalConfig = reactive({
+        embed: {
+            baseUrl: '',
+            apiKey: '',
+            model: '',
+            dims: 1536,
+        },
+        rerank: {
+            baseUrl: '',
+            apiKey: '',
+            model: '',
+        },
+    })
+
+    const serviceTools = reactive({
+        asr: {
+            baseUrl: '',
+            apiKey: '',
+        },
+        mineru: {
+            baseUrl: '',
+            apiKey: '',
+        },
+    })
+
+    const modelOptions = reactive<Record<OpenAIProviderKey, string[]>>({
+        agent: [],
+        utility: [],
+        embed: [],
+        rerank: [],
+    })
+
+    const modelToolLoading = reactive<Record<`${OpenAIProviderKey}List` | `${OpenAIProviderKey}Test`, boolean>>({
+        agentList: false,
+        agentTest: false,
+        utilityList: false,
+        utilityTest: false,
+        embedList: false,
+        embedTest: false,
+        rerankList: false,
+        rerankTest: false,
+    })
+
+    const serviceToolLoading = reactive<Record<ServiceToolKey, boolean>>({
+        asr: false,
+        mineru: false,
+    })
+
+    const developer = reactive({
+        defaultBaseURLIsCloud: getDefaultBaseURLIsCloud(),
+        currentBaseURL: baseURL,
     })
 
     const onebot = reactive({
@@ -523,7 +870,7 @@
     let recordTimer: ReturnType<typeof setTimeout> | null = null
 
     function isConfigTab (tab: SettingsTabId) {
-        return tab === 'llm' || tab === 'file' || tab === 'onebot' || tab === 'telegram'
+        return tab === 'llm' || tab === 'retrieval' || tab === 'services' || tab === 'onebot' || tab === 'telegram'
     }
 
     function showNotice (text: string, color: NoticeColor = 'success') {
@@ -537,15 +884,185 @@
         return responseMessage || (error as any)?.message || fallback
     }
 
+    function getOpenAIProviderLabel (key: OpenAIProviderKey) {
+        const labels: Record<OpenAIProviderKey, string> = {
+            agent: 'Primary model',
+            utility: 'Utility model',
+            embed: 'Embed',
+            rerank: 'Rerank',
+        }
+        return labels[key]
+    }
+
+    function getOpenAIProviderDraft (key: OpenAIProviderKey) {
+        if (key === 'agent' || key === 'utility') {
+            return modelConfig[key]
+        }
+        return retrievalConfig[key]
+    }
+
+    async function fetchProviderModels (key: OpenAIProviderKey) {
+        const loadingKey = `${key}List` as const
+        modelToolLoading[loadingKey] = true
+
+        try {
+            const models = await requestOpenAIModels(getOpenAIProviderDraft(key), getOpenAIProviderLabel(key))
+            modelOptions[key] = models
+            if (!models.length) {
+                showNotice(`${getOpenAIProviderLabel(key)} connected, but no model list was returned.`, 'warning')
+                return
+            }
+            showNotice(`Pulled ${models.length} models.`)
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to pull model list.'), 'error')
+        } finally {
+            modelToolLoading[loadingKey] = false
+        }
+    }
+
+    async function testProviderConnection (key: OpenAIProviderKey) {
+        const loadingKey = `${key}Test` as const
+        modelToolLoading[loadingKey] = true
+
+        try {
+            await requestOpenAIModels(getOpenAIProviderDraft(key), getOpenAIProviderLabel(key))
+            showNotice(`${getOpenAIProviderLabel(key)} connection looks good.`)
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Connection test failed.'), 'error')
+        } finally {
+            modelToolLoading[loadingKey] = false
+        }
+    }
+
+    function assertServiceDraft (key: ServiceToolKey) {
+        const draft = serviceTools[key]
+        if (!draft.baseUrl.trim() || !draft.apiKey.trim()) {
+            throw new Error(`Please fill ${key === 'asr' ? 'ASR' : 'MinerU'} Base URL and API Key first.`)
+        }
+        return draft
+    }
+
+    function testWebSocketConnection (url: string) {
+        return new Promise<void>((resolve, reject) => {
+            const socket = new WebSocket(url)
+            const timer = window.setTimeout(() => {
+                socket.close()
+                reject(new Error('Connection timed out.'))
+            }, 6000)
+
+            socket.addEventListener('open', () => {
+                clearTimeout(timer)
+                socket.close()
+                resolve()
+            }, { once: true })
+
+            socket.addEventListener('error', () => {
+                clearTimeout(timer)
+                reject(new Error('WebSocket connection failed.'))
+            }, { once: true })
+        })
+    }
+
+    async function testServiceConnection (key: ServiceToolKey) {
+        serviceToolLoading[key] = true
+
+        try {
+            const draft = assertServiceDraft(key)
+            const trimmedUrl = draft.baseUrl.trim()
+            if (/^wss?:\/\//i.test(trimmedUrl)) {
+                await testWebSocketConnection(trimmedUrl)
+            } else {
+                const response = await fetch(trimmedUrl, {
+                    method: 'GET',
+                    headers: {
+                        Accept: 'application/json',
+                        Authorization: `Bearer ${draft.apiKey.trim()}`,
+                    },
+                })
+                if (!response.ok) {
+                    throw new Error(`Connection failed (${response.status}).`)
+                }
+            }
+            showNotice(`${key === 'asr' ? 'ASR' : 'MinerU'} connection looks good.`)
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Connection test failed.'), 'error')
+        } finally {
+            serviceToolLoading[key] = false
+        }
+    }
+
+    function onDeveloperApiToggle (value: boolean | null) {
+        setDefaultBaseURLIsCloud(Boolean(value))
+        developer.currentBaseURL = baseURL
+    }
+
+    function openOnboardingFromDeveloper () {
+        router.push('/onboarding')
+    }
+
     function applyConfig (config: AppConfig) {
         loadedConfig.value = config
 
-        llm.provider = config.api.agent.type
-        llm.baseUrl = config.api.agent.base_url || ''
-        llm.apiKey = config.api.agent.api_key || ''
-        llm.modelName = config.api.agent.model || ''
+        modelConfig.agent.provider = config.api.agent.type
+        modelConfig.agent.baseUrl = config.api.agent.base_url || ''
+        modelConfig.agent.apiKey = config.api.agent.api_key || ''
+        modelConfig.agent.model = config.api.agent.model || ''
+        modelConfig.agent.maxTokenCount = config.api.agent.max_token_count || 128000
 
-        fileConfig.mineruApiKey = config.file?.mineru?.api_key || ''
+        modelConfig.utility.provider = config.api.utility.type
+        modelConfig.utility.baseUrl = config.api.utility.base_url || ''
+        modelConfig.utility.apiKey = config.api.utility.api_key || ''
+        modelConfig.utility.model = config.api.utility.model || ''
+        modelConfig.utility.maxTokenCount = config.api.utility.max_token_count || 128000
+
+        retrievalConfig.embed.baseUrl = config.api.embed.base_url || ''
+        retrievalConfig.embed.apiKey = config.api.embed.api_key || ''
+        retrievalConfig.embed.model = config.api.embed.model || ''
+        retrievalConfig.embed.dims = config.api.embed.dims || 1536
+
+        retrievalConfig.rerank.baseUrl = config.api.rerank.base_url || ''
+        retrievalConfig.rerank.apiKey = config.api.rerank.api_key || ''
+        retrievalConfig.rerank.model = config.api.rerank.model || ''
+
+        serviceTools.asr.baseUrl = config.api.asr.base_url || ''
+        serviceTools.asr.apiKey = config.api.asr.api_key || ''
+
+        serviceTools.mineru.baseUrl = config.file?.mineru?.base_url || ''
+        serviceTools.mineru.apiKey = config.file?.mineru?.api_key || ''
+
+        saveServiceConfig({
+            agent: {
+                baseUrl: modelConfig.agent.baseUrl,
+                apiKey: modelConfig.agent.apiKey,
+                model: modelConfig.agent.model,
+                maxTokenCount: modelConfig.agent.maxTokenCount,
+            },
+            utility: {
+                baseUrl: modelConfig.utility.baseUrl,
+                apiKey: modelConfig.utility.apiKey,
+                model: modelConfig.utility.model,
+                maxTokenCount: modelConfig.utility.maxTokenCount,
+            },
+            embed: {
+                baseUrl: retrievalConfig.embed.baseUrl,
+                apiKey: retrievalConfig.embed.apiKey,
+                model: retrievalConfig.embed.model,
+                dims: retrievalConfig.embed.dims,
+            },
+            rerank: {
+                baseUrl: retrievalConfig.rerank.baseUrl,
+                apiKey: retrievalConfig.rerank.apiKey,
+                model: retrievalConfig.rerank.model,
+            },
+            asr: {
+                baseUrl: serviceTools.asr.baseUrl,
+                apiKey: serviceTools.asr.apiKey,
+            },
+            mineru: {
+                baseUrl: serviceTools.mineru.baseUrl,
+                apiKey: serviceTools.mineru.apiKey,
+            },
+        })
 
         onebot.token = config.onebot?.token || ''
         onebot.superuserIdsText = (config.onebot?.superuser_ids || []).map(id => String(id)).join('\n')
@@ -579,49 +1096,47 @@
         }
     }
 
-    function buildLlmPatch (): DeepPartial<AppConfig> | null {
-        const snapshot = loadedConfig.value
-        if (!snapshot) return null
-
-        const agentPatch: DeepPartial<LLMEndpointConfig> = {}
-        const nextBaseUrl = llm.baseUrl.trim()
-        const nextApiKey = llm.apiKey.trim()
-        const nextModel = llm.modelName.trim()
-
-        if (nextBaseUrl !== snapshot.api.agent.base_url) {
-            agentPatch.base_url = nextBaseUrl
-        }
-
-        if (nextApiKey !== snapshot.api.agent.api_key) {
-            agentPatch.api_key = nextApiKey
-        }
-
-        if (nextModel !== snapshot.api.agent.model) {
-            agentPatch.model = nextModel
-        }
-
-        if (!Object.keys(agentPatch).length) return null
-
+    function buildModelEndpointPatch (value: typeof modelConfig.agent): DeepPartial<LLMEndpointConfig> {
         return {
-            api: {
-                agent: agentPatch,
-            },
+            type: value.provider,
+            base_url: value.baseUrl.trim(),
+            api_key: value.apiKey.trim(),
+            model: value.model.trim(),
+            max_token_count: value.maxTokenCount,
         }
     }
 
-    function buildFilePatch (): DeepPartial<AppConfig> | null {
-        const snapshot = loadedConfig.value
-        if (!snapshot) return null
-
-        const nextApiKey = fileConfig.mineruApiKey.trim()
-        if (nextApiKey === snapshot.file.mineru.api_key) return null
-
+    function buildEmbedPatch (): DeepPartial<EmbedEndpointConfig> {
         return {
-            file: {
-                mineru: {
-                    api_key: nextApiKey,
-                },
-            },
+            type: 'OpenAI',
+            base_url: retrievalConfig.embed.baseUrl.trim(),
+            api_key: retrievalConfig.embed.apiKey.trim(),
+            model: retrievalConfig.embed.model.trim(),
+            dims: retrievalConfig.embed.dims,
+        }
+    }
+
+    function buildRerankPatch (): DeepPartial<RerankerEndpointConfig> {
+        return {
+            type: 'OpenAI',
+            base_url: retrievalConfig.rerank.baseUrl.trim(),
+            api_key: retrievalConfig.rerank.apiKey.trim(),
+            model: retrievalConfig.rerank.model.trim(),
+        }
+    }
+
+    function buildAsrPatch (): DeepPartial<ASREndpointConfig> {
+        return {
+            type: 'Qwen',
+            base_url: serviceTools.asr.baseUrl.trim(),
+            api_key: serviceTools.asr.apiKey.trim(),
+        }
+    }
+
+    function buildMineruPatch (): NonNullable<DeepPartial<FileConfig>['mineru']> {
+        return {
+            base_url: serviceTools.mineru.baseUrl.trim(),
+            api_key: serviceTools.mineru.apiKey.trim(),
         }
     }
 
@@ -674,43 +1189,62 @@
         }
     }
 
-    async function saveLlmConfiguration () {
-        const delta = buildLlmPatch()
-        if (!delta) {
-            showNotice('No main model changes to save.', 'warning')
-            return
-        }
-
-        saving.llm = true
+    async function saveModelConfiguration () {
+        saving.models = true
 
         try {
-            const config = await patchConfig(delta)
+            const config = await patchConfig({
+                api: {
+                    agent: buildModelEndpointPatch(modelConfig.agent),
+                    utility: buildModelEndpointPatch(modelConfig.utility),
+                },
+            })
             applyConfig(config)
-            showNotice('Main model configuration saved.')
+            showNotice('Model configuration saved.')
         } catch (error) {
-            showNotice(getErrorMessage(error, 'Failed to save main model configuration.'), 'error')
+            showNotice(getErrorMessage(error, 'Failed to save model configuration.'), 'error')
         } finally {
-            saving.llm = false
+            saving.models = false
         }
     }
 
-    async function saveFileConfiguration () {
-        const delta = buildFilePatch()
-        if (!delta) {
-            showNotice('No file API key changes to save.', 'warning')
-            return
-        }
-
-        saving.file = true
+    async function saveRetrievalConfiguration () {
+        saving.retrieval = true
 
         try {
-            const config = await patchConfig(delta)
+            const config = await patchConfig({
+                api: {
+                    embed: buildEmbedPatch(),
+                    rerank: buildRerankPatch(),
+                },
+            })
             applyConfig(config)
-            showNotice('File configuration saved.')
+            showNotice('Retrieval configuration saved.')
         } catch (error) {
-            showNotice(getErrorMessage(error, 'Failed to save file configuration.'), 'error')
+            showNotice(getErrorMessage(error, 'Failed to save retrieval configuration.'), 'error')
         } finally {
-            saving.file = false
+            saving.retrieval = false
+        }
+    }
+
+    async function saveServicesConfiguration () {
+        saving.services = true
+
+        try {
+            const config = await patchConfig({
+                api: {
+                    asr: buildAsrPatch(),
+                },
+                file: {
+                    mineru: buildMineruPatch(),
+                },
+            })
+            applyConfig(config)
+            showNotice('Service configuration saved.')
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save service configuration.'), 'error')
+        } finally {
+            saving.services = false
         }
     }
 
@@ -776,16 +1310,6 @@
         }
     }
 
-    function saveAppearance () {
-        setStoredThemePreference(appearance.theme)
-        theme.global.name.value = appearance.theme
-        showNotice('Appearance saved')
-    }
-
-    function saveNotificationSettings () {
-        showNotice('Notification settings saved')
-    }
-
     function cleanupShortcutCapture () {
         if (shortcutHandler) {
             window.removeEventListener('keydown', shortcutHandler)
@@ -836,6 +1360,18 @@
         showNotice('Preferences saved')
     }
 
+    function saveNotificationSettings () {
+        showNotice('Notification settings saved')
+    }
+
+    watch(
+        () => appearance.theme,
+        (themeName) => {
+            setStoredThemePreference(themeName)
+            theme.global.name.value = themeName
+        }
+    )
+
     onMounted(() => {
         void loadConfigData()
     })
@@ -844,141 +1380,3 @@
         cleanupShortcutCapture()
     })
 </script>
-
-<style scoped>
-    .settings-workspace {
-        --settings-content-radius: 8px;
-        background: rgb(var(--v-theme-surface));
-    }
-
-    .settings-sidebar {
-        background: rgb(var(--v-theme-surface)) !important;
-    }
-
-    .settings-app-bar {
-        background: rgb(var(--v-theme-background)) !important;
-        border-top-left-radius: var(--settings-content-radius) !important;
-        overflow: hidden;
-    }
-
-    .settings-app-bar :deep(.v-toolbar__content) {
-        position: relative;
-    }
-
-    .settings-app-title {
-        position: absolute;
-        left: 50%;
-        max-width: min(44vw, 520px);
-        overflow: hidden;
-        font-size: 0.875rem;
-        font-weight: 600;
-        line-height: 1.25rem;
-        text-overflow: ellipsis;
-        transform: translateX(-50%);
-        white-space: nowrap;
-    }
-
-    .settings-main {
-        background: transparent;
-    }
-
-    .settings-route-panel {
-        height: 100%;
-        min-height: 0;
-        overflow: hidden;
-        background: rgb(var(--v-theme-background));
-        border-bottom-left-radius: var(--settings-content-radius);
-    }
-
-    .settings-content-shell {
-        width: min(720px, 100%);
-        height: 100%;
-        min-height: 0;
-        margin-inline: auto;
-        overflow-y: auto;
-        padding: 12px 16px 20px;
-    }
-
-    .settings-section-title {
-        font-size: 0.9375rem;
-        font-weight: 700;
-        line-height: 1.35rem;
-    }
-
-    .settings-section-description,
-    .settings-help-text {
-        color: rgba(var(--v-theme-on-surface), 0.62);
-        font-size: 0.8125rem;
-        line-height: 1.35;
-    }
-
-    .settings-field {
-        margin-bottom: 14px;
-    }
-
-    .settings-field-label {
-        margin-bottom: 6px;
-        color: rgba(var(--v-theme-on-surface), 0.66);
-        font-size: 0.8125rem;
-        font-weight: 600;
-        line-height: 1.1rem;
-    }
-
-    .settings-divider {
-        margin: 12px 0;
-    }
-
-    .settings-save-button {
-        display: flex;
-        margin-left: auto;
-    }
-
-    .settings-option-card {
-        background: rgba(var(--v-theme-on-surface), 0.018) !important;
-    }
-
-    .settings-option-card--active {
-        background: rgba(var(--v-theme-on-surface), 0.08) !important;
-        color: rgb(var(--v-theme-on-surface)) !important;
-    }
-
-    .settings-workspace :deep(.theme-active-list-item) {
-        background: rgba(var(--v-theme-on-surface), 0.08) !important;
-        color: rgb(var(--v-theme-on-surface)) !important;
-    }
-
-    .settings-workspace :deep(.theme-active-list-item .v-icon),
-    .settings-workspace :deep(.v-list-item--active .v-icon) {
-        color: rgb(var(--v-theme-on-surface)) !important;
-    }
-
-    .settings-workspace :deep(.v-list-item--active > .v-list-item__overlay),
-    .settings-workspace :deep(.theme-active-list-item > .v-list-item__overlay) {
-        opacity: 0 !important;
-    }
-
-    .settings-workspace :deep(.v-list-item-title) {
-        font-size: 0.8125rem;
-        font-weight: 600;
-    }
-
-    .settings-sidebar :deep(.v-list-item__prepend > .v-icon) {
-        font-size: 20px;
-        height: 20px;
-        width: 20px;
-    }
-
-    .settings-workspace :deep(.v-field) {
-        font-size: 0.875rem;
-    }
-
-    .settings-workspace :deep(.v-switch .v-selection-control) {
-        min-height: 32px;
-    }
-
-    @media (max-width: 760px) {
-        .settings-content-shell {
-            width: 100%;
-        }
-    }
-</style>

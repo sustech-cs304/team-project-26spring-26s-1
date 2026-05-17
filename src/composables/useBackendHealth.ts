@@ -4,7 +4,7 @@ import { computed, readonly, ref } from 'vue'
 type BackendHealthStatus = 'checking' | 'online' | 'offline'
 
 const POLL_INTERVAL_MS = 3000
-const DISCONNECT_TIMEOUT_MS = 15000
+const DISCONNECT_TIMEOUT_MS = 60000
 const TIP_INTERVAL_MS = 2600
 
 const tips = [
@@ -21,11 +21,13 @@ const disconnectedSince = ref(Date.now())
 const now = ref(Date.now())
 const tipIndex = ref(0)
 const isCheckingNow = ref(false)
+const hasConnectedOnce = ref(false)
 
 let pollTimer: ReturnType<typeof window.setInterval> | null = null
 let clockTimer: ReturnType<typeof window.setInterval> | null = null
 let tipTimer: ReturnType<typeof window.setInterval> | null = null
 let inFlight = false
+let browserEventsStarted = false
 
 const isConnected = computed(() => status.value === 'online')
 const isBlocking = computed(() => !isConnected.value)
@@ -33,14 +35,25 @@ const disconnectedElapsedMs = computed(() => isBlocking.value ? now.value - disc
 const hasTimedOut = computed(() => disconnectedElapsedMs.value >= DISCONNECT_TIMEOUT_MS)
 
 const title = computed(() => {
-    if (hasTimedOut.value) return 'OpenCrab 启动还没完成'
-    if (status.value === 'offline') return 'OpenCrab 正在准备中'
+    if (hasTimedOut.value) {
+        return hasConnectedOnce.value ? 'OpenCrab 暂时没跟上' : 'OpenCrab 启动还没完成'
+    }
+    if (status.value === 'offline') {
+        return hasConnectedOnce.value ? 'OpenCrab 正在重新接上' : 'OpenCrab 正在准备中'
+    }
     return 'OpenCrab 正在启动'
 })
 
 const message = computed(() => {
     if (hasTimedOut.value) {
+        if (hasConnectedOnce.value) {
+            return '小蟹和工作区的连接断开了一会儿。可以重新打开 OpenCrab，或让小蟹再检查一次。'
+        }
         return '启动时间比平时久。可以重新打开 OpenCrab，或让小蟹再检查一次。'
+    }
+
+    if (hasConnectedOnce.value && status.value === 'offline') {
+        return '小蟹刚刚没听见工作区的回应，正在帮你重新确认。'
     }
 
     return tips[tipIndex.value]
@@ -67,6 +80,7 @@ async function runHealthCheck () {
 
         if (healthy) {
             status.value = 'online'
+            hasConnectedOnce.value = true
             tipIndex.value = 0
         } else {
             markDisconnected()
@@ -81,6 +95,22 @@ async function runHealthCheck () {
 }
 
 function startBackendHealthPolling () {
+    if (!browserEventsStarted) {
+        window.addEventListener('online', () => {
+            void runHealthCheck()
+        })
+        window.addEventListener('offline', markDisconnected)
+        window.addEventListener('focus', () => {
+            void runHealthCheck()
+        })
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                void runHealthCheck()
+            }
+        })
+        browserEventsStarted = true
+    }
+
     if (!clockTimer) {
         clockTimer = window.setInterval(() => {
             now.value = Date.now()

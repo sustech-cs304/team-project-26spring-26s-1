@@ -14,7 +14,7 @@
             </div>
 
             <div class="skill-card__tags">
-                <v-chip v-for="(tag, index) in tags.slice(0, 3)" :key="index" size="x-small" variant="outlined"
+                <v-chip v-for="(tag, index) in tags.slice(0, 3)" :key="index" size="x-small" variant="tonal"
                     rounded="lg">
                     {{ tag }}
                 </v-chip>
@@ -58,6 +58,7 @@
     .skill-card {
         cursor: pointer;
         background: rgba(var(--v-theme-on-surface), 0.018) !important;
+        border: 1px solid rgba(var(--v-border-color), 0.16) !important;
     }
 
     .skill-card:hover {

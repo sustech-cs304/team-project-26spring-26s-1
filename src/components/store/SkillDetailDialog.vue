@@ -7,7 +7,7 @@
                         <div class="skill-detail-title">
                             {{ skill?.name ?? '技能详情' }}
                         </div>
-                        <v-chip v-if="skill" size="x-small" rounded="lg" :variant="skill.install ? 'tonal' : 'outlined'">
+                        <v-chip v-if="skill" size="x-small" rounded="lg" variant="tonal">
                             {{ skill.install ? '已安装' : '未安装' }}
                         </v-chip>
                     </div>
@@ -26,7 +26,7 @@
 
                 <template v-else-if="skill">
                     <div v-if="skill.tags.length" class="skill-detail-tags">
-                        <v-chip v-for="tag in skill.tags" :key="tag.id" size="x-small" rounded="lg" variant="outlined">
+                        <v-chip v-for="tag in skill.tags" :key="tag.id" size="x-small" rounded="lg" variant="tonal">
                             {{ tag.name }}
                         </v-chip>
                     </div>
@@ -51,7 +51,7 @@
                     @click="emit('install', skill)">
                     下载
                 </v-btn>
-                <v-btn v-else-if="skill" size="small" variant="outlined" rounded="lg"
+                <v-btn v-else-if="skill" size="small" variant="tonal" rounded="lg"
                     prepend-icon="mdi-trash-can-outline" :loading="actionLoading" @click="emit('remove', skill)">
                     卸载
                 </v-btn>
@@ -98,7 +98,7 @@
 <style scoped>
     .skill-detail-dialog {
         overflow: hidden;
-        border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border: 1px solid rgba(var(--v-border-color), 0.16);
     }
 
     .skill-detail-header {
@@ -107,7 +107,7 @@
         justify-content: space-between;
         gap: 12px;
         padding: 12px 14px;
-        border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-bottom: 1px solid rgba(var(--v-border-color), 0.14);
     }
 
     .skill-detail-title {
@@ -149,6 +149,6 @@
 
     .skill-detail-actions {
         padding: 8px 14px 12px;
-        border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+        border-top: 1px solid rgba(var(--v-border-color), 0.14);
     }
 </style>

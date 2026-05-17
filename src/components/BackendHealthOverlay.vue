@@ -1,6 +1,5 @@
 <template>
     <v-sheet
-        v-if="isBlocking"
         color="background"
         class="position-absolute top-0 right-0 bottom-0 left-0 d-flex align-center justify-center"
     >
@@ -53,7 +52,6 @@
     const {
         title,
         message,
-        isBlocking,
         isCheckingNow,
         hasTimedOut,
         startBackendHealthPolling,
