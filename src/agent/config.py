@@ -20,6 +20,12 @@ class LLMEndpointConfig(BaseModel):
     api_key: str = ""
     model: str = ""
     max_token_count: int = Field(default=128000, ge=1)
+    user_agent: str | None = None
+
+    def get_headers(self) -> dict[str, str] | None:
+        if self.user_agent:
+            return {"User-Agent": self.user_agent}
+        return None
 
 class RerankerEndpointConfig(BaseModel):
     type: Literal["OpenAI"] = "OpenAI"

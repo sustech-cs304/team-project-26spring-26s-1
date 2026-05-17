@@ -5,16 +5,14 @@ import logging
 from typing import Any
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import RemoveMessage
-from langchain_openai import ChatOpenAI
-from langchain_qwq import ChatQwen
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.runtime import Runtime
 
-from agent.config import LLMEndpointConfig, get_config, get_config_path, jinja_env, require_llm_endpoint_config
+from agent.config import get_config, get_config_path, jinja_env, require_llm_endpoint_config
 from agent.core.state import AgentState
 from agent.tools.core_memory import core_memory_get
+from agent.utils.model import build_model
 
 log = logging.getLogger(__name__)
 CHARS_PER_TOKEN = 4
@@ -48,28 +46,6 @@ When constructing the summary, try to stick to this template:
 
 [Construct a structured list of relevant files that have been read, edited, or created that pertain to the task at hand. If all the files in a directory are relevant, include the path to the directory.]
 ---"""
-
-
-def _build_model(endpoint: LLMEndpointConfig):
-    if endpoint.type == "OpenAI":
-        return ChatOpenAI(
-            model=endpoint.model,
-            api_key=endpoint.api_key,
-            base_url=endpoint.base_url,
-        )
-    if endpoint.type == "Qwen":
-        return ChatQwen(
-            model=endpoint.model,
-            api_key=endpoint.api_key,
-            base_url=endpoint.base_url,
-        )
-    if endpoint.type == "Anthropic":
-        return ChatAnthropic(
-            model=endpoint.model,
-            api_key=endpoint.api_key,
-            base_url=endpoint.base_url,
-        )
-    raise ValueError(f"Model type {endpoint.type} not supported")
 
 
 def _stringify_content(content: Any) -> str:
@@ -176,7 +152,7 @@ async def context_compacting_node(state: AgentState, runtime: Runtime[Any]) -> A
     if not prefix:
         return state
 
-    model = _build_model(endpoint)
+    model = build_model(endpoint)
     try:
         response = await model.ainvoke([
             *prefix,

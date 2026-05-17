@@ -8,7 +8,6 @@ from typing import Any, Literal, NotRequired, TypedDict, cast
 from langchain.tools import tool
 from langchain_core.runnables import RunnableConfig
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolRuntime
 from langgraph.types import interrupt
@@ -24,6 +23,7 @@ from agent.config import (
     require_llm_endpoint_config,
 )
 from agent.tools import ToolArtifact
+from agent.utils.model import build_model
 
 log = logging.getLogger(__name__)
 REVIEW_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
@@ -229,11 +229,7 @@ async def security_review_node(state: CodeInterpreterGraph, config: RunnableConf
         "code_interpreter",
         ("auto_approve_max_risk_level",),
     )
-    language_model = ChatOpenAI(
-        model=utility_config.model,
-        api_key=cast(Any, utility_config.api_key),
-        base_url=utility_config.base_url
-    )
+    language_model = build_model(utility_config)
     structured_llm = REVIEW_PROMPT_TEMPLATE | language_model.with_structured_output(ReviewOutput)
     review = await structured_llm.ainvoke({"language": state["language"], "code": state["code"]})
     result: dict[str, Any] = {

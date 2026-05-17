@@ -2,11 +2,9 @@ import logging
 import re
 
 from langchain.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
-from langchain_qwq import ChatQwen
 
 from agent.config import ConfigMissingError, LLMEndpointConfig, get_config, get_config_path, require_llm_endpoint_config
+from agent.utils.model import build_model
 
 log = logging.getLogger(__name__)
 DEFAULT_CONVERSATION_TITLE = "New Conversation"
@@ -25,25 +23,7 @@ class ConversationTitleGenerator:
         return "\n\n".join(parts)
 
     def _build_model(self, endpoint: LLMEndpointConfig):
-        if endpoint.type == "OpenAI":
-            return ChatOpenAI(
-                model=endpoint.model,
-                api_key=endpoint.api_key,
-                base_url=endpoint.base_url,
-            )
-        if endpoint.type == "Anthropic":
-            return ChatAnthropic(
-                model=endpoint.model,
-                api_key=endpoint.api_key,
-                base_url=endpoint.base_url,
-            )
-        if endpoint.type == "Qwen":
-            return ChatQwen(
-                model=endpoint.model,
-                api_key=endpoint.api_key,
-                base_url=endpoint.base_url,
-            )
-        raise ValueError(f"Unsupported title model type: {endpoint.type}")
+        return build_model(endpoint)
 
     def _extract_text(self, message: AIMessage) -> str:
         content = message.content

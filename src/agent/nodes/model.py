@@ -2,14 +2,12 @@ from collections.abc import Mapping
 
 from langchain.messages import SystemMessage
 from langchain.tools import BaseTool
-from langchain_anthropic import ChatAnthropic
 from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
-from langchain_qwq import ChatQwen
 from langgraph.runtime import Runtime
 from typing import Any
 
 from agent.config import LLMEndpointConfig, get_config, get_config_path, jinja_env, require_llm_endpoint_config
+from agent.utils.model import build_model as _build_chat_model
 from agent.core.runnable_config import runnable_config_bool
 from agent.core.state import AgentState
 from agent.services.mcp_lifespan import MCPLifespanManager
@@ -31,29 +29,7 @@ class ConfiguredModel:
         self._model_signature: tuple[str, str, str, str] | None = None
 
     def _build_model(self, endpoint: LLMEndpointConfig):
-        if endpoint.type == "OpenAI":
-            model = ChatOpenAI(
-                model=endpoint.model,
-                api_key=endpoint.api_key,
-                base_url=endpoint.base_url,
-            )
-        elif endpoint.type == "Qwen":
-            model = ChatQwen(
-                model=endpoint.model,
-                api_key=endpoint.api_key,
-                base_url=endpoint.base_url,
-            )
-        elif endpoint.type == "Anthropic":
-            model = ChatAnthropic(
-                model=endpoint.model,
-                api_key=endpoint.api_key,
-                base_url=endpoint.base_url,
-                max_tokens_to_sample=100_000,
-            )
-        else:
-            raise ValueError(f"Model type {endpoint.type} not supported")
-
-        return model
+        return _build_chat_model(endpoint)
 
     def _get_model(self, endpoint: LLMEndpointConfig | None = None):
         if endpoint is None:
