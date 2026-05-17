@@ -26,16 +26,10 @@ class ConversationTitleGenerator:
 
     def _build_model(self, endpoint: LLMEndpointConfig):
         if endpoint.type == "OpenAI":
-            default_headers = None
-            if endpoint == require_llm_endpoint_config(get_config_path(get_config(), "api.utility"), "api.utility"):
-                default_headers = {
-                    "User-Agent": "OpenCrab/1.0 utility-title-generator"
-                }
             return ChatOpenAI(
                 model=endpoint.model,
                 api_key=endpoint.api_key,
                 base_url=endpoint.base_url,
-                default_headers=default_headers,
             )
         if endpoint.type == "Anthropic":
             return ChatAnthropic(
