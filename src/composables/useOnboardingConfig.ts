@@ -182,8 +182,8 @@ function writeStorage<T> (key: string, value: T): void {
 
 const onboardingState = reactive<OnboardingState>(readStorage(STORAGE_KEYS.onboardingState, defaultOnboardingState()))
 const userProfile = reactive<UserProfileConfig>(readStorage(STORAGE_KEYS.userProfile, defaultUserProfile()))
-const campusAuth = reactive<CampusAuthConfig>(readStorage(STORAGE_KEYS.campusAuth, defaultCampusAuth()))
-const serviceConfig = reactive<ServiceConfig>(readStorage(STORAGE_KEYS.serviceConfig, defaultServiceConfig()))
+const campusAuth = reactive<CampusAuthConfig>(defaultCampusAuth())
+const serviceConfig = reactive<ServiceConfig>(defaultServiceConfig())
 const knowledgePack = reactive<KnowledgePackConfig>(readStorage(STORAGE_KEYS.knowledgePack, defaultKnowledgePack()))
 
 if (knowledgePack.status === 'downloading') {
@@ -196,14 +196,6 @@ watch(onboardingState, (value) => {
 
 watch(userProfile, (value) => {
     writeStorage(STORAGE_KEYS.userProfile, value)
-}, { deep: true })
-
-watch(campusAuth, (value) => {
-    writeStorage(STORAGE_KEYS.campusAuth, value)
-}, { deep: true })
-
-watch(serviceConfig, (value) => {
-    writeStorage(STORAGE_KEYS.serviceConfig, value)
 }, { deep: true })
 
 watch(knowledgePack, (value) => {
