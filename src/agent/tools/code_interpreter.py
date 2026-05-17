@@ -230,7 +230,7 @@ async def security_review_node(state: CodeInterpreterGraph, config: RunnableConf
         ("auto_approve_max_risk_level",),
     )
     language_model = build_model(utility_config)
-    structured_llm = REVIEW_PROMPT_TEMPLATE | language_model.with_structured_output(ReviewOutput)
+    structured_llm = REVIEW_PROMPT_TEMPLATE | language_model.with_structured_output(ReviewOutput, method="json_schema")
     review = await structured_llm.ainvoke({"language": state["language"], "code": state["code"]})
     result: dict[str, Any] = {
         "review_output": review
