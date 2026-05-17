@@ -8,12 +8,12 @@ const DISCONNECT_TIMEOUT_MS = 15000
 const TIP_INTERVAL_MS = 2600
 
 const tips = [
-    '小蟹正在醒来，先伸个懒腰。',
-    'OpenCrab 正在整理自己的书包，马上回来。',
-    '小蟹还在找今天要用的工具，请稍等一下。',
-    'OpenCrab 正在把自己的钳子校准到最佳状态。',
-    '小蟹听见你了，正在从壳里探头。',
-    '别急，OpenCrab 正在确认自己已经准备好陪你工作。',
+    'OpenCrab 正在启动，第一次见面可能会多花几秒。',
+    '小蟹正在打开工具箱，准备好后会自动带你进去。',
+    'OpenCrab 正在接通自己的工作区，请稍等一下。',
+    '小蟹还在热身，马上就能开始干活。',
+    'OpenCrab 正在整理今天要用的能力，很快就绪。',
+    '小蟹正在确认一切准备妥当，马上回来。',
 ]
 
 const status = ref<BackendHealthStatus>('checking')
@@ -33,14 +33,14 @@ const disconnectedElapsedMs = computed(() => isBlocking.value ? now.value - disc
 const hasTimedOut = computed(() => disconnectedElapsedMs.value >= DISCONNECT_TIMEOUT_MS)
 
 const title = computed(() => {
-    if (hasTimedOut.value) return 'OpenCrab 还没准备好'
-    if (status.value === 'offline') return 'OpenCrab 暂时走神了'
-    return 'OpenCrab 正在醒来'
+    if (hasTimedOut.value) return 'OpenCrab 启动还没完成'
+    if (status.value === 'offline') return 'OpenCrab 正在准备中'
+    return 'OpenCrab 正在启动'
 })
 
 const message = computed(() => {
     if (hasTimedOut.value) {
-        return '可以重新启动 OpenCrab，或稍后让小蟹再检查一次。'
+        return '启动时间比平时久。可以重新打开 OpenCrab，或让小蟹再检查一次。'
     }
 
     return tips[tipIndex.value]
