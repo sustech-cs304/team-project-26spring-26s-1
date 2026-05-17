@@ -7,7 +7,6 @@ from langchain.tools import tool
 from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from agent.api.routine_events import DEFAULT_EVENT_COLOR
 from agent.db.models import RoutineEvent, RoutineSource
 from agent.services.calendar_time import (
     format_local_hms,
@@ -197,7 +196,7 @@ def add_routine_event(
                 end_time_=ts,
                 event_name=title,
                 detail=(description or "").strip(),
-                color=DEFAULT_EVENT_COLOR,
+                color=None,
                 need_inform=False,
                 inform_way=0,
                 source_id=src.id,

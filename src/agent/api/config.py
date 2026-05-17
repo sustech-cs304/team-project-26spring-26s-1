@@ -6,7 +6,7 @@ import pydantic
 from fastapi import APIRouter, Body, Request, status
 from fastapi.responses import JSONResponse
 
-from agent.config import get_config, dump_public_config
+from agent.config import get_config
 from agent.config_runtime import ConfigManager
 
 router = APIRouter(tags=["config"])
@@ -34,7 +34,7 @@ def _build_validation_message(exc: pydantic.ValidationError) -> str:
     summary="获取配置接口",
 )
 async def api_get_config() -> dict[str, Any]:
-    return dump_public_config(get_config())
+    return get_config().model_dump()
 
 
 @router.patch(
@@ -64,4 +64,4 @@ async def api_patch_config(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"message": _build_validation_message(exc)},
         )
-    return dump_public_config(updated)
+    return updated.model_dump()

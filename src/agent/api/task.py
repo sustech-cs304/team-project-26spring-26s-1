@@ -129,7 +129,10 @@ class EnvVarRef(pydantic.BaseModel):
 
 
 class TaskCreateRequest(pydantic.BaseModel):
-    cron_expression: str = pydantic.Field(..., description="5-field cron expression")
+    cron_expression: str | None = pydantic.Field(
+        ...,
+        description="5-field cron expression; null or blank means manual trigger only",
+    )
     description: str
     env_var_refs: list[EnvVarRef] | None = None
     execution_mode: ExecutionMode
@@ -258,11 +261,10 @@ class TaskUpdateRequest(pydantic.BaseModel):
     @field_validator("cron_expression")
     @classmethod
     def validate_cron_or_null(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        if not _CRON_5_FIELDS.match(v.strip()):
-            raise ValueError("cron_expression must be 5-field cron or null")
-        return v.strip()
+        try:
+            return _normalize_cron_expression(v)
+        except ValueError as exc:
+            raise ValueError("cron_expression must be 5-field cron, blank, or null") from exc
 
 
 class TaskEnableResponse(pydantic.BaseModel):
@@ -303,11 +305,22 @@ def _validate_name_and_description(name: str | None, description: str | None) ->
         _raise_param_too_long()
 
 
-def _validate_cron_or_400(expression: str) -> str:
+def _normalize_cron_expression(expression: str | None) -> str | None:
+    if expression is None:
+        return None
     expr = expression.strip()
+    if not expr:
+        return None
     if not _CRON_5_FIELDS.match(expr):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cron_expression must be 5-field cron")
+        raise ValueError("cron_expression must be 5-field cron, blank, or null")
     return expr
+
+
+def _validate_cron_or_400(expression: str | None) -> str | None:
+    try:
+        return _normalize_cron_expression(expression)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
 def _validate_env_key_or_400(raw_key: str) -> str:

@@ -216,7 +216,7 @@ class RoutineSource(Base):
 
 
 class RoutineEvent(Base):
-    """One schedule row; ``time_`` is Unix seconds; ``color`` can override the source display color."""
+    """One schedule row; ``time_`` is Unix seconds; ``color`` is an optional event-specific color."""
 
     __tablename__ = "routine"
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping, Sequence
 from pathlib import Path
 from types import UnionType
-from typing import Annotated, Any, Literal, Union, get_args, get_origin
+from typing import Any, Literal, Union, get_args, get_origin
 
 import yaml
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -14,34 +14,30 @@ jinja_env = Environment(
     autoescape=select_autoescape()
 )
 
-SENSITIVE_CONFIG_META_KEY = "x-sensitive"
-REDACTED_CONFIG_VALUE = "********"
-SensitiveStr = Annotated[str, Field(json_schema_extra={SENSITIVE_CONFIG_META_KEY: True})]
-
 class LLMEndpointConfig(BaseModel):
     type: Literal["OpenAI", "Qwen", "Anthropic"] = "OpenAI"
     base_url: str = ""
-    api_key: SensitiveStr = ""
+    api_key: str = ""
     model: str = ""
     max_token_count: int = Field(default=128000, ge=1)
 
 class RerankerEndpointConfig(BaseModel):
     type: Literal["OpenAI"] = "OpenAI"
-    base_url: str = ""
-    api_key: SensitiveStr = ""
-    model: str = ""
+    base_url: str = "https://api.siliconflow.cn/v1"
+    api_key: str = ""
+    model: str = "BAAI/bge-reranker-v2-m3"
 
 class EmbedEndpointConfig(BaseModel):
     type: Literal["OpenAI"] = "OpenAI"
-    base_url: str = ""
-    api_key: SensitiveStr = ""
-    model: str = ""
+    base_url: str = "https://api.siliconflow.cn/v1"
+    api_key: str = ""
+    model: str = "BAAI/bge-m3"
     dims: int = 1536
 
 class ASREndpointConfig(BaseModel):
     type: Literal["Qwen"] = "Qwen"
-    base_url: str = ""
-    api_key: SensitiveStr = ""
+    base_url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/inference/"
+    api_key: str = ""
 
 class ApiConfig(BaseModel):
     agent: LLMEndpointConfig = Field(default_factory=LLMEndpointConfig)
@@ -51,8 +47,8 @@ class ApiConfig(BaseModel):
     asr: ASREndpointConfig = Field(default_factory=ASREndpointConfig)
 
 class MineruConfig(BaseModel):
-    base_url: str = ""
-    api_key: SensitiveStr = ""
+    base_url: str = "https://mineru.net/api/v1/agent"
+    api_key: str = ""
 
 class FileConfig(BaseModel):
     upload_path: str = "./uploads"
@@ -60,26 +56,26 @@ class FileConfig(BaseModel):
     mineru: MineruConfig = Field(default_factory=MineruConfig)
 
 class WebFetchConfig(BaseModel):
-    base_url: str = ""
-    api_key: SensitiveStr = ""
+    base_url: str = "http://10.16.137.51:8326"
+    api_key: str = "GONQWasjdao@T@!"
     path: str = "/api/fetch"
     timeout_ms: int = 30000
 
 class WebSearchConfig(BaseModel):
-    base_url: str = ""
-    api_key: SensitiveStr = ""
+    base_url: str = "http://10.16.137.51:8326"
+    api_key: str = "GONQWasjdao@T@!"
     path: str = "/api/search"
     timeout_ms: int = 30000
 
 class OneBotConfig(BaseModel):
-    access_token: SensitiveStr = ""
+    access_token: str = ""
     superuser_ids: list[str] = Field(default_factory=list)
     command_trigger: str = "/agent"
     message_trigger: str = "/"
 
 
 class TelegramConfig(BaseModel):
-    token: SensitiveStr = ""
+    token: str = ""
     superuser_ids: list[str] = Field(default_factory=list)
     command_trigger: str = "/agent"
     message_trigger: str = "/"
@@ -94,10 +90,10 @@ class NotificationConfig(BaseModel):
 
 
 class RagCloudConfig(BaseModel):
-    base_url: str = ""
-    manifest_path: str = "manifest.json"
+    base_url: str = "http://10.16.137.51:8001"
+    manifest_path: str = "/manifest.json"
     timeout_ms: int = 30000
-    api_key: SensitiveStr = ""
+    api_key: str = ""
 
 class CodeInterpreterConfig(BaseModel):
     default_timeout_s: float = Field(default=10.0, gt=0)
@@ -105,7 +101,7 @@ class CodeInterpreterConfig(BaseModel):
 
 
 class SkillsCloudConfig(BaseModel):
-    base_url: str = ""
+    base_url: str = "http://10.16.137.51:8002"
     timeout_ms: int = 30000
     delete_submission_path: str = ""
     local_store_path: str = "./workspace/skills"
@@ -394,86 +390,11 @@ def set_config(config: AppConfig) -> AppConfig:
     _config = config
     return _config
 
-def _is_sensitive_field(field: Any) -> bool:
-    extra = field.json_schema_extra or {}
-    return bool(extra.get(SENSITIVE_CONFIG_META_KEY))
-
-
-def _field_model_class(field: Any) -> type[BaseModel] | None:
-    return _model_type_from_annotation(field.annotation)
-
-
-def _redact_value(value: Any) -> Any:
-    if value in ("", None):
-        return value
-    return REDACTED_CONFIG_VALUE
-
-
-def dump_public_config(
-    model: BaseModel,
-    model_cls: type[BaseModel] | None = None,
-) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    cls = model_cls or type(model)
-
-    for name, field in cls.model_fields.items():
-        value = getattr(model, name)
-        nested_model_cls = _field_model_class(field)
-
-        if _is_sensitive_field(field):
-            result[name] = _redact_value(value)
-        elif nested_model_cls is not None and isinstance(value, BaseModel):
-            result[name] = dump_public_config(value, nested_model_cls)
-        elif isinstance(value, list):
-            result[name] = [
-                dump_public_config(item) if isinstance(item, BaseModel) else item
-                for item in value
-            ]
-        elif isinstance(value, dict):
-            result[name] = {
-                key: dump_public_config(item) if isinstance(item, BaseModel) else item
-                for key, item in value.items()
-            }
-        else:
-            result[name] = value
-
-    return result
-
-def strip_redacted_config_patch(
-    delta: Mapping[str, Any],
-    model_cls: type[BaseModel],
-) -> dict[str, Any]:
-    cleaned: dict[str, Any] = {}
-
-    for key, value in delta.items():
-        field = model_cls.model_fields.get(key)
-        if field is None:
-            cleaned[key] = value
-            continue
-
-        nested_model_cls = _field_model_class(field)
-
-        if _is_sensitive_field(field) and value == REDACTED_CONFIG_VALUE:
-            continue
-
-        if isinstance(value, Mapping) and nested_model_cls is not None:
-            nested = strip_redacted_config_patch(
-                value,
-                nested_model_cls,
-            )
-            if nested:
-                cleaned[key] = nested
-        else:
-            cleaned[key] = value
-
-    return cleaned
-
 def build_patched_config(
     delta: Mapping[str, Any],
     base_config: AppConfig | None = None,
 ) -> AppConfig:
     current_config = get_config() if base_config is None else base_config
-    delta = strip_redacted_config_patch(delta, AppConfig)
     merged = _merge_config_dict(current_config.model_dump(), delta, AppConfig)
     return AppConfig.model_validate(merged)
 

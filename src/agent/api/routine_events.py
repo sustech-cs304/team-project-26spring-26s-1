@@ -1,6 +1,6 @@
 """Schedule / routine HTTP API — color and source behavior aligned with ``Downloads/routine.py``.
 
-- Event color is stored in ``routine.color``; when it is null/empty, responses use the source color.
+- Event color is stored in ``routine.color`` and remains null unless explicitly set.
 - Default calendar source title is ``user`` (``DEFAULT_SOURCE_TITLE``); creates/updates attach to that source.
 - On startup, ``ensure_routine_calendar_schema`` adds ``color`` if missing, ensures default source, backfills ``source_id``.
 """
@@ -40,7 +40,6 @@ router = APIRouter(tags=["routine-events"])
 # Matches Downloads/routine.py
 DEFAULT_SOURCE_TITLE = "user"
 DEFAULT_SOURCE_COLOR = "#808080"
-DEFAULT_EVENT_COLOR = "#3b82f6"
 BB_SOURCE_TITLE = "bb"
 TIS_SOURCE_TITLE = "tis"
 BB_SOURCE_COLOR = "#2563eb"
@@ -90,10 +89,6 @@ def _normalize_optional_color_value(value: object) -> str | None:
     if _HEX_COLOR_PATTERN.match(s):
         return s
     return None
-
-
-def _normalize_color_value(value: object, fallback: str = DEFAULT_EVENT_COLOR) -> str:
-    return _normalize_optional_color_value(value) or fallback
 
 
 def _local_now() -> datetime:
@@ -183,7 +178,7 @@ class RoutineQueryRequest(BaseModel):
 
 
 class Sources(BaseModel):
-    color: str = DEFAULT_SOURCE_COLOR
+    color: Optional[str] = None
     id: int = 0
     is_visible: bool = True
     title: str = "routine"
@@ -197,7 +192,7 @@ class RoutineDatum(BaseModel):
     description: str
     location: str = ""
     link: str = ""
-    color: str = DEFAULT_EVENT_COLOR
+    color: Optional[str] = None
     inform_type: InformType = "none"
     source: Sources = Sources()
 
@@ -249,17 +244,14 @@ def _inform_way_to_type(need_inform: bool, inform_way: int) -> InformType:
 
 def _routine_to_datum(r: RoutineEvent) -> RoutineDatum:
     if r.source:
-        source_color = _normalize_color_value(r.source.color, DEFAULT_SOURCE_COLOR)
         src = Sources(
             id=r.source.id,
             title=r.source.title,
-            color=source_color,
+            color=_normalize_optional_color_value(r.source.color),
             is_visible=r.source.is_visible,
         )
     else:
-        source_color = DEFAULT_SOURCE_COLOR
         src = Sources()
-    color = _normalize_optional_color_value(r.color) or source_color
     return RoutineDatum(
         id=r.id,
         start_time=r.time_,
@@ -268,7 +260,7 @@ def _routine_to_datum(r: RoutineEvent) -> RoutineDatum:
         description=r.detail,
         location="",
         link="",
-        color=color,
+        color=_normalize_optional_color_value(r.color),
         inform_type=_inform_way_to_type(r.need_inform, r.inform_way),
         source=src,
     )
@@ -301,8 +293,6 @@ async def _ensure_named_source(
     result = await db.execute(stmt)
     source = result.scalar_one_or_none()
     if source is not None:
-        if not source.color:
-            source.color = color
         return source
 
     source = RoutineSource(
@@ -600,7 +590,7 @@ def _source_to_dict(s: RoutineSource) -> dict:
     return {
         "id": s.id,
         "title": s.title,
-        "color": _normalize_color_value(s.color, DEFAULT_SOURCE_COLOR),
+        "color": _normalize_optional_color_value(s.color),
         "is_visible": s.is_visible,
     }
 
@@ -672,7 +662,7 @@ async def _replace_routines_from_ical(source: RoutineSource, ics_text: str, db: 
                 "end_time_": end_ts,
                 "event_name": str(summary) if summary is not None else "",
                 "detail": str(description) if description is not None else "",
-                "color": DEFAULT_EVENT_COLOR,
+                "color": None,
             }
         )
     return await _replace_source_routines(source, events, db)
@@ -1255,9 +1245,10 @@ async def update_source(source_id: int, body: SourceUpdateRequest, db: AsyncSess
         src = result.scalar_one_or_none()
         if not src:
             raise HTTPException(status_code=404, detail="Source not found")
-        update_data = body.model_dump(exclude_none=True)
-        for field, value in update_data.items():
-            setattr(src, field, value)
+        if "color" in body.model_fields_set:
+            src.color = _normalize_optional_color_value(body.color) or ""
+        if "is_visible" in body.model_fields_set and body.is_visible is not None:
+            src.is_visible = body.is_visible
         await db.flush()
     except HTTPException:
         raise

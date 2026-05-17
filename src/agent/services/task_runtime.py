@@ -37,6 +37,22 @@ def _now_iso() -> str:
     return _now_dt().isoformat()
 
 
+def _user_timezone():
+    return datetime.now().astimezone().tzinfo or timezone.utc
+
+
+def _to_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=_user_timezone())
+    return value.astimezone(timezone.utc)
+
+
+def _to_user_timezone(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(_user_timezone())
+
+
 def _json_dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -55,7 +71,7 @@ def _parse_dt(value: str | datetime | None) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value
+        return _to_utc(value)
     if not isinstance(value, str):
         return None
     s = value.strip()
@@ -64,13 +80,13 @@ def _parse_dt(value: str | datetime | None) -> datetime | None:
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
     try:
-        return datetime.fromisoformat(s)
+        return _to_utc(datetime.fromisoformat(s))
     except ValueError:
         return None
 
 
 def _dt_to_iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value is not None else None
+    return _to_user_timezone(value).isoformat() if value is not None else None
 
 
 def _normalize_env_refs(raw: Any) -> list[dict[str, str]]:
@@ -273,7 +289,7 @@ class TaskRuntimeService:
         *,
         name: str,
         description: str,
-        cron_expression: str,
+        cron_expression: str | None,
         execution_mode: str,
         payload: str,
         env_var_refs: list[dict[str, str]],
@@ -576,7 +592,7 @@ class TaskRuntimeService:
     async def _dispatch_due_tasks(self) -> None:
         now = _now_dt()
         minute_start = now.astimezone(timezone.utc).replace(second=0, microsecond=0)
-        local_wall = minute_start.astimezone()
+        local_wall = _to_user_timezone(minute_start)
         async with self._session_factory() as session:
             stmt = select(ScheduledTask).where(
                 ScheduledTask.status == "enabled",
