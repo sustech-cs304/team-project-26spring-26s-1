@@ -1,0 +1,1643 @@
+openapi: 3.1.0
+info:
+  title: OpenCrab Files API
+  version: 0.1.0
+  description: Module-level OpenAPI spec generated from current backend route entry
+    points and augmented with standard error responses.
+servers:
+- url: /
+paths:
+  /api/files/upload:
+    post:
+      summary: Upload File
+      description: Upload a file and return only after the attachment is ready for
+        downstream consumption.
+      operationId: upload_file_api_files_upload_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_file_api_files_upload_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '413':
+          $ref: '#/components/responses/RequestEntityTooLarge'
+        '417':
+          $ref: '#/components/responses/ExpectationFailed'
+  /api/file/{file_id}:
+    get:
+      summary: Get File
+      operationId: get_file_api_file__file_id__get
+      parameters:
+      - name: file_id
+        in: path
+        required: true
+        schema:
+          type: string
+          description: Canonical UUID string. Uppercase UUID text is normalized by
+            implementation; braces, path traversal, overlong values, and non-UUID
+            text are rejected.
+          format: uuid
+          minLength: 36
+          maxLength: 36
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+          examples:
+          - 123e4567-e89b-12d3-a456-426614174000
+          title: File Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                description: Raw stored file bytes.
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/files/{message_id}/{file_id}/info:
+    get:
+      summary: Get File Info
+      operationId: get_file_info_api_files__message_id___file_id__info_get
+      parameters:
+      - name: file_id
+        in: path
+        required: true
+        schema:
+          type: string
+          description: Canonical UUID string. Uppercase UUID text is normalized by
+            implementation; braces, path traversal, overlong values, and non-UUID
+            text are rejected.
+          format: uuid
+          minLength: 36
+          maxLength: 36
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+          examples:
+          - 123e4567-e89b-12d3-a456-426614174000
+          title: File Id
+      - name: message_id
+        in: path
+        required: true
+        schema:
+          type: string
+          description: Canonical UUID string. Uppercase UUID text is normalized by
+            implementation; braces, path traversal, overlong values, and non-UUID
+            text are rejected.
+          format: uuid
+          minLength: 36
+          maxLength: 36
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+          examples:
+          - 123e4567-e89b-12d3-a456-426614174000
+          title: Message Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileInfoResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  schemas:
+    BbCredentialsPutResponse:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+          default: true
+        student_id:
+          type: string
+          title: Student Id
+        message:
+          type: string
+          title: Message
+          default: Shared SUSTech CAS saved in the database for both BB and TIS.
+      type: object
+      required:
+      - student_id
+      title: BbCredentialsPutResponse
+    Body_upload_file_api_files_upload_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+          format: binary
+          description: 'Multipart file part. Content must be non-empty and at most
+            10 MiB. Filename must be non-empty after trim, at most 512 characters,
+            not . or .., and must not contain / or \ path separators. Allowed extensions:
+            .bmp, .docx, .gif, .jpeg, .jp2, .jpg, .md, .pdf, .png, .pptx, .txt, .webp,
+            .xls, .xlsx.'
+      type: object
+      required:
+      - file
+      title: Body_upload_file_api_files_upload_post
+    Body_upload_skill_api_skills_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+        tag_ids:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tag Ids
+      type: object
+      required:
+      - file
+      title: Body_upload_skill_api_skills_post
+    CasConfigPatchRequest:
+      properties:
+        id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Id
+        password:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Password
+      type: object
+      title: CasConfigPatchRequest
+    ConversationCompletionRequest:
+      properties:
+        conversation_id:
+          type: string
+          title: Conversation Id
+        request_id:
+          type: string
+          title: Request Id
+        content:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content
+        created_at:
+          type: integer
+          title: Created At
+        attachments:
+          items:
+            type: string
+          type: array
+          title: Attachments
+          default: []
+        need_history:
+          type: boolean
+          title: Need History
+        restart_message_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Restart Message Id
+      type: object
+      required:
+      - conversation_id
+      - request_id
+      - created_at
+      - need_history
+      title: ConversationCompletionRequest
+    ConversationListItem:
+      properties:
+        conversation_id:
+          type: string
+          title: Conversation Id
+        created_at:
+          type: integer
+          title: Created At
+        updated_at:
+          type: integer
+          title: Updated At
+        title:
+          type: string
+          title: Title
+        is_active:
+          type: boolean
+          title: Is Active
+        is_pinned:
+          type: boolean
+          title: Is Pinned
+      type: object
+      required:
+      - conversation_id
+      - created_at
+      - updated_at
+      - title
+      - is_active
+      - is_pinned
+      title: ConversationListItem
+    ConversationListResponse:
+      properties:
+        conversations:
+          items:
+            $ref: '#/components/schemas/ConversationListItem'
+          type: array
+          title: Conversations
+      type: object
+      required:
+      - conversations
+      title: ConversationListResponse
+    ConversationUpdateRequest:
+      properties:
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        is_pinned:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Pinned
+      type: object
+      title: ConversationUpdateRequest
+    DownloadedLocalSkillDetailResponse:
+      properties:
+        cloud_skill_id:
+          type: integer
+          title: Cloud Skill Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        markdown_path:
+          type: string
+          title: Markdown Path
+        markdown_content:
+          type: string
+          title: Markdown Content
+      type: object
+      required:
+      - cloud_skill_id
+      - name
+      - description
+      - markdown_path
+      - markdown_content
+      title: DownloadedLocalSkillDetailResponse
+    DownloadedLocalSkillResponse:
+      properties:
+        cloud_skill_id:
+          type: integer
+          title: Cloud Skill Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        markdown_path:
+          type: string
+          title: Markdown Path
+      type: object
+      required:
+      - cloud_skill_id
+      - name
+      - description
+      - markdown_path
+      title: DownloadedLocalSkillResponse
+    EnvVarDeleteResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+      additionalProperties: true
+      type: object
+      required:
+      - message
+      title: Response
+    EnvVarKeyItem:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Variable name
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      title: EnvVarKeyItem
+    EnvVarRef:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Name in the global env store
+      type: object
+      required:
+      - key
+      title: EnvVarRef
+    EnvVarUpsertRequest:
+      properties:
+        key:
+          type: string
+          minLength: 1
+          title: Key
+        value:
+          type: string
+          title: Value
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - value
+      title: EnvVarUpsertRequest
+    ErrorMessageResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - message
+      title: ErrorMessageResponse
+    ExecutionMode:
+      type: string
+      enum:
+      - prompt
+      - script
+      title: ExecutionMode
+    FileInfoResponse:
+      properties:
+        file_id:
+          type: string
+          title: File Id
+          description: Canonical UUID string. Uppercase UUID text is normalized by
+            implementation; braces, path traversal, overlong values, and non-UUID
+            text are rejected.
+          format: uuid
+          minLength: 36
+          maxLength: 36
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+          examples:
+          - 123e4567-e89b-12d3-a456-426614174000
+        file_type:
+          type: string
+          enum:
+          - image
+          - pdf
+          - markdown
+          - text
+          - other
+          title: File Type
+          description: Coarse file category inferred from the stored display filename
+            extension.
+          examples:
+          - text
+        file_name:
+          type: string
+          title: File Name
+          description: Server-confirmed display filename.
+          minLength: 1
+          maxLength: 512
+          examples:
+          - notes.md
+      type: object
+      required:
+      - file_id
+      - file_type
+      - file_name
+      title: FileInfoResponse
+    FileUploadResponse:
+      properties:
+        file_id:
+          type: string
+          title: File Id
+          description: Canonical UUID string. Uppercase UUID text is normalized by
+            implementation; braces, path traversal, overlong values, and non-UUID
+            text are rejected.
+          format: uuid
+          minLength: 36
+          maxLength: 36
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+          examples:
+          - 123e4567-e89b-12d3-a456-426614174000
+        mime_type:
+          anyOf:
+          - type: string
+            enum:
+            - application/octet-stream
+            - application/pdf
+            - application/vnd.ms-excel
+            - application/vnd.ms-powerpoint
+            - application/vnd.openxmlformats-officedocument.presentationml.presentation
+            - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+            - application/zip
+            - image/bmp
+            - image/gif
+            - image/jp2
+            - image/jpeg
+            - image/jpeg2000
+            - image/jpx
+            - image/png
+            - image/webp
+            - image/x-ms-bmp
+            - text/markdown
+            - text/plain
+            description: Detected MIME type for supported uploads; may be null if
+              the platform cannot infer it.
+            examples:
+            - text/plain
+          - type: 'null'
+          title: Mime Type
+        file_name:
+          type: string
+          title: File Name
+          description: Server-confirmed display filename.
+          minLength: 1
+          maxLength: 512
+          examples:
+          - notes.md
+      type: object
+      required:
+      - file_id
+      - mime_type
+      - file_name
+      title: FileUploadResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LastRunStatus:
+      type: string
+      enum:
+      - success
+      - failed
+      - cancelled
+      title: LastRunStatus
+    LastRunTrigger:
+      type: string
+      enum:
+      - agent
+      - cron
+      - manual
+      - telegram
+      title: LastRunTrigger
+    LogEntryResponse:
+      properties:
+        content:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content
+        duration_ms:
+          type: integer
+          title: Duration Ms
+          default: 0
+        id:
+          type: string
+          title: Id
+        input_params:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Input Params
+        log_type:
+          $ref: '#/components/schemas/LogType'
+        metadata:
+          $ref: '#/components/schemas/LogMetadata'
+        output:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Output
+        run_id:
+          type: string
+          title: Run Id
+        status:
+          $ref: '#/components/schemas/LogEntryStatus'
+        step_index:
+          type: integer
+          title: Step Index
+        timestamp:
+          type: string
+          title: Timestamp
+        tool_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tool Name
+      additionalProperties: true
+      type: object
+      required:
+      - id
+      - log_type
+      - run_id
+      - status
+      - step_index
+      - timestamp
+      title: LogEntry
+    LogEntryStatus:
+      type: string
+      enum:
+      - success
+      - failed
+      title: LogEntryStatus
+    LogMetadata:
+      properties:
+        chunk_index:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Chunk Index
+        exit_code:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Exit Code
+        injected_env_keys:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Injected Env Keys
+        platform:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Platform
+        python_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Python Version
+        retry_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Retry Count
+      additionalProperties: true
+      type: object
+      title: LogMetadata
+    LogType:
+      type: string
+      enum:
+      - script_end
+      - script_start
+      - script_stderr
+      - script_stdout
+      - tool_call
+      title: LogType
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          title: Email
+          description: Education email address
+        password:
+          type: string
+          title: Password
+          description: Password
+      type: object
+      required:
+      - email
+      - password
+      title: LoginRequest
+    MessageResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - message
+      title: MessageResponse
+    NotificationActionRequest:
+      properties:
+        title:
+          type: string
+          title: Title
+          description: Button label shown in the desktop notification.
+          examples:
+          - 打开任务
+        deeplink:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deeplink
+          description: Optional deeplink opened when the button is pressed.
+          examples:
+          - opencrab://tasks/3b11e1a9-7c45-40cf-9dd6-bbfa6308b54e
+      type: object
+      required:
+      - title
+      title: NotificationActionRequest
+    NotificationDeeplinkPreviewResponse:
+      properties:
+        deeplink:
+          type: string
+          title: Deeplink
+          description: Generated deeplink string.
+          examples:
+          - opencrab://tasks/3b11e1a9-7c45-40cf-9dd6-bbfa6308b54e?action=history
+      type: object
+      required:
+      - deeplink
+      title: NotificationDeeplinkPreviewResponse
+    NotificationDispatchRequest:
+      properties:
+        title:
+          type: string
+          title: Title
+          description: Notification title shown by the OS notification center.
+          examples:
+          - 任务执行完成
+        message:
+          type: string
+          title: Message
+          description: Main notification body text.
+          examples:
+          - 定时任务“同步课程表”已成功完成。
+        level:
+          type: string
+          enum:
+          - info
+          - success
+          - warning
+          - error
+          title: Level
+          description: Semantic notification level. `error` is mapped to a higher
+            urgency.
+          default: info
+          examples:
+          - success
+        deeplink:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deeplink
+          description: Optional deeplink opened when the user clicks the notification
+            body.
+          examples:
+          - opencrab://runs/0ccab874-8b91-49f8-b97c-b7309ab7a0df?tab=logs
+        actions:
+          items:
+            $ref: '#/components/schemas/NotificationActionRequest'
+          type: array
+          title: Actions
+          description: Optional notification action buttons.
+        thread:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thread
+          description: Optional thread / group key. Some platforms use it for notification
+            grouping.
+          examples:
+          - task:3b11e1a9-7c45-40cf-9dd6-bbfa6308b54e
+        timeout_s:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Timeout S
+          description: Optional timeout override in seconds. Falls back to config
+            when omitted.
+          examples:
+          - 10
+      type: object
+      required:
+      - title
+      - message
+      title: NotificationDispatchRequest
+    NotificationDispatchResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: Dispatch result. `scheduled` means the backend accepted the
+            notification request.
+          default: scheduled
+        notification_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notification Id
+          description: Backend/library notification id when provided by the platform,
+            otherwise null.
+      type: object
+      title: NotificationDispatchResponse
+    RagCloudSyncStatusResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+        stage:
+          type: string
+          title: Stage
+        progress:
+          type: integer
+          title: Progress
+        message:
+          type: string
+          title: Message
+        knowledge_base_id:
+          type: string
+          title: Knowledge Base Id
+        version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Version
+        downloaded_files:
+          items:
+            type: string
+          type: array
+          title: Downloaded Files
+        embedded_added:
+          type: integer
+          title: Embedded Added
+          default: 0
+        embedded_overwritten:
+          type: integer
+          title: Embedded Overwritten
+          default: 0
+        embedded_failed:
+          type: integer
+          title: Embedded Failed
+          default: 0
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - status
+      - stage
+      - progress
+      - message
+      - knowledge_base_id
+      title: RagCloudSyncStatusResponse
+    RegisterCaptchaRequest:
+      properties:
+        email:
+          type: string
+          title: Email
+          description: Education email address
+      type: object
+      required:
+      - email
+      title: RegisterCaptchaRequest
+    RegisterRequest:
+      properties:
+        username:
+          type: string
+          title: Username
+          description: Username
+        email:
+          type: string
+          title: Email
+          description: Education email address
+        password:
+          type: string
+          title: Password
+          description: Password
+        verificationCode:
+          type: string
+          title: Verificationcode
+          description: Verification code
+      type: object
+      required:
+      - username
+      - email
+      - password
+      - verificationCode
+      title: RegisterRequest
+    RoutineCreateRequest:
+      properties:
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        start_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Start Time
+        end_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: End Time
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        link:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Link
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+        inform_type:
+          anyOf:
+          - type: string
+            enum:
+            - none
+            - at_start
+            - 5_minutes_before
+            - 10_minutes_before
+            - 30_minutes_before
+            - 1_hour_before
+          - type: 'null'
+          title: Inform Type
+      type: object
+      title: RoutineCreateRequest
+    RoutineUpdateRequest:
+      properties:
+        id:
+          type: integer
+          title: Id
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        start_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Start Time
+        end_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: End Time
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        link:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Link
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+        inform_type:
+          anyOf:
+          - type: string
+            enum:
+            - none
+            - at_start
+            - 5_minutes_before
+            - 10_minutes_before
+            - 30_minutes_before
+            - 1_hour_before
+          - type: 'null'
+          title: Inform Type
+      type: object
+      required:
+      - id
+      title: RoutineUpdateRequest
+    RunDetailResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        task_id:
+          type: string
+          title: Task Id
+        status:
+          $ref: '#/components/schemas/RunHistoryStatus'
+        trigger:
+          $ref: '#/components/schemas/LastRunTrigger'
+        started_at:
+          type: string
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Finished At
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+        override_prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Override Prompt
+        logs:
+          items:
+            $ref: '#/components/schemas/LogEntryResponse'
+          type: array
+          title: Logs
+      additionalProperties: true
+      type: object
+      required:
+      - id
+      - task_id
+      - status
+      - trigger
+      - started_at
+      - finished_at
+      title: Response
+    RunExecutionResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        task_id:
+          type: string
+          title: Task Id
+        status:
+          $ref: '#/components/schemas/RunHistoryStatus'
+        trigger:
+          $ref: '#/components/schemas/LastRunTrigger'
+        started_at:
+          type: string
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Finished At
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+        override_prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Override Prompt
+      additionalProperties: true
+      type: object
+      required:
+      - id
+      - task_id
+      - status
+      - trigger
+      - started_at
+      - finished_at
+      title: Response
+    RunHistoryStatus:
+      type: string
+      enum:
+      - pending
+      - running
+      - success
+      - failed
+      - cancelled
+      title: RunHistoryStatus
+    SourceUpdateRequest:
+      properties:
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+        is_visible:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Visible
+      type: object
+      title: SourceUpdateRequest
+    TaskCreateRequest:
+      properties:
+        cron_expression:
+          type: string
+          title: Cron Expression
+          description: 5-field cron expression
+        description:
+          type: string
+          title: Description
+        env_var_refs:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/EnvVarRef'
+            type: array
+          - type: 'null'
+          title: Env Var Refs
+        execution_mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        name:
+          type: string
+          title: Name
+        payload:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Payload
+        started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Started At
+          description: Business start time; omit to leave unset until first enable/trigger
+      type: object
+      required:
+      - cron_expression
+      - description
+      - execution_mode
+      - name
+      title: TaskCreateRequest
+    TaskDeleteResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        message:
+          type: string
+          title: Message
+          default: Task deleted.
+      type: object
+      required:
+      - id
+      title: TaskDeleteResponse
+    TaskDetailResponse:
+      properties:
+        created_at:
+          type: string
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Started At
+        cron_expression:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cron Expression
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        env_var_refs:
+          items:
+            $ref: '#/components/schemas/EnvVarRef'
+          type: array
+          title: Env Var Refs
+        execution_mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        id:
+          type: string
+          title: Id
+        last_run_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Run At
+        last_run_status:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunStatus'
+          - type: 'null'
+        last_run_trigger:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunTrigger'
+          - type: 'null'
+        name:
+          type: string
+          title: Name
+        payload:
+          type: string
+          title: Payload
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+        updated_at:
+          type: string
+          title: Updated At
+      additionalProperties: true
+      type: object
+      required:
+      - created_at
+      - env_var_refs
+      - execution_mode
+      - id
+      - name
+      - payload
+      - status
+      - updated_at
+      title: Response
+    TaskDisableResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+          default: disabled
+        message:
+          type: string
+          title: Message
+          default: Task disabled.
+      type: object
+      required:
+      - id
+      title: TaskDisableResponse
+    TaskEnableResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+          default: enabled
+        message:
+          type: string
+          title: Message
+          default: Task enabled.
+      type: object
+      required:
+      - id
+      title: TaskEnableResponse
+    TaskListFilterStatus:
+      type: string
+      enum:
+      - disabled
+      - enabled
+      - running
+      title: TaskListFilterStatus
+    TaskListRequest:
+      properties:
+        status:
+          anyOf:
+          - $ref: '#/components/schemas/TaskListFilterStatus'
+          - type: 'null'
+        page:
+          type: integer
+          minimum: 1.0
+          title: Page
+          default: 1
+        page_size:
+          type: integer
+          maximum: 200.0
+          minimum: 1.0
+          title: Page Size
+          default: 20
+      additionalProperties: true
+      type: object
+      title: TaskListRequest
+    TaskListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TaskResponse'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+      additionalProperties: true
+      type: object
+      required:
+      - items
+      - total
+      title: TaskListResponse
+    TaskResponse:
+      properties:
+        created_at:
+          type: string
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Started At
+        cron_expression:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cron Expression
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        env_var_refs:
+          items:
+            $ref: '#/components/schemas/EnvVarRef'
+          type: array
+          title: Env Var Refs
+        execution_mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        id:
+          type: string
+          title: Id
+        last_run_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Run At
+        last_run_status:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunStatus'
+          - type: 'null'
+        last_run_trigger:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunTrigger'
+          - type: 'null'
+        name:
+          type: string
+          title: Name
+        payload:
+          type: string
+          title: Payload
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+        updated_at:
+          type: string
+          title: Updated At
+      additionalProperties: true
+      type: object
+      required:
+      - created_at
+      - env_var_refs
+      - execution_mode
+      - id
+      - name
+      - payload
+      - status
+      - updated_at
+      title: Task
+    TaskRunCompleteRequest:
+      properties:
+        status:
+          type: string
+          enum:
+          - success
+          - failed
+          title: Status
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: TaskRunCompleteRequest
+    TaskRunListFilterRequest:
+      properties:
+        page:
+          type: integer
+          minimum: 1.0
+          title: Page
+          default: 1
+        page_size:
+          type: integer
+          maximum: 200.0
+          minimum: 1.0
+          title: Page Size
+          default: 20
+        status:
+          anyOf:
+          - $ref: '#/components/schemas/RunHistoryStatus'
+          - type: 'null'
+        trigger:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunTrigger'
+          - type: 'null'
+      additionalProperties: true
+      type: object
+      title: TaskRunListFilterRequest
+    TaskRunListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/RunExecutionResponse'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+        task_id:
+          type: string
+          title: Task Id
+      additionalProperties: true
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      - task_id
+      title: TaskRunListResponse
+    TaskTriggerRequest:
+      properties:
+        override_prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Override Prompt
+      additionalProperties: true
+      type: object
+      title: TaskTriggerRequest
+    TaskTriggerResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        run_id:
+          type: string
+          title: Run Id
+        message:
+          type: string
+          title: Message
+          default: Run created.
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+          default: running
+      type: object
+      required:
+      - id
+      - run_id
+      title: TaskTriggerResponse
+    TaskUpdateRequest:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        execution_mode:
+          anyOf:
+          - $ref: '#/components/schemas/ExecutionMode'
+          - type: 'null'
+        payload:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Payload
+        cron_expression:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cron Expression
+        env_var_refs:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/EnvVarRef'
+            type: array
+          - type: 'null'
+          title: Env Var Refs
+        started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Started At
+      additionalProperties: false
+      type: object
+      title: TaskUpdateRequest
+    TisCredentialsBody:
+      properties:
+        student_id:
+          type: string
+          title: Student Id
+        password:
+          type: string
+          title: Password
+      type: object
+      required:
+      - student_id
+      - password
+      title: TisCredentialsBody
+    TisCredentialsDeleteResponse:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+          default: true
+        message:
+          type: string
+          title: Message
+          default: Shared CAS credentials cleared.
+      type: object
+      title: TisCredentialsDeleteResponse
+    TisCredentialsGetResponse:
+      properties:
+        runtime_configured:
+          type: boolean
+          title: Runtime Configured
+        student_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Student Id
+        password_set:
+          type: boolean
+          title: Password Set
+      type: object
+      required:
+      - runtime_configured
+      - student_id
+      - password_set
+      title: TisCredentialsGetResponse
+    TisCredentialsPutResponse:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+          default: true
+        student_id:
+          type: string
+          title: Student Id
+        message:
+          type: string
+          title: Message
+          default: Shared CAS credentials updated in the database.
+      type: object
+      required:
+      - student_id
+      title: TisCredentialsPutResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    GenericErrorResponse:
+      type: object
+      title: GenericErrorResponse
+      description: Generic error envelope used for semantic request errors, missing
+        resources, conflicts, rate limits, and unexpected server errors.
+      properties:
+        detail:
+          description: Human-readable error string or structured error details.
+          anyOf:
+          - type: string
+          - type: object
+            additionalProperties: true
+          - type: array
+            items: {}
+        message:
+          type: string
+        code:
+          type: string
+      additionalProperties: true
+  responses:
+    BadRequest:
+      description: Bad request. The request is syntactically valid but fails semantic
+        validation, such as invalid state transitions, unsafe values, malformed identifiers,
+        or unsupported business input.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    Unauthorized:
+      description: Unauthorized. Authentication is missing, expired, or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    NotFound:
+      description: Not found. The requested resource does not exist or is not visible
+        to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    Conflict:
+      description: Conflict. The request conflicts with current server state, such
+        as duplicate resources or deleting a resource currently in use.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    TooManyRequests:
+      description: Too many requests. The caller has exceeded a server-side rate limit
+        or concurrent operation limit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    ValidationError:
+      description: Request validation error. FastAPI/Pydantic validation failed for
+        path, query, header, or body parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HTTPValidationError'
+    InternalServerError:
+      description: Internal server error. An unexpected server-side failure occurred.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    ServiceUnavailable:
+      description: Service unavailable. A required internal or external dependency
+        is not configured or temporarily unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    RequestEntityTooLarge:
+      description: Uploaded file is larger than the server-side limit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    ExpectationFailed:
+      description: File parser/storage pipeline failed after syntactic validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'

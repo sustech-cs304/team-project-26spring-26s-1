@@ -1,0 +1,1746 @@
+openapi: 3.1.0
+info:
+  title: OpenCrab Conversation API
+  version: 0.1.0
+  description: Module-level OpenAPI spec generated from current backend route entry points and augmented with standard error
+    responses.
+servers:
+- url: /
+x-websocketEndpoints:
+- path: /api/conversation/asr
+  summary: Conversation ASR WebSocket
+  description: Bidirectional proxy between the client WebSocket and the configured ASR upstream WebSocket. OpenAPI does not
+    model WebSocket handshakes natively, so this endpoint is documented as an extension.
+  clientMessages:
+    anyOf:
+    - type: string
+      description: Audio or control payload forwarded as text.
+      examples:
+      - audio-chunk
+    - type: string
+      contentEncoding: base64
+      description: Binary audio payload forwarded unchanged to the upstream service.
+  serverMessages:
+    anyOf:
+    - type: string
+      description: Text returned by the upstream ASR service.
+      examples:
+      - '{"text":"recognized"}'
+    - type: object
+      required:
+      - error
+      properties:
+        error:
+          type: string
+          description: Error text sent when connecting to or reading from the upstream ASR service fails.
+paths:
+  /api/conversation/completion:
+    post:
+      summary: Conversation Completion
+      operationId: conversation_completion_api_conversation_completion_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationCompletionRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-sent event stream payload.
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/conversation:
+    post:
+      summary: Create Conversation
+      operationId: create_conversation_api_conversation_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationCreateResponse'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/conversations/:
+    get:
+      summary: List Conversations
+      operationId: list_conversations_api_conversations__get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 25
+          title: Page Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/conversations/search:
+    get:
+      summary: Search Conversations
+      operationId: search_conversations_api_conversations_search_get
+      parameters:
+      - name: keywords
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+          title: Keywords
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 25
+          title: Page Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /api/conversation/cancelchat:
+    post:
+      summary: Cancel Conversation
+      operationId: cancel_conversation_api_conversation_cancelchat_post
+      parameters:
+      - name: conversation_id
+        in: query
+        required: true
+        schema:
+          type: string
+          maxLength: 36
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          title: Conversation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/conversation/{conversation_id}:
+    delete:
+      summary: Delete Conversation
+      operationId: delete_conversation_api_conversation__conversation_id__delete
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 36
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          title: Conversation Id
+      - name: restart_message_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 36
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - type: 'null'
+          title: Restart Message Id
+      responses:
+        '200':
+          description: Successful Response. The current implementation returns an empty JSON body (`null`).
+          content:
+            application/json:
+              schema:
+                type: 'null'
+              examples:
+                deleted:
+                  value: null
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update Conversation Title
+      operationId: update_conversation_title_api_conversation__conversation_id__patch
+      parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          maxLength: 36
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          title: Conversation Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  schemas:
+    BbCredentialsPutResponse:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+          default: true
+        student_id:
+          type: string
+          title: Student Id
+        message:
+          type: string
+          title: Message
+          default: Shared SUSTech CAS saved in the database for both BB and TIS.
+      type: object
+      required:
+      - student_id
+      title: BbCredentialsPutResponse
+    Body_upload_file_api_files_upload_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_upload_file_api_files_upload_post
+    Body_upload_skill_api_skills_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+        tag_ids:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tag Ids
+      type: object
+      required:
+      - file
+      title: Body_upload_skill_api_skills_post
+    CasConfigPatchRequest:
+      properties:
+        id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Id
+        password:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Password
+      type: object
+      title: CasConfigPatchRequest
+    ConversationCompletionRequest:
+      properties:
+        conversation_id:
+          type: string
+          maxLength: 36
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          title: Conversation Id
+        request_id:
+          type: string
+          maxLength: 36
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          title: Request Id
+        content:
+          anyOf:
+          - type: string
+            maxLength: 20000
+          - type: 'null'
+          title: Content
+        attachments:
+          items:
+            type: string
+            maxLength: 36
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          type: array
+          maxItems: 20
+          title: Attachments
+        need_history:
+          type: boolean
+          title: Need History
+        restart_message_id:
+          anyOf:
+          - type: string
+            maxLength: 36
+            pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          - type: 'null'
+          title: Restart Message Id
+      additionalProperties: false
+      type: object
+      required:
+      - conversation_id
+      - request_id
+      - need_history
+      title: ConversationCompletionRequest
+    ConversationCreateResponse:
+      properties:
+        conversation_id:
+          type: string
+          maxLength: 36
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          title: Conversation Id
+        created_at:
+          type: integer
+          title: Created At
+      type: object
+      required:
+      - conversation_id
+      - created_at
+      title: ConversationCreateResponse
+    ConversationListItem:
+      properties:
+        conversation_id:
+          type: string
+          maxLength: 36
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          title: Conversation Id
+        created_at:
+          type: integer
+          title: Created At
+        updated_at:
+          type: integer
+          title: Updated At
+        title:
+          type: string
+          maxLength: 255
+          title: Title
+        is_active:
+          type: boolean
+          title: Is Active
+        is_pinned:
+          type: boolean
+          title: Is Pinned
+      type: object
+      required:
+      - conversation_id
+      - created_at
+      - updated_at
+      - title
+      - is_active
+      - is_pinned
+      title: ConversationListItem
+    ConversationListResponse:
+      properties:
+        conversations:
+          items:
+            $ref: '#/components/schemas/ConversationListItem'
+          type: array
+          title: Conversations
+      type: object
+      required:
+      - conversations
+      title: ConversationListResponse
+    ConversationStatusResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - cancelled
+          - updated
+          title: Status
+      type: object
+      required:
+      - status
+      title: ConversationStatusResponse
+    ConversationUpdateRequest:
+      properties:
+        title:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Title
+        is_pinned:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Pinned
+      additionalProperties: false
+      type: object
+      title: ConversationUpdateRequest
+    DownloadedLocalSkillDetailResponse:
+      properties:
+        cloud_skill_id:
+          type: integer
+          title: Cloud Skill Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        markdown_path:
+          type: string
+          title: Markdown Path
+        markdown_content:
+          type: string
+          title: Markdown Content
+      type: object
+      required:
+      - cloud_skill_id
+      - name
+      - description
+      - markdown_path
+      - markdown_content
+      title: DownloadedLocalSkillDetailResponse
+    DownloadedLocalSkillResponse:
+      properties:
+        cloud_skill_id:
+          type: integer
+          title: Cloud Skill Id
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        markdown_path:
+          type: string
+          title: Markdown Path
+      type: object
+      required:
+      - cloud_skill_id
+      - name
+      - description
+      - markdown_path
+      title: DownloadedLocalSkillResponse
+    EnvVarDeleteResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+      additionalProperties: true
+      type: object
+      required:
+      - message
+      title: Response
+    EnvVarKeyItem:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Variable name
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      title: EnvVarKeyItem
+    EnvVarRef:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Name in the global env store
+      type: object
+      required:
+      - key
+      title: EnvVarRef
+    EnvVarUpsertRequest:
+      properties:
+        key:
+          type: string
+          minLength: 1
+          title: Key
+        value:
+          type: string
+          title: Value
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - value
+      title: EnvVarUpsertRequest
+    ErrorMessageResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - message
+      title: ErrorMessageResponse
+    ExecutionMode:
+      type: string
+      enum:
+      - prompt
+      - script
+      title: ExecutionMode
+    FileInfoResponse:
+      properties:
+        file_id:
+          type: string
+          title: File Id
+          description: 文件的唯一标识符
+        file_type:
+          type: string
+          enum:
+          - image
+          - pdf
+          - markdown
+          - text
+          - other
+          title: File Type
+          description: 文件类型，例如：图片、PDF、Markdown等
+        file_name:
+          type: string
+          title: File Name
+          description: 文件的原始名称
+      type: object
+      required:
+      - file_id
+      - file_type
+      - file_name
+      title: FileInfoResponse
+    FileUploadResponse:
+      properties:
+        file_id:
+          type: string
+          title: File Id
+          description: 上传后预创建的消息附件唯一标识符，实际表示关系到MessageAttachment表的id
+        mime_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mime Type
+          description: 文件的MIME类型
+        file_name:
+          type: string
+          title: File Name
+          description: 服务端确认后的合法文件名
+      type: object
+      required:
+      - file_id
+      - mime_type
+      - file_name
+      title: FileUploadResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    LastRunStatus:
+      type: string
+      enum:
+      - success
+      - failed
+      - cancelled
+      title: LastRunStatus
+    LastRunTrigger:
+      type: string
+      enum:
+      - agent
+      - cron
+      - manual
+      - telegram
+      title: LastRunTrigger
+    LogEntryResponse:
+      properties:
+        content:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content
+        duration_ms:
+          type: integer
+          title: Duration Ms
+          default: 0
+        id:
+          type: string
+          title: Id
+        input_params:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Input Params
+        log_type:
+          $ref: '#/components/schemas/LogType'
+        metadata:
+          $ref: '#/components/schemas/LogMetadata'
+        output:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Output
+        run_id:
+          type: string
+          title: Run Id
+        status:
+          $ref: '#/components/schemas/LogEntryStatus'
+        step_index:
+          type: integer
+          title: Step Index
+        timestamp:
+          type: string
+          title: Timestamp
+        tool_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tool Name
+      additionalProperties: true
+      type: object
+      required:
+      - id
+      - log_type
+      - run_id
+      - status
+      - step_index
+      - timestamp
+      title: LogEntry
+    LogEntryStatus:
+      type: string
+      enum:
+      - success
+      - failed
+      title: LogEntryStatus
+    LogMetadata:
+      properties:
+        chunk_index:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Chunk Index
+        exit_code:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Exit Code
+        injected_env_keys:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Injected Env Keys
+        platform:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Platform
+        python_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Python Version
+        retry_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Retry Count
+      additionalProperties: true
+      type: object
+      title: LogMetadata
+    LogType:
+      type: string
+      enum:
+      - script_end
+      - script_start
+      - script_stderr
+      - script_stdout
+      - tool_call
+      title: LogType
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          title: Email
+          description: Education email address
+        password:
+          type: string
+          title: Password
+          description: Password
+      type: object
+      required:
+      - email
+      - password
+      title: LoginRequest
+    MessageResponse:
+      properties:
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - message
+      title: MessageResponse
+    NotificationActionRequest:
+      properties:
+        title:
+          type: string
+          title: Title
+          description: Button label shown in the desktop notification.
+          examples:
+          - 打开任务
+        deeplink:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deeplink
+          description: Optional deeplink opened when the button is pressed.
+          examples:
+          - opencrab://tasks/3b11e1a9-7c45-40cf-9dd6-bbfa6308b54e
+      type: object
+      required:
+      - title
+      title: NotificationActionRequest
+    NotificationDeeplinkPreviewResponse:
+      properties:
+        deeplink:
+          type: string
+          title: Deeplink
+          description: Generated deeplink string.
+          examples:
+          - opencrab://tasks/3b11e1a9-7c45-40cf-9dd6-bbfa6308b54e?action=history
+      type: object
+      required:
+      - deeplink
+      title: NotificationDeeplinkPreviewResponse
+    NotificationDispatchRequest:
+      properties:
+        title:
+          type: string
+          title: Title
+          description: Notification title shown by the OS notification center.
+          examples:
+          - 任务执行完成
+        message:
+          type: string
+          title: Message
+          description: Main notification body text.
+          examples:
+          - 定时任务“同步课程表”已成功完成。
+        level:
+          type: string
+          enum:
+          - info
+          - success
+          - warning
+          - error
+          title: Level
+          description: Semantic notification level. `error` is mapped to a higher urgency.
+          default: info
+          examples:
+          - success
+        deeplink:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Deeplink
+          description: Optional deeplink opened when the user clicks the notification body.
+          examples:
+          - opencrab://runs/0ccab874-8b91-49f8-b97c-b7309ab7a0df?tab=logs
+        actions:
+          items:
+            $ref: '#/components/schemas/NotificationActionRequest'
+          type: array
+          title: Actions
+          description: Optional notification action buttons.
+        thread:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Thread
+          description: Optional thread / group key. Some platforms use it for notification grouping.
+          examples:
+          - task:3b11e1a9-7c45-40cf-9dd6-bbfa6308b54e
+        timeout_s:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Timeout S
+          description: Optional timeout override in seconds. Falls back to config when omitted.
+          examples:
+          - 10
+      type: object
+      required:
+      - title
+      - message
+      title: NotificationDispatchRequest
+    NotificationDispatchResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: Dispatch result. `scheduled` means the backend accepted the notification request.
+          default: scheduled
+        notification_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Notification Id
+          description: Backend/library notification id when provided by the platform, otherwise null.
+      type: object
+      title: NotificationDispatchResponse
+    RagCloudSyncStatusResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+        stage:
+          type: string
+          title: Stage
+        progress:
+          type: integer
+          title: Progress
+        message:
+          type: string
+          title: Message
+        knowledge_base_id:
+          type: string
+          title: Knowledge Base Id
+        version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Version
+        downloaded_files:
+          items:
+            type: string
+          type: array
+          title: Downloaded Files
+        embedded_added:
+          type: integer
+          title: Embedded Added
+          default: 0
+        embedded_overwritten:
+          type: integer
+          title: Embedded Overwritten
+          default: 0
+        embedded_failed:
+          type: integer
+          title: Embedded Failed
+          default: 0
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - status
+      - stage
+      - progress
+      - message
+      - knowledge_base_id
+      title: RagCloudSyncStatusResponse
+    RegisterCaptchaRequest:
+      properties:
+        email:
+          type: string
+          title: Email
+          description: Education email address
+      type: object
+      required:
+      - email
+      title: RegisterCaptchaRequest
+    RegisterRequest:
+      properties:
+        username:
+          type: string
+          title: Username
+          description: Username
+        email:
+          type: string
+          title: Email
+          description: Education email address
+        password:
+          type: string
+          title: Password
+          description: Password
+        verificationCode:
+          type: string
+          title: Verificationcode
+          description: Verification code
+      type: object
+      required:
+      - username
+      - email
+      - password
+      - verificationCode
+      title: RegisterRequest
+    RoutineCreateRequest:
+      properties:
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        start_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Start Time
+        end_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: End Time
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        link:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Link
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+        inform_type:
+          anyOf:
+          - type: string
+            enum:
+            - none
+            - at_start
+            - 5_minutes_before
+            - 10_minutes_before
+            - 30_minutes_before
+            - 1_hour_before
+          - type: 'null'
+          title: Inform Type
+      type: object
+      title: RoutineCreateRequest
+    RoutineUpdateRequest:
+      properties:
+        id:
+          type: integer
+          title: Id
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        start_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Start Time
+        end_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: End Time
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+        link:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Link
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+        inform_type:
+          anyOf:
+          - type: string
+            enum:
+            - none
+            - at_start
+            - 5_minutes_before
+            - 10_minutes_before
+            - 30_minutes_before
+            - 1_hour_before
+          - type: 'null'
+          title: Inform Type
+      type: object
+      required:
+      - id
+      title: RoutineUpdateRequest
+    RunDetailResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        task_id:
+          type: string
+          title: Task Id
+        status:
+          $ref: '#/components/schemas/RunHistoryStatus'
+        trigger:
+          $ref: '#/components/schemas/LastRunTrigger'
+        started_at:
+          type: string
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Finished At
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+        override_prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Override Prompt
+        logs:
+          items:
+            $ref: '#/components/schemas/LogEntryResponse'
+          type: array
+          title: Logs
+      additionalProperties: true
+      type: object
+      required:
+      - id
+      - task_id
+      - status
+      - trigger
+      - started_at
+      - finished_at
+      title: Response
+    RunExecutionResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        task_id:
+          type: string
+          title: Task Id
+        status:
+          $ref: '#/components/schemas/RunHistoryStatus'
+        trigger:
+          $ref: '#/components/schemas/LastRunTrigger'
+        started_at:
+          type: string
+          title: Started At
+        finished_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Finished At
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+        override_prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Override Prompt
+      additionalProperties: true
+      type: object
+      required:
+      - id
+      - task_id
+      - status
+      - trigger
+      - started_at
+      - finished_at
+      title: Response
+    RunHistoryStatus:
+      type: string
+      enum:
+      - pending
+      - running
+      - success
+      - failed
+      - cancelled
+      title: RunHistoryStatus
+    SourceUpdateRequest:
+      properties:
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+        is_visible:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Visible
+      type: object
+      title: SourceUpdateRequest
+    TaskCreateRequest:
+      properties:
+        cron_expression:
+          type: string
+          title: Cron Expression
+          description: 5-field cron expression
+        description:
+          type: string
+          title: Description
+        env_var_refs:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/EnvVarRef'
+            type: array
+          - type: 'null'
+          title: Env Var Refs
+        execution_mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        name:
+          type: string
+          title: Name
+        payload:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Payload
+        started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Started At
+          description: Business start time; omit to leave unset until first enable/trigger
+      type: object
+      required:
+      - cron_expression
+      - description
+      - execution_mode
+      - name
+      title: TaskCreateRequest
+    TaskDeleteResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        message:
+          type: string
+          title: Message
+          default: Task deleted.
+      type: object
+      required:
+      - id
+      title: TaskDeleteResponse
+    TaskDetailResponse:
+      properties:
+        created_at:
+          type: string
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Started At
+        cron_expression:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cron Expression
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        env_var_refs:
+          items:
+            $ref: '#/components/schemas/EnvVarRef'
+          type: array
+          title: Env Var Refs
+        execution_mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        id:
+          type: string
+          title: Id
+        last_run_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Run At
+        last_run_status:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunStatus'
+          - type: 'null'
+        last_run_trigger:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunTrigger'
+          - type: 'null'
+        name:
+          type: string
+          title: Name
+        payload:
+          type: string
+          title: Payload
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+        updated_at:
+          type: string
+          title: Updated At
+      additionalProperties: true
+      type: object
+      required:
+      - created_at
+      - env_var_refs
+      - execution_mode
+      - id
+      - name
+      - payload
+      - status
+      - updated_at
+      title: Response
+    TaskDisableResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+          default: disabled
+        message:
+          type: string
+          title: Message
+          default: Task disabled.
+      type: object
+      required:
+      - id
+      title: TaskDisableResponse
+    TaskEnableResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+          default: enabled
+        message:
+          type: string
+          title: Message
+          default: Task enabled.
+      type: object
+      required:
+      - id
+      title: TaskEnableResponse
+    TaskListFilterStatus:
+      type: string
+      enum:
+      - disabled
+      - enabled
+      - running
+      title: TaskListFilterStatus
+    TaskListRequest:
+      properties:
+        status:
+          anyOf:
+          - $ref: '#/components/schemas/TaskListFilterStatus'
+          - type: 'null'
+        page:
+          type: integer
+          minimum: 1.0
+          title: Page
+          default: 1
+        page_size:
+          type: integer
+          maximum: 200.0
+          minimum: 1.0
+          title: Page Size
+          default: 20
+      additionalProperties: true
+      type: object
+      title: TaskListRequest
+    TaskListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TaskResponse'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+      additionalProperties: true
+      type: object
+      required:
+      - items
+      - total
+      title: TaskListResponse
+    TaskResponse:
+      properties:
+        created_at:
+          type: string
+          title: Created At
+        started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Started At
+        cron_expression:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cron Expression
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        env_var_refs:
+          items:
+            $ref: '#/components/schemas/EnvVarRef'
+          type: array
+          title: Env Var Refs
+        execution_mode:
+          $ref: '#/components/schemas/ExecutionMode'
+        id:
+          type: string
+          title: Id
+        last_run_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Run At
+        last_run_status:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunStatus'
+          - type: 'null'
+        last_run_trigger:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunTrigger'
+          - type: 'null'
+        name:
+          type: string
+          title: Name
+        payload:
+          type: string
+          title: Payload
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+        updated_at:
+          type: string
+          title: Updated At
+      additionalProperties: true
+      type: object
+      required:
+      - created_at
+      - env_var_refs
+      - execution_mode
+      - id
+      - name
+      - payload
+      - status
+      - updated_at
+      title: Task
+    TaskRunCompleteRequest:
+      properties:
+        status:
+          type: string
+          enum:
+          - success
+          - failed
+          title: Status
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      title: TaskRunCompleteRequest
+    TaskRunListFilterRequest:
+      properties:
+        page:
+          type: integer
+          minimum: 1.0
+          title: Page
+          default: 1
+        page_size:
+          type: integer
+          maximum: 200.0
+          minimum: 1.0
+          title: Page Size
+          default: 20
+        status:
+          anyOf:
+          - $ref: '#/components/schemas/RunHistoryStatus'
+          - type: 'null'
+        trigger:
+          anyOf:
+          - $ref: '#/components/schemas/LastRunTrigger'
+          - type: 'null'
+      additionalProperties: true
+      type: object
+      title: TaskRunListFilterRequest
+    TaskRunListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/RunExecutionResponse'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        page:
+          type: integer
+          title: Page
+        page_size:
+          type: integer
+          title: Page Size
+        task_id:
+          type: string
+          title: Task Id
+      additionalProperties: true
+      type: object
+      required:
+      - items
+      - total
+      - page
+      - page_size
+      - task_id
+      title: TaskRunListResponse
+    TaskTriggerRequest:
+      properties:
+        override_prompt:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Override Prompt
+      additionalProperties: true
+      type: object
+      title: TaskTriggerRequest
+    TaskTriggerResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        run_id:
+          type: string
+          title: Run Id
+        message:
+          type: string
+          title: Message
+          default: Run created.
+        status:
+          $ref: '#/components/schemas/TaskListFilterStatus'
+          default: running
+      type: object
+      required:
+      - id
+      - run_id
+      title: TaskTriggerResponse
+    TaskUpdateRequest:
+      properties:
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        execution_mode:
+          anyOf:
+          - $ref: '#/components/schemas/ExecutionMode'
+          - type: 'null'
+        payload:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Payload
+        cron_expression:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cron Expression
+        env_var_refs:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/EnvVarRef'
+            type: array
+          - type: 'null'
+          title: Env Var Refs
+        started_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Started At
+      additionalProperties: false
+      type: object
+      title: TaskUpdateRequest
+    TisCredentialsBody:
+      properties:
+        student_id:
+          type: string
+          title: Student Id
+        password:
+          type: string
+          title: Password
+      type: object
+      required:
+      - student_id
+      - password
+      title: TisCredentialsBody
+    TisCredentialsDeleteResponse:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+          default: true
+        message:
+          type: string
+          title: Message
+          default: Shared CAS credentials cleared.
+      type: object
+      title: TisCredentialsDeleteResponse
+    TisCredentialsGetResponse:
+      properties:
+        runtime_configured:
+          type: boolean
+          title: Runtime Configured
+        student_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Student Id
+        password_set:
+          type: boolean
+          title: Password Set
+      type: object
+      required:
+      - runtime_configured
+      - student_id
+      - password_set
+      title: TisCredentialsGetResponse
+    TisCredentialsPutResponse:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+          default: true
+        student_id:
+          type: string
+          title: Student Id
+        message:
+          type: string
+          title: Message
+          default: Shared CAS credentials updated in the database.
+      type: object
+      required:
+      - student_id
+      title: TisCredentialsPutResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    GenericErrorResponse:
+      type: object
+      title: GenericErrorResponse
+      properties:
+        detail:
+          anyOf:
+          - type: string
+          - type: object
+            additionalProperties: true
+          - type: array
+            items: {}
+        message:
+          type: string
+        code:
+          type: string
+      additionalProperties: true
+  responses:
+    BadRequest:
+      description: Bad request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    Unauthorized:
+      description: Unauthorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    NotFound:
+      description: Not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    Conflict:
+      description: Conflict.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    TooManyRequests:
+      description: Too many requests.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    ValidationError:
+      description: Request validation error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HTTPValidationError'
+    InternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'
+    ServiceUnavailable:
+      description: Service unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericErrorResponse'

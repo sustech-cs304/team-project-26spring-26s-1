@@ -34,6 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "openapi-spec-validator>=0.8.5",
     "pytest>=8.3.0",
 ]
 
@@ -57,3 +58,10 @@ entrypoint = "main:app"
 [tool.pytest.ini_options]
 addopts = "-p no:cacheprovider"
 testpaths = ["tests"]
+markers = [
+    "unit: narrow tests for pure validation, parsing, and serialization helpers",
+    "component: tests for one API/router component with external services faked",
+    "integration: tests that exercise multiple layers against a real temporary database or process",
+    "api: tests for HTTP entrypoints and OpenAPI shape",
+    "scenario: end-to-end business flows across multiple API calls",
+]

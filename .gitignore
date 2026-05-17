@@ -26,8 +26,6 @@ uploads/*
 *.db-shm
 *.db-wal
 
-.gitignore
-tests/*
 # AI tools
 .codex
 
