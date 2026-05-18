@@ -113,9 +113,14 @@ class SkillsCloudConfig(BaseModel):
 
 
 class MCPConfig(BaseModel):
-    url: str
+    transport: Literal["http", "stdio"] = "http"
+    url: str | None = None
     token: str | None = None
-    enabled_by_default: bool = False
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    cwd: str | None = None
+    enabled: bool = False
 
 class AppConfig(BaseModel):
     api: ApiConfig = Field(default_factory=ApiConfig)
@@ -250,6 +255,10 @@ def require_skills_cloud_config(config: SkillsCloudConfig | None, path: str = "s
 
 
 def require_mcp_config(config: MCPConfig | None, path: str) -> MCPConfig:
+    if config is None:
+        raise ConfigMissingError(path)
+    if config.transport == "stdio":
+        return require_config_fields(config, path, ("command",))
     return require_config_fields(config, path, ("url",))
 
 
@@ -381,12 +390,12 @@ def get_config() -> AppConfig:
     return _config
 
 
-def get_default_enabled_mcp_names(config: AppConfig | None = None) -> list[str]:
+def get_enabled_mcp_names(config: AppConfig | None = None) -> list[str]:
     current_config = get_config() if config is None else config
     return [
         name
         for name, server_config in get_config_path(current_config, "mcp").items()
-        if server_config.enabled_by_default
+        if server_config.enabled
     ]
 
 

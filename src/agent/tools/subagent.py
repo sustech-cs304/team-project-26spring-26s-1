@@ -62,7 +62,6 @@ async def create_subagent(request: str) -> str:
     graph = await _get_graph()
     state: AgentState = {
         "messages": [HumanMessage(role="user", content=request)],
-        "enabled_mcps": [],
     }
     result = await graph.ainvoke(
         state,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
-from typing import Sequence, cast
+from typing import Literal, cast
 
 from langchain.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -24,12 +24,26 @@ def _normalize_token(token: str | None) -> str | None:
 
 @dataclass(frozen=True)
 class _MCPConnectionSignature:
-    url: str
-    token: str | None
+    transport: str
+    url: str | None = None
+    token: str | None = None
+    command: str | None = None
+    args: tuple[str, ...] = ()
+    env: tuple[tuple[str, str], ...] = ()
+    cwd: str | None = None
 
 
 def _connection_signature(config: MCPConfig) -> _MCPConnectionSignature:
+    if config.transport == "stdio":
+        return _MCPConnectionSignature(
+            transport="stdio",
+            command=config.command,
+            args=tuple(config.args),
+            env=tuple(sorted(config.env.items())),
+            cwd=config.cwd,
+        )
     return _MCPConnectionSignature(
+        transport="http",
         url=config.url,
         token=_normalize_token(config.token),
     )
@@ -49,10 +63,37 @@ class _ManagedMCPServer:
         self._session_ready: asyncio.Future[ClientSession] | None = None
         self._session_task: asyncio.Task[None] | None = None
         self._session_close_event: asyncio.Event | None = None
+        self._status: Literal["starting", "running", "failed"] = "starting"
+
+        loop = asyncio.get_running_loop()
+        ready: asyncio.Future[ClientSession] = loop.create_future()
+        close_event = asyncio.Event()
+        self._session_ready = ready
+        self._session_close_event = close_event
+        self._session_task = asyncio.create_task(
+            self._run_persistent_session(ready, close_event),
+            name=f"mcp-session:{self.name}",
+        )
+
+    @property
+    def status(self) -> str:
+        return self._status
 
     @staticmethod
     def _build_connection(config: MCPConfig) -> Connection:
-        connection: dict[str, object] = {
+        if config.transport == "stdio":
+            connection: dict[str, object] = {
+                "transport": "stdio",
+                "command": config.command,
+                "args": config.args,
+            }
+            if config.env:
+                connection["env"] = config.env
+            if config.cwd:
+                connection["cwd"] = config.cwd
+            return cast("Connection", connection)
+
+        connection = {
             "transport": "http",
             "url": config.url,
         }
@@ -71,6 +112,7 @@ class _ManagedMCPServer:
         try:
             async with self._client.session(self.name) as session:
                 self._session = session
+                self._status = "running"
                 if not ready.done():
                     ready.set_result(session)
                 await close_event.wait()
@@ -79,6 +121,7 @@ class _ManagedMCPServer:
                 ready.cancel()
             raise
         except Exception as exc:
+            self._status = "failed"
             if not ready.done():
                 ready.set_exception(exc)
             else:
@@ -108,6 +151,7 @@ class _ManagedMCPServer:
                 close_event = asyncio.Event()
                 self._session_ready = ready
                 self._session_close_event = close_event
+                self._status = "starting"
                 self._session_task = asyncio.create_task(
                     self._run_persistent_session(ready, close_event),
                     name=f"mcp-session:{self.name}",
@@ -190,71 +234,67 @@ class MCPLifespanManager:
     def __init__(self, config: AppConfig | None = None):
         current_config = get_config() if config is None else config
         self._lock = asyncio.Lock()
-        self._mcp_config = dict(get_config_path(current_config, "mcp"))
+        self._mcp_config: dict[str, MCPConfig] = dict(get_config_path(current_config, "mcp"))
         self._servers: dict[str, _ManagedMCPServer] = {}
 
-    async def _get_server(self, name: str) -> _ManagedMCPServer | None:
-        stale_server: _ManagedMCPServer | None = None
+    async def start(self) -> None:
+        """Connect to all enabled MCP servers."""
         async with self._lock:
-            config = self._mcp_config.get(name)
-            if config is None:
-                return None
-            try:
-                config = require_mcp_config(config, f"mcp.{name}")
-            except ConfigMissingError as exc:
-                log.warning("Skipping MCP server because config is incomplete: %s", exc)
-                return None
+            for name, config in self._mcp_config.items():
+                if not config.enabled:
+                    continue
+                if name in self._servers:
+                    continue
+                try:
+                    require_mcp_config(config, f"mcp.{name}")
+                except ConfigMissingError as exc:
+                    log.warning("Skipping MCP server: %s", exc)
+                    continue
+                self._servers[name] = _ManagedMCPServer(name, config)
 
-            current_server = self._servers.get(name)
-            if current_server is not None and current_server.signature == _connection_signature(config):
-                return current_server
+    def get_statuses(self) -> list[dict[str, str]]:
+        """Return status of all configured MCP servers."""
+        result: list[dict[str, str]] = []
+        for name, config in self._mcp_config.items():
+            if not config.enabled:
+                result.append({"name": name, "status": "disabled"})
+                continue
+            server = self._servers.get(name)
+            if server is None:
+                result.append({"name": name, "status": "starting"})
+            else:
+                result.append({"name": name, "status": server.status})
+        return result
 
-            if current_server is not None:
-                stale_server = self._servers.pop(name)
+    async def get_tools(self) -> list[BaseTool]:
+        async with self._lock:
+            server_names = list(self._servers.keys())
+            servers = [self._servers[name] for name in server_names]
 
-            current_server = _ManagedMCPServer(name, config)
-            self._servers[name] = current_server
-
-        if stale_server is not None:
-            await stale_server.aclose()
-
-        return current_server
-
-    async def get_tools(self, enabled_server_names: Sequence[str]) -> list[BaseTool]:
-        unique_server_names = list(dict.fromkeys(enabled_server_names))
-        server_entries = []
-        for server_name in unique_server_names:
-            server = await self._get_server(server_name)
-            if server is not None:
-                server_entries.append((server_name, server))
-        if not server_entries:
+        if not servers:
             return []
 
         tools_by_server = await asyncio.gather(
-            *(server.get_tools() for _, server in server_entries)
+            *(server.get_tools() for server in servers)
         )
 
         combined_tools: list[BaseTool] = []
         tool_owner: dict[str, str] = {}
-        for (server_name, _), tools in zip(server_entries, tools_by_server, strict=False):
+        for name, tools in zip(server_names, tools_by_server, strict=False):
             for tool in tools:
                 if tool.name in tool_owner:
                     owner = tool_owner[tool.name]
                     raise ValueError(
                         f"MCP tool name '{tool.name}' is duplicated across servers "
-                        f"'{owner}' and '{server_name}'"
+                        f"'{owner}' and '{name}'"
                     )
-                tool_owner[tool.name] = server_name
+                tool_owner[tool.name] = name
                 combined_tools.append(tool)
 
         return combined_tools
 
-    async def get_tool(
-        self,
-        enabled_server_names: Sequence[str],
-        tool_name: str,
-    ) -> BaseTool | None:
-        for tool in await self.get_tools(enabled_server_names):
+    async def get_tool(self, tool_name: str) -> BaseTool | None:
+        for tool in await self.get_tools():
             if tool.name == tool_name:
                 return tool
         return None
@@ -266,20 +306,37 @@ class MCPLifespanManager:
     ) -> None:
         stale_servers: list[_ManagedMCPServer] = []
         async with self._lock:
-            next_mcp_config = dict(get_config_path(new_config, "mcp"))
+            next_mcp_config: dict[str, MCPConfig] = dict(get_config_path(new_config, "mcp"))
             self._mcp_config = next_mcp_config
+
             for server_name, server in list(self._servers.items()):
                 config = next_mcp_config.get(server_name)
+                should_remove = False
                 if config is None:
+                    should_remove = True
+                elif not config.enabled:
+                    should_remove = True
+                else:
+                    try:
+                        config = require_mcp_config(config, f"mcp.{server_name}")
+                    except ConfigMissingError:
+                        should_remove = True
+                    else:
+                        if server.signature != _connection_signature(config):
+                            should_remove = True
+                if should_remove:
                     stale_servers.append(self._servers.pop(server_name))
+
+            for server_name, config in next_mcp_config.items():
+                if server_name in self._servers:
+                    continue
+                if not config.enabled:
                     continue
                 try:
-                    config = require_mcp_config(config, f"mcp.{server_name}")
+                    require_mcp_config(config, f"mcp.{server_name}")
                 except ConfigMissingError:
-                    stale_servers.append(self._servers.pop(server_name))
                     continue
-                if server.signature != _connection_signature(config):
-                    stale_servers.append(self._servers.pop(server_name))
+                self._servers[server_name] = _ManagedMCPServer(server_name, config)
 
         for server in stale_servers:
             await server.aclose()

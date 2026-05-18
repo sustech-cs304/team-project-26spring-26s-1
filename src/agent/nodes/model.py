@@ -81,9 +81,7 @@ class ConfiguredModel:
         model = self._get_model(endpoint)
         mcp_tools: list[BaseTool] = []
         if self._mcp_manager is not None:
-            mcp_tools = await self._mcp_manager.get_tools(
-                state.get("enabled_mcps", [])
-            )
+            mcp_tools = await self._mcp_manager.get_tools()
         for tool in mcp_tools:
             if tool.name in internal_tool_names:
                 raise ValueError(

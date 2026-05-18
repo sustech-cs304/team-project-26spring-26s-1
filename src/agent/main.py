@@ -27,6 +27,7 @@ from agent.notifications import configure_notification_service
 from agent.api.task import router as task_router
 from agent.api.env_vars import router as env_vars_router
 from agent.api.config import router as config_router
+from agent.api.mcp import router as mcp_router
 from agent.api.school_settings import router as school_settings_router
 from agent.api.routine_events import router as routine_events_router
 from agent.api.profile import router as profile_router
@@ -67,7 +68,8 @@ async def lifespan(app: fastapi.FastAPI):
 	checkpointer = AsyncSqliteSaver(checkpointer_conn)
 	app_config = get_config()
 	mcp_manager = MCPLifespanManager(app_config)
- 
+	await mcp_manager.start()
+
 	graph = await create_graph(store=store, checkpointer=checkpointer, mcp_manager=mcp_manager)
 	notification_service = NotificationService(asyncio.get_running_loop())
 	skills_hub_client = SkillsHubClient()
@@ -182,6 +184,7 @@ app.include_router(notifications_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
+app.include_router(mcp_router, prefix="/mcp")
 
 
 def main() -> int:
