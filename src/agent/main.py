@@ -29,7 +29,9 @@ from agent.api.env_vars import router as env_vars_router
 from agent.api.config import router as config_router
 from agent.api.school_settings import router as school_settings_router
 from agent.api.routine_events import router as routine_events_router
+from agent.api.profile import router as profile_router
 from agent.rag.cloud_sync import RagCloudSyncService
+from agent.services.profile_store import bind_profile_store, clear_profile_store
 from agent.services.task_runtime import get_task_runtime
 from agent.services import (
 	MCPLifespanManager,
@@ -62,6 +64,7 @@ async def lifespan(app: fastapi.FastAPI):
  
 	store_conn = await aiosqlite.connect("agent_store.db", isolation_level=None)
 	store = AsyncSqliteStore(store_conn)
+	bind_profile_store(store)
 	checkpointer_conn = await aiosqlite.connect("agent_checkpoints.db", isolation_level=None)
 	checkpointer = AsyncSqliteSaver(checkpointer_conn)
 	app_config = get_config()
@@ -123,6 +126,7 @@ async def lifespan(app: fastapi.FastAPI):
 		await task_runtime.aclose()
 		log.info("Task scheduler stopped")
 		await dispose_default_async_engine()
+		clear_profile_store()
 		await store_conn.close()
 		await checkpointer_conn.close()
 
@@ -178,6 +182,7 @@ app.include_router(routine_events_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(profile_router)
 
 
 def main() -> int:
