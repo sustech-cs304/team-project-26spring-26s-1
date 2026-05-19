@@ -38,12 +38,11 @@
                     :disabled="isBackendBlocking" />
                 <nav-icon-item title="Calendar" icon="mdi-calendar" to="/calendar" :disabled="isBackendBlocking" />
                 <nav-icon-item title="Store" icon="mdi-connection" to="/store" :disabled="isBackendBlocking" />
-                <nav-icon-item title="Settings" icon="mdi-cog" to="/settings" :disabled="isBackendBlocking" />
             </v-list>
             <template #append>
-                <div class="d-flex justify-center py-3">
-                    <TokenUsageIndicator :used-tokens="120" :total-tokens="500" />
-                </div>
+                <v-list nav class="px-0 py-0">
+                    <nav-icon-item title="Settings" icon="mdi-cog" to="/settings" :disabled="isBackendBlocking" />
+                </v-list>
             </template>
         </v-navigation-drawer>
 
@@ -57,7 +56,6 @@
     import { getCurrentWindow } from '@tauri-apps/api/window'
     import BackendHealthOverlay from '@/components/BackendHealthOverlay.vue'
     import NavIconItem from '@/components/NavIconItem.vue'
-    import TokenUsageIndicator from '@/components/TokenUsageIndicator.vue'
     import { useBackendHealth } from '@/composables/useBackendHealth'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
 
