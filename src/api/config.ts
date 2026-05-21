@@ -84,6 +84,19 @@ export interface CodeInterpreterConfig {
     default_timeout_s: number
 }
 
+export type MCPTransportType = 'http' | 'stdio'
+
+export interface MCPConfig {
+    transport: MCPTransportType
+    url: string | null
+    token: string | null
+    command: string | null
+    args: string[]
+    env: Record<string, string>
+    cwd: string | null
+    enabled: boolean
+}
+
 export interface ApiConfig {
     agent: LLMEndpointConfig
     utility: LLMEndpointConfig
@@ -103,6 +116,7 @@ export interface AppConfig {
     skills_cloud: SkillsCloudConfig
     notification: NotificationConfig
     code_interpreter: CodeInterpreterConfig
+    mcp: Record<string, MCPConfig>
 }
 
 export type DeepPartial<T> = T extends Array<infer U>

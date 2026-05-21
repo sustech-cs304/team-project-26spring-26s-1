@@ -41,7 +41,8 @@
                 <nav-icon-item title="Settings" icon="mdi-cog" to="/settings" :disabled="isBackendBlocking" />
             </v-list>
             <template #append>
-                <div class="d-flex justify-center py-3">
+                <div class="d-flex flex-column align-center ga-3 py-3">
+                    <McpStatusIndicator />
                     <TokenUsageIndicator :used-tokens="120" :total-tokens="500" />
                 </div>
             </template>
@@ -56,6 +57,7 @@
 <script setup lang="ts">
     import { getCurrentWindow } from '@tauri-apps/api/window'
     import BackendHealthOverlay from '@/components/BackendHealthOverlay.vue'
+    import McpStatusIndicator from '@/components/McpStatusIndicator.vue'
     import NavIconItem from '@/components/NavIconItem.vue'
     import TokenUsageIndicator from '@/components/TokenUsageIndicator.vue'
     import { useBackendHealth } from '@/composables/useBackendHealth'
