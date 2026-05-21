@@ -40,6 +40,9 @@
                 <nav-icon-item title="Store" icon="mdi-connection" to="/store" :disabled="isBackendBlocking" />
             </v-list>
             <template #append>
+                <div class="d-flex flex-column align-center ga-3 py-3">
+                    <McpStatusIndicator />
+                </div>
                 <v-list nav class="px-0 py-0">
                     <nav-icon-item title="Settings" icon="mdi-cog" to="/settings" :disabled="isBackendBlocking" />
                 </v-list>
@@ -55,6 +58,7 @@
 <script setup lang="ts">
     import { getCurrentWindow } from '@tauri-apps/api/window'
     import BackendHealthOverlay from '@/components/BackendHealthOverlay.vue'
+    import McpStatusIndicator from '@/components/McpStatusIndicator.vue'
     import NavIconItem from '@/components/NavIconItem.vue'
     import { useBackendHealth } from '@/composables/useBackendHealth'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'

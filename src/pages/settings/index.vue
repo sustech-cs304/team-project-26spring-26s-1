@@ -348,6 +348,118 @@
                             </div>
                         </div>
 
+                        <div v-else-if="activeTab === 'mcp'">
+                            <div class="d-flex align-start justify-space-between ga-3 mb-4">
+                                <div>
+                                    <div class="text-body-1 font-weight-bold">MCP Configuration</div>
+                                    <div class="text-body-2 text-medium-emphasis">
+                                        Configure HTTP and stdio MCP tool servers.
+                                    </div>
+                                </div>
+
+                                <div class="d-flex align-center ga-2">
+                                    <v-btn size="x-small" variant="tonal" rounded="lg"
+                                        :prepend-icon="visibility.mcpSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                                        @click="visibility.mcpSecrets = !visibility.mcpSecrets">
+                                        {{ visibility.mcpSecrets ? 'Hide tokens' : 'Show tokens' }}
+                                    </v-btn>
+                                    <v-btn size="x-small" variant="tonal" rounded="lg" prepend-icon="mdi-plus"
+                                        @click="addMcpDraft">
+                                        Add MCP
+                                    </v-btn>
+                                </div>
+                            </div>
+
+                            <v-alert v-if="mcpDrafts.length === 0" rounded="lg" variant="tonal" type="info"
+                                class="mb-3">
+                                No MCP servers configured yet.
+                            </v-alert>
+
+                            <v-sheet v-for="(draft, index) in mcpDrafts" :key="draft.originalName || draft.name || index"
+                                border rounded="lg" color="transparent" class="pa-3 mb-3">
+                                <div class="d-flex align-center ga-2 mb-3">
+                                    <v-text-field v-model="draft.name" density="compact" variant="solo-filled" flat
+                                        rounded="lg" label="Name" hide-details="auto" class="flex-grow-1" />
+                                    <v-btn icon="mdi-delete-outline" size="small" variant="text" :ripple="false"
+                                        color="error" @click="removeMcpDraft(index)" />
+                                </div>
+
+                                <div class="d-flex align-center justify-space-between ga-2 mb-3">
+                                    <div>
+                                        <div class="text-caption font-weight-medium text-medium-emphasis">
+                                            Enabled
+                                        </div>
+                                        <div class="text-caption text-medium-emphasis">
+                                            Disabled servers stay saved but do not start.
+                                        </div>
+                                    </div>
+                                    <v-switch v-model="draft.enabled" density="compact" hide-details />
+                                </div>
+
+                                <div class="mb-3">
+                                    <div class="text-caption font-weight-medium text-medium-emphasis mb-1">
+                                        Transport
+                                    </div>
+                                    <v-btn-toggle v-model="draft.transport" mandatory divided class="w-100"
+                                        color="primary" variant="tonal">
+                                        <v-btn value="http" class="flex-grow-1" prepend-icon="mdi-web" size="small">
+                                            HTTP
+                                        </v-btn>
+                                        <v-btn value="stdio" class="flex-grow-1" prepend-icon="mdi-terminal"
+                                            size="small">
+                                            stdio
+                                        </v-btn>
+                                    </v-btn-toggle>
+                                </div>
+
+                                <template v-if="draft.transport === 'http'">
+                                    <v-row density="compact" class="my-n1">
+                                        <v-col cols="12" class="py-1">
+                                            <v-text-field v-model="draft.url" density="compact" variant="solo-filled"
+                                                flat rounded="lg" label="URL" hide-details="auto" />
+                                        </v-col>
+                                        <v-col cols="12" class="py-1">
+                                            <v-text-field v-model="draft.token" density="compact" variant="solo-filled"
+                                                flat rounded="lg" label="Token"
+                                                :type="visibility.mcpSecrets ? 'text' : 'password'"
+                                                hide-details="auto" />
+                                        </v-col>
+                                    </v-row>
+                                </template>
+
+                                <template v-else>
+                                    <v-row density="compact" class="my-n1">
+                                        <v-col cols="12" class="py-1">
+                                            <v-text-field v-model="draft.command" density="compact"
+                                                variant="solo-filled" flat rounded="lg" label="Command"
+                                                hide-details="auto" />
+                                        </v-col>
+                                        <v-col cols="12" md="6" class="py-1">
+                                            <v-text-field v-model="draft.cwd" density="compact" variant="solo-filled"
+                                                flat rounded="lg" label="Working Dir" hide-details="auto" />
+                                        </v-col>
+                                        <v-col cols="12" md="6" class="py-1">
+                                            <v-textarea v-model="draft.argsText" density="compact"
+                                                variant="solo-filled" flat rounded="lg" label="Args" hide-details="auto"
+                                                rows="4" auto-grow placeholder="--flag&#10;--another-flag" />
+                                        </v-col>
+                                        <v-col cols="12" class="py-1">
+                                            <v-textarea v-model="draft.envText" density="compact"
+                                                variant="solo-filled" flat rounded="lg" label="Env" hide-details="auto"
+                                                rows="4" auto-grow placeholder="KEY=value&#10;OTHER=value" />
+                                        </v-col>
+                                    </v-row>
+                                </template>
+                            </v-sheet>
+
+                            <div class="d-flex justify-end mt-4">
+                                <v-btn size="small" rounded="lg" variant="tonal" :loading="saving.mcp"
+                                    @click="saveMcpConfiguration">
+                                    Save MCP
+                                </v-btn>
+                            </div>
+                        </div>
+
                         <div v-else-if="activeTab === 'onebot'">
                             <div class="text-body-1 font-weight-bold">OneBot</div>
                             <div class="text-body-2 text-medium-emphasis mb-6">
@@ -628,7 +740,7 @@
 
 <script setup lang="ts">
     import { patchCas } from '@/api/cas'
-    import { getConfig, patchConfig, type AppConfig, type ASREndpointConfig, type DeepPartial, type EmbedEndpointConfig, type FileConfig, type LLMEndpointConfig, type LLMProviderType, type RerankerEndpointConfig } from '@/api/config'
+    import { getConfig, patchConfig, type AppConfig, type ASREndpointConfig, type DeepPartial, type EmbedEndpointConfig, type FileConfig, type LLMEndpointConfig, type LLMProviderType, type MCPConfig, type RerankerEndpointConfig } from '@/api/config'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
     import { requestOpenAIModels } from '@/composables/useOpenAIModelTools'
     import { baseURL, getDefaultBaseURLIsCloud, setDefaultBaseURLIsCloud } from '@/utils/http'
@@ -640,6 +752,7 @@
         | 'llm'
         | 'retrieval'
         | 'services'
+        | 'mcp'
         | 'onebot'
         | 'telegram'
         | 'credentials'
@@ -652,6 +765,20 @@
     type NotificationKey = 'taskComplete' | 'taskFailed' | 'calendarReminder'
     type OpenAIProviderKey = 'agent' | 'utility' | 'embed' | 'rerank'
     type ServiceToolKey = 'asr' | 'mineru'
+    type McpTransport = 'http' | 'stdio'
+
+    interface McpDraft {
+        originalName: string
+        name: string
+        transport: McpTransport
+        enabled: boolean
+        url: string
+        token: string
+        command: string
+        argsText: string
+        envText: string
+        cwd: string
+    }
 
     interface NotificationItem {
         key: NotificationKey
@@ -670,6 +797,7 @@
         { id: 'llm', icon: 'mdi-brain', label: 'Models' },
         { id: 'retrieval', icon: 'mdi-database-search-outline', label: 'Retrieval' },
         { id: 'services', icon: 'mdi-tools', label: 'Services' },
+        { id: 'mcp', icon: 'mdi-connection', label: 'MCP' },
         { id: 'onebot', icon: 'mdi-robot-outline', label: 'OneBot' },
         { id: 'telegram', icon: 'mdi-send-outline', label: 'Telegram' },
         { id: 'credentials', icon: 'mdi-shield-check', label: 'Credential Vault' },
@@ -707,6 +835,7 @@
         models: false,
         retrieval: false,
         services: false,
+        mcp: false,
         onebot: false,
         telegram: false,
         credentials: false,
@@ -716,6 +845,7 @@
         modelSecrets: false,
         retrievalSecrets: false,
         serviceSecrets: false,
+        mcpSecrets: false,
         onebotToken: false,
         telegramToken: false,
     })
@@ -800,6 +930,8 @@
         superuserIdsText: '',
     })
 
+    const mcpDrafts = ref<McpDraft[]>([])
+
     const showPassword = ref(false)
     const creds = reactive({
         studentId: campusAuth.studentId,
@@ -870,7 +1002,7 @@
     let recordTimer: ReturnType<typeof setTimeout> | null = null
 
     function isConfigTab (tab: SettingsTabId) {
-        return tab === 'llm' || tab === 'retrieval' || tab === 'services' || tab === 'onebot' || tab === 'telegram'
+        return tab === 'llm' || tab === 'retrieval' || tab === 'services' || tab === 'mcp' || tab === 'onebot' || tab === 'telegram'
     }
 
     function showNotice (text: string, color: NoticeColor = 'success') {
@@ -882,6 +1014,139 @@
     function getErrorMessage (error: unknown, fallback: string) {
         const responseMessage = (error as any)?.response?.data?.message || (error as any)?.response?.data?.detail
         return responseMessage || (error as any)?.message || fallback
+    }
+
+    function createMcpDraft (name = '', config?: MCPConfig): McpDraft {
+        return {
+            originalName: name,
+            name,
+            transport: config?.transport ?? 'http',
+            enabled: config?.enabled ?? false,
+            url: config?.url ?? '',
+            token: config?.token ?? '',
+            command: config?.command ?? '',
+            argsText: (config?.args ?? []).join('\n'),
+            envText: Object.entries(config?.env ?? {})
+                .map(([key, value]) => `${key}=${value}`)
+                .join('\n'),
+            cwd: config?.cwd ?? '',
+        }
+    }
+
+    function normalizeMcpArgs (text: string): string[] {
+        return text
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean)
+    }
+
+    function normalizeMcpEnv (text: string): Record<string, string> {
+        const result: Record<string, string> = {}
+
+        for (const [index, line] of text.split(/\r?\n/).entries()) {
+            const trimmed = line.trim()
+            if (!trimmed) continue
+
+            const separatorIndex = trimmed.indexOf('=')
+            if (separatorIndex < 1) {
+                throw new Error(`MCP env line ${index + 1} must use KEY=VALUE format.`)
+            }
+
+            const key = trimmed.slice(0, separatorIndex).trim()
+            const value = trimmed.slice(separatorIndex + 1).trim()
+            if (!key) {
+                throw new Error(`MCP env line ${index + 1} is missing a key.`)
+            }
+
+            result[key] = value
+        }
+
+        return result
+    }
+
+    function hydrateMcpDrafts (mcpConfig: Record<string, MCPConfig>) {
+        mcpDrafts.value = Object.entries(mcpConfig).map(([name, config]) => createMcpDraft(name, config))
+    }
+
+    function addMcpDraft () {
+        const existingNames = new Set(
+            mcpDrafts.value
+                .map(draft => draft.name.trim())
+                .filter(Boolean)
+        )
+
+        let index = mcpDrafts.value.length + 1
+        let candidate = `mcp-${index}`
+        while (existingNames.has(candidate)) {
+            index += 1
+            candidate = `mcp-${index}`
+        }
+
+        mcpDrafts.value.push(createMcpDraft(candidate))
+    }
+
+    function removeMcpDraft (index: number) {
+        mcpDrafts.value.splice(index, 1)
+    }
+
+    function buildMcpConfig (draft: McpDraft): MCPConfig {
+        return {
+            transport: draft.transport,
+            enabled: draft.enabled,
+            url: draft.url.trim() || null,
+            token: draft.token.trim() || null,
+            command: draft.command.trim() || null,
+            args: normalizeMcpArgs(draft.argsText),
+            env: normalizeMcpEnv(draft.envText),
+            cwd: draft.cwd.trim() || null,
+        }
+    }
+
+    function buildMcpPatch (): Record<string, MCPConfig | null> | null {
+        const snapshot = loadedConfig.value?.mcp || {}
+        const patch: Record<string, MCPConfig | null> = {}
+        const currentNames = new Set<string>()
+
+        for (const draft of mcpDrafts.value) {
+            const nextName = draft.name.trim()
+            if (!nextName) {
+                throw new Error('Each MCP server needs a name.')
+            }
+            if (currentNames.has(nextName)) {
+                throw new Error(`Duplicate MCP name: ${nextName}`)
+            }
+
+            currentNames.add(nextName)
+            if (draft.originalName && draft.originalName !== nextName) {
+                patch[draft.originalName] = null
+            }
+            patch[nextName] = buildMcpConfig(draft)
+        }
+
+        for (const name of Object.keys(snapshot)) {
+            if (!currentNames.has(name)) {
+                patch[name] = null
+            }
+        }
+
+        return Object.keys(patch).length ? patch : null
+    }
+
+    function validateMcpDrafts () {
+        for (const draft of mcpDrafts.value) {
+            const name = draft.name.trim()
+            if (!name) {
+                throw new Error('Each MCP server needs a name.')
+            }
+            if (!draft.enabled) continue
+
+            if (draft.transport === 'http' && !draft.url.trim()) {
+                throw new Error(`MCP "${name}" needs a URL when HTTP is enabled.`)
+            }
+            if (draft.transport === 'stdio' && !draft.command.trim()) {
+                throw new Error(`MCP "${name}" needs a command when stdio is enabled.`)
+            }
+        }
     }
 
     function getOpenAIProviderLabel (key: OpenAIProviderKey) {
@@ -1069,6 +1334,8 @@
 
         telegram.token = config.telegram?.token || ''
         telegram.superuserIdsText = (config.telegram?.superuser_ids || []).map(id => String(id)).join('\n')
+
+        hydrateMcpDrafts(config.mcp || {})
     }
 
     function parseSuperuserIds (value: string) {
@@ -1245,6 +1512,37 @@
             showNotice(getErrorMessage(error, 'Failed to save service configuration.'), 'error')
         } finally {
             saving.services = false
+        }
+    }
+
+    async function saveMcpConfiguration () {
+        let patch: Record<string, MCPConfig | null> | null = null
+
+        try {
+            validateMcpDrafts()
+            patch = buildMcpPatch()
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save MCP configuration.'), 'error')
+            return
+        }
+
+        if (!patch) {
+            showNotice('No MCP changes to save.', 'warning')
+            return
+        }
+
+        saving.mcp = true
+
+        try {
+            const config = await patchConfig({
+                mcp: patch,
+            } as DeepPartial<AppConfig>)
+            applyConfig(config)
+            showNotice('MCP configuration saved.')
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save MCP configuration.'), 'error')
+        } finally {
+            saving.mcp = false
         }
     }
 
