@@ -70,7 +70,7 @@
 
                     <div class="store-results">
                         <template v-if="currentTab === 'store'">
-                            <v-row v-if="skills.length" dense>
+                            <v-row v-if="skills.length" density="comfortable">
                                 <v-col v-for="skill in skills" :key="skill.id" cols="12" sm="6" lg="4" xl="3">
                                     <SkillCard :title="skill.name" :description="skill.description"
                                         :tags="skill.tagNames" :downloads="skill.download_count"
@@ -107,7 +107,7 @@
                         </template>
 
                         <template v-else-if="currentTab === 'downloaded'">
-                            <v-row v-if="filteredDownloadedSkills.length" dense>
+                            <v-row v-if="filteredDownloadedSkills.length" density="comfortable">
                                 <v-col v-for="skill in filteredDownloadedSkills" :key="skill.id" cols="12" sm="6"
                                     lg="4" xl="3">
                                     <SkillCard :title="skill.name" :description="skill.description"
@@ -138,7 +138,7 @@
                         </template>
 
                         <template v-else-if="currentTab === 'mySubmissions'">
-                            <v-row v-if="filteredMySkills.length" dense>
+                            <v-row v-if="filteredMySkills.length" density="comfortable">
                                 <v-col v-for="skill in filteredMySkills" :key="skill.id" cols="12" sm="6" lg="4" xl="3">
                                     <SkillCard :title="skill.name" :description="skill.description"
                                         :tags="skill.tags.map(t => t.name)" :downloads="skill.download_count"
@@ -233,19 +233,9 @@
             </v-card>
         </v-dialog>
 
-        <v-dialog v-model="actionSuccessDialogOpen" max-width="480">
-            <v-card rounded="lg">
-                <v-card-text class="px-4 py-3 text-body-2">
-                    {{ actionSuccessMessage }}
-                </v-card-text>
-                <v-card-actions class="px-4 pb-4 pt-1">
-                    <v-spacer />
-                    <v-btn size="small" variant="tonal" @click="actionSuccessDialogOpen = false">
-                        我知道了
-                    </v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
+        <v-snackbar v-model="snackbar.show" :color="snackbar.color" timeout="4000" location="top">
+            {{ snackbar.text }}
+        </v-snackbar>
     </v-layout>
 </template>
 
@@ -314,8 +304,11 @@
     const deleteDialogOpen = ref(false)
     const downloadErrorDialogOpen = ref(false)
     const downloadErrorMessage = ref('')
-    const actionSuccessDialogOpen = ref(false)
-    const actionSuccessMessage = ref('')
+    const snackbar = ref({
+        show: false,
+        text: '',
+        color: 'success' as 'success' | 'error',
+    })
     const availableTags = ref<StoreTag[]>([])
     const selectedSkill = ref<StoreSkillDetail | null>(null)
     const selectedMySubmission = ref<StoreMySkill | null>(null)
@@ -479,9 +472,12 @@
         downloadErrorDialogOpen.value = true
     }
 
-    function showActionSuccessDialog(message: string) {
-        actionSuccessMessage.value = message
-        actionSuccessDialogOpen.value = true
+    function showSnackbar(text: string, color: 'success' | 'error' = 'success') {
+        snackbar.value = {
+            show: true,
+            text,
+            color,
+        }
     }
 
     function getErrorMessage(error: unknown, fallback = '请求失败') {
@@ -799,7 +795,7 @@
             }
 
             await loadMySubmissionSkills()
-            setApiMessage(response.message || `已删除：${skill.name}`, 'success')
+            showSnackbar(response.message || `已删除：${skill.name}`)
         } catch (error) {
             setApiMessage(`删除失败：${getErrorMessage(error)}`, 'error')
         } finally {
@@ -817,7 +813,7 @@
             const response = await triggerSkillDownload(skill.id)
             updateSkillInstallState(response.skill_id, true)
             await loadDownloadedSkills(true)
-            showActionSuccessDialog(response.message || `已下载：${skill.name}`)
+            showSnackbar(response.message || `已下载：${skill.name}`)
             incrementDownloadCount(response.skill_id)
         } catch (error) {
             showDownloadErrorDialog(`下载失败：${getErrorMessage(error)}`)
@@ -843,7 +839,7 @@
                 selectedSkill.value = null
             }
 
-            showActionSuccessDialog(response.message || `已卸载：${skill.name}`)
+            showSnackbar(response.message || `已卸载：${skill.name}`)
         } catch (error) {
             setApiMessage(`卸载失败：${getErrorMessage(error)}`, 'error')
         } finally {
