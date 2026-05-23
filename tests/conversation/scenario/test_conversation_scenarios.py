@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from agent.api.conversation import router as conversation_router
 from agent.api.conversation_models import CompletionResponseDelta
+from agent.api.conversation_service import delete_conversation as delete_conversation_record
 from agent.db.models import Attachment, Message, MessageAttachment
 
 
@@ -27,7 +28,9 @@ class ScenarioGraph:
 
 
 class ScenarioRunner:
-    def __init__(self):
+    def __init__(self, session_factory, graph):
+        self.session_factory = session_factory
+        self.graph = graph
         self.running: set[str] = set()
         self.cancelled: list[str] = []
         self.run_calls: list[dict] = []
@@ -60,11 +63,15 @@ class ScenarioRunner:
             is_thinking=False,
         )
 
+    async def delete_conversation(self, conversation_id):
+        self.running.discard(conversation_id)
+        return await delete_conversation_record(self.session_factory, self.graph, conversation_id)
+
 
 @pytest.fixture
 def scenario_client(app_factory, sqlite_session_factory):
-    runner = ScenarioRunner()
     graph = ScenarioGraph()
+    runner = ScenarioRunner(sqlite_session_factory, graph)
     app = app_factory()
     app.state.async_session = sqlite_session_factory
     app.state.ConversationRunner = runner
@@ -91,6 +98,7 @@ def test_user_chat_lifecycle_from_create_to_stream_search_pin_and_delete(
             "conversation_id": conversation_id,
             "request_id": str(uuid.uuid4()),
             "content": "Plan the sprint review",
+            "created_at": 1,
             "attachments": [],
             "need_history": False,
         },
@@ -163,6 +171,7 @@ def test_user_restarts_from_history_with_pending_attachment(
             "conversation_id": conversation_id,
             "request_id": str(uuid.uuid4()),
             "content": "continue with this file",
+            "created_at": 1,
             "attachments": [attachment_id],
             "need_history": True,
             "restart_message_id": restart_message_id,
@@ -210,6 +219,7 @@ def test_stream_failure_should_return_structured_sse_error(scenario_client):
             "conversation_id": conversation_id,
             "request_id": str(uuid.uuid4()),
             "content": "trigger stream failure",
+            "created_at": 1,
             "attachments": [],
             "need_history": False,
         },

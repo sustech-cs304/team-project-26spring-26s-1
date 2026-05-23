@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
 from agent.api.skills import router as skills_router
@@ -26,11 +25,15 @@ class LocalSkillRow:
 class FakeSkillsHubClient:
     calls: list[dict] = field(default_factory=list)
 
-    async def request_json(self, method, path, *, token=None, params=None, json_body=None):
+    def get_config_snapshot(self):
+        return None
+
+    async def request_json(self, method, path, *, config=None, token=None, params=None, json_body=None):
         self.calls.append(
             {
                 "method": method,
                 "path": path,
+                "config": config,
                 "token": token,
                 "params": params,
                 "json_body": json_body,
@@ -51,7 +54,7 @@ class FakeSkillsHubClient:
             return {"id": 7, "name": "Writer", "description": "Writes"}
         if path == "/api/tags":
             return [{"id": 1, "name": "productivity"}]
-        if path == "/api/skills/7/submission":
+        if path == "/api/skill/7/delete":
             assert token == "token-1"
             return {"message": "deleted"}
         raise AssertionError(f"Unexpected request_json call: {method} {path}")
@@ -237,11 +240,12 @@ def test_download_skill_rejects_malformed_upstream_detail(app_factory, tmp_path)
     assert response.status_code == 502
 
 
-def test_delete_submission_route_reports_not_configured(app_factory, tmp_path):
+def test_delete_submission_route_forwards_to_cloud(app_factory, tmp_path):
     app = _build_app(app_factory, tmp_path)
     client = TestClient(app)
     _login(client)
 
     response = client.delete("/api/skill/7/delete")
 
-    assert response.status_code == status.HTTP_501_NOT_IMPLEMENTED
+    assert response.status_code == 200
+    assert response.json() == {"message": "deleted"}

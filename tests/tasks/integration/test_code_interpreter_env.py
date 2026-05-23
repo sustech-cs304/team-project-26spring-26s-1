@@ -30,7 +30,7 @@ def test_code_interpreter_injects_stored_env_vars(monkeypatch, tmp_path, run_asy
         )
     )
 
-    assert result == "secret-value\n"
+    assert result.splitlines() == ["secret-value"]
 
 
 def test_code_interpreter_fails_closed_when_credential_store_unavailable(

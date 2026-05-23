@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from agent.api.conversation import router as conversation_router
 from agent.api.conversation_models import CompletionResponseDelta
+from agent.api.conversation_service import delete_conversation as delete_conversation_record
 from agent.db.models import Attachment, Conversation, Message, MessageAttachment
 
 
@@ -28,7 +29,9 @@ class FakeGraph:
 
 
 class FakeConversationRunner:
-    def __init__(self):
+    def __init__(self, session_factory, graph):
+        self.session_factory = session_factory
+        self.graph = graph
         self.running: set[str] = set()
         self.cancelled: list[str] = []
         self.run_calls: list[dict] = []
@@ -58,14 +61,18 @@ class FakeConversationRunner:
             is_thinking=False,
         )
 
+    async def delete_conversation(self, conversation_id):
+        self.running.discard(conversation_id)
+        return await delete_conversation_record(self.session_factory, self.graph, conversation_id)
+
 
 def test_conversation_crud_search_cancel_and_completion_stream(
     app_factory,
     sqlite_session_factory,
     run_async,
 ):
-    runner = FakeConversationRunner()
     graph = FakeGraph()
+    runner = FakeConversationRunner(sqlite_session_factory, graph)
     app = app_factory()
     app.state.async_session = sqlite_session_factory
     app.state.ConversationRunner = runner
@@ -114,6 +121,7 @@ def test_conversation_crud_search_cancel_and_completion_stream(
             "conversation_id": conversation_id,
             "request_id": str(uuid.uuid4()),
             "content": "hello",
+            "created_at": 1,
             "attachments": [],
             "need_history": False,
         },
@@ -147,11 +155,12 @@ def test_completion_stream_uses_restart_message_and_pending_attachment(
     sqlite_session_factory,
     run_async,
 ):
-    runner = FakeConversationRunner()
+    graph = FakeGraph()
+    runner = FakeConversationRunner(sqlite_session_factory, graph)
     app = app_factory()
     app.state.async_session = sqlite_session_factory
     app.state.ConversationRunner = runner
-    app.state.graph = FakeGraph()
+    app.state.graph = graph
     app.include_router(conversation_router, prefix="/api")
     client = TestClient(app)
 
@@ -197,6 +206,7 @@ def test_completion_stream_uses_restart_message_and_pending_attachment(
             "conversation_id": conversation_id,
             "request_id": str(uuid.uuid4()),
             "content": None,
+            "created_at": 1,
             "attachments": [attachment_id],
             "need_history": True,
             "restart_message_id": restart_message_id,
@@ -216,16 +226,17 @@ def test_completion_stream_uses_restart_message_and_pending_attachment(
     ]
 
 
-def test_completion_preflight_rejects_wrong_restart_message_and_missing_attachment(
+def test_completion_delegates_restart_message_and_attachment_refs_to_runner(
     app_factory,
     sqlite_session_factory,
     run_async,
 ):
-    runner = FakeConversationRunner()
+    graph = FakeGraph()
+    runner = FakeConversationRunner(sqlite_session_factory, graph)
     app = app_factory()
     app.state.async_session = sqlite_session_factory
     app.state.ConversationRunner = runner
-    app.state.graph = FakeGraph()
+    app.state.graph = graph
     app.include_router(conversation_router, prefix="/api")
     client = TestClient(app)
 
@@ -253,27 +264,41 @@ def test_completion_preflight_rejects_wrong_restart_message_and_missing_attachme
             "conversation_id": conversation_id,
             "request_id": str(uuid.uuid4()),
             "content": "hello",
+            "created_at": 1,
             "attachments": [],
             "need_history": False,
             "restart_message_id": other_message_id,
         },
     )
+    missing_attachment_id = str(uuid.uuid4())
     missing_attachment = client.post(
         "/api/conversation/completion",
         json={
             "conversation_id": conversation_id,
             "request_id": str(uuid.uuid4()),
             "content": None,
-            "attachments": [str(uuid.uuid4())],
+            "created_at": 1,
+            "attachments": [missing_attachment_id],
             "need_history": False,
         },
     )
 
-    assert wrong_restart.status_code == 400
-    assert wrong_restart.json()["detail"] == {"message": "restart_message_id must belong to the conversation"}
-    assert missing_attachment.status_code == 400
-    assert missing_attachment.json()["detail"] == {"message": "attachments must reference existing pending uploads"}
-    assert runner.run_calls == []
+    assert wrong_restart.status_code == 200
+    assert missing_attachment.status_code == 200
+    assert runner.run_calls == [
+        {
+            "conversation_id": conversation_id,
+            "content": "hello",
+            "restart_message_id": other_message_id,
+            "attachments": [],
+        },
+        {
+            "conversation_id": conversation_id,
+            "content": "",
+            "restart_message_id": None,
+            "attachments": [missing_attachment_id],
+        },
+    ]
 
 
 def test_list_orders_pinned_then_recent_and_marks_active_conversation(
@@ -281,11 +306,12 @@ def test_list_orders_pinned_then_recent_and_marks_active_conversation(
     sqlite_session_factory,
     run_async,
 ):
-    runner = FakeConversationRunner()
+    graph = FakeGraph()
+    runner = FakeConversationRunner(sqlite_session_factory, graph)
     app = app_factory()
     app.state.async_session = sqlite_session_factory
     app.state.ConversationRunner = runner
-    app.state.graph = FakeGraph()
+    app.state.graph = graph
     app.include_router(conversation_router, prefix="/api")
     client = TestClient(app)
 

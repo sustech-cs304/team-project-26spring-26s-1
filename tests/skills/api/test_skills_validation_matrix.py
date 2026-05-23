@@ -19,8 +19,11 @@ class RecordingSkillsClient:
     login_payload: dict | None = None
     login_tokens: list[str] = field(default_factory=list)
 
-    async def request_json(self, method, path, *, token=None, params=None, json_body=None):
-        self.calls.append({"method": method, "path": path, "token": token, "params": params, "json_body": json_body})
+    def get_config_snapshot(self):
+        return None
+
+    async def request_json(self, method, path, *, config=None, token=None, params=None, json_body=None):
+        self.calls.append({"method": method, "path": path, "config": config, "token": token, "params": params, "json_body": json_body})
         if path == "/auth/login":
             if self.login_payload is not None:
                 return self.login_payload
@@ -397,12 +400,13 @@ def test_skills_cloud_routes_propagate_upstream_not_found(skills_validation_clie
     client, hub, _auth = skills_validation_client
     client.post("/api/auth/login", json={"email": "user@example.edu", "password": "secret"})
 
-    async def not_found(request_method, path, *, token=None, params=None, json_body=None):
+    async def not_found(request_method, path, *, config=None, token=None, params=None, json_body=None):
         if "999" in path:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
         return await RecordingSkillsClient().request_json(
             request_method,
             path,
+            config=config,
             token=token,
             params=params,
             json_body=json_body,

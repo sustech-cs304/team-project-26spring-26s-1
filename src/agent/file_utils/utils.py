@@ -155,7 +155,7 @@ async def validate_upload_file(file: UploadFile) -> tuple[str, str]:
 
     if len(content) > MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=(
                 "File too large: uploaded files that require parsing must be no larger than "
                 f"{MAX_UPLOAD_SIZE_TEXT}. Supported file extensions are: {SUPPORTED_UPLOAD_EXTENSIONS_TEXT}."
@@ -181,7 +181,7 @@ def validate_file_id(file_id: str) -> str:
 
     if len(normalized_file_id) > 36:
         raise HTTPException(
-            status_code=status.HTTP_414_REQUEST_URI_TOO_LONG,
+            status_code=status.HTTP_414_URI_TOO_LONG,
             detail="File ID too long: file_id must be a standard 36-character UUID string.",
         )
 
