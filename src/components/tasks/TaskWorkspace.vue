@@ -128,6 +128,27 @@
 
         <TaskDeleteDialog v-model="deleteDialog" :loading="deleting" @confirm="confirmDelete" />
 
+        <v-dialog v-model="requestEnvVarDialog" max-width="460" persistent>
+            <v-card rounded="lg">
+                <v-card-item>
+                    <v-card-title class="text-body-1 font-weight-bold">未保存修改</v-card-title>
+                </v-card-item>
+                <v-card-text class="text-body-2">
+                    当前任务有未保存修改。是否先保存再前往环境变量页面？
+                </v-card-text>
+                <v-card-actions class="px-5 pb-4">
+                    <v-spacer />
+                    <v-btn variant="text" size="small" @click="confirmRequestEnvVarSetup(false)">
+                        不保存直接跳转
+                    </v-btn>
+                    <v-btn color="primary" variant="tonal" size="small" :loading="saving"
+                        @click="confirmRequestEnvVarSetup(true)">
+                        保存并跳转
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
         <v-snackbar v-model="snackbar.show" :color="snackbar.color" location="top" timeout="3000">
             {{ snackbar.text }}
         </v-snackbar>
@@ -147,6 +168,7 @@
     const drawer = ref(true)
     const currentView = ref<'tasks' | 'env-vars'>('tasks')
     const taskSearchMode = ref(false)
+    const requestEnvVarDialog = ref(false)
 
     const {
         cancelSelectedRun,
@@ -261,20 +283,28 @@
 
     async function handleRequestEnvVarSetup () {
         if (editorDialog.value && hasEditorChanges.value) {
-            const shouldSave = window.confirm(
-                '当前任务有未保存修改。是否先保存再前往环境变量页面？\n点击“确定”保存并跳转，点击“取消”不保存直接跳转。'
-            )
-
-            if (shouldSave) {
-                const saved = await saveTask()
-                if (!saved) return
-            } else {
-                editorDialog.value = false
-            }
+            requestEnvVarDialog.value = true
+            return
         } else if (editorDialog.value) {
             editorDialog.value = false
         }
 
+        await openEnvVarsView()
+    }
+
+    async function confirmRequestEnvVarSetup (saveFirst: boolean) {
+        if (saveFirst) {
+            const saved = await saveTask()
+            if (!saved) return
+        } else if (editorDialog.value) {
+            editorDialog.value = false
+        }
+
+        requestEnvVarDialog.value = false
+        await openEnvVarsView()
+    }
+
+    async function openEnvVarsView () {
         currentView.value = 'env-vars'
         await loadEnvVarList()
         showSnackbar('请先创建环境变量后再回到任务配置')

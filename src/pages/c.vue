@@ -95,6 +95,25 @@
                     </v-card-actions>
                 </v-card>
             </v-dialog>
+
+            <v-dialog v-model="deleteDialog" max-width="420">
+                <v-card rounded="lg">
+                    <v-card-item>
+                        <v-card-title class="text-body-1 font-weight-bold">删除对话</v-card-title>
+                    </v-card-item>
+                    <v-card-text class="text-body-2">
+                        确定要删除对话 "{{ pendingDeleteConversation?.title }}" 吗？
+                    </v-card-text>
+                    <v-card-actions class="px-5 pb-4">
+                        <v-spacer />
+                        <v-btn variant="text" size="small" @click="deleteDialog = false">取消</v-btn>
+                        <v-btn color="error" variant="tonal" size="small" :loading="deletingConversation"
+                            @click="confirmDelete">
+                            删除
+                        </v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
         </v-navigation-drawer>
 
         <!-- 顶部应用栏 -->
@@ -162,6 +181,9 @@
     const drawer = ref(true)
     const loading = ref(false)
     const conversationMenuId = ref<string | null>(null)
+    const deleteDialog = ref(false)
+    const pendingDeleteConversation = ref<Conversation | null>(null)
+    const deletingConversation = ref(false)
     const CONVERSATION_POLL_INTERVAL_MS = 5000
     let conversationPollTimer: ReturnType<typeof window.setInterval> | null = null
     let conversationsRequest: Promise<void> | null = null
@@ -408,10 +430,17 @@
     }
 
     // Delete
-    const handleDelete = async (conv: Conversation) => {
+    const handleDelete = (conv: Conversation) => {
         conversationMenuId.value = null
-        if (!confirm(`确定要删除对话 "${conv.title}" 吗？`)) return
+        pendingDeleteConversation.value = conv
+        deleteDialog.value = true
+    }
 
+    const confirmDelete = async () => {
+        const conv = pendingDeleteConversation.value
+        if (!conv || deletingConversation.value) return
+
+        deletingConversation.value = true
         try {
             await deleteConversation(conv.conversation_id)
             // Remove from list
@@ -430,6 +459,10 @@
             }
         } catch (error) {
             console.error('Delete failed:', error)
+        } finally {
+            deletingConversation.value = false
+            deleteDialog.value = false
+            pendingDeleteConversation.value = null
         }
     }
 
