@@ -181,7 +181,7 @@ app.include_router(routine_events_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
-app.include_router(profile_router)
+app.include_router(profile_router, prefix="/api")
 
 
 def main() -> int:
