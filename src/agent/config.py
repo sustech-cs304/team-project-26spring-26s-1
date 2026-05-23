@@ -20,7 +20,7 @@ class LLMEndpointConfig(BaseModel):
     api_key: str = ""
     model: str = ""
     max_token_count: int = Field(default=128000, ge=1)
-    user_agent: str | None = None
+    user_agent: str | None = "OpenCrab/1.0 agent-chat"
 
     def get_headers(self) -> dict[str, str] | None:
         if self.user_agent:
