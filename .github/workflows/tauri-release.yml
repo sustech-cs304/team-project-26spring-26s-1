@@ -255,6 +255,77 @@ jobs:
           TAURI_BUNDLES: ${{ matrix.bundles }}
           APPIMAGE_EXTRACT_AND_RUN: "1"
 
+      - name: Ad-hoc sign macOS app and rebuild DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          app_candidates=(
+            frontend/src-tauri/target/release/bundle/macos/*.app
+            frontend/src-tauri/target/*/release/bundle/macos/*.app
+          )
+
+          if [ "${#app_candidates[@]}" -eq 0 ]; then
+            echo "No macOS .app bundle was produced." >&2
+            exit 1
+          fi
+
+          app="${app_candidates[0]}"
+          app_name="$(basename "$app" .app)"
+          bundle_root="$(dirname "$(dirname "$app")")"
+          dmg_dir="$bundle_root/dmg"
+          arch="$(printf '%s' "${RUNNER_ARCH:-unknown}" | tr '[:upper:]' '[:lower:]')"
+          dmg_path="$dmg_dir/${app_name}-macos-${arch}-adhoc.dmg"
+          stage_dir="${RUNNER_TEMP:-/tmp}/opencrab-dmg-stage"
+
+          echo "Signing app bundle: $app"
+          xattr -cr "$app"
+
+          while IFS= read -r -d '' item; do
+            if file "$item" | grep -Eq 'Mach-O'; then
+              codesign --force --sign - --timestamp=none "$item"
+            fi
+          done < <(find "$app/Contents" -type f -print0)
+
+          codesign --force --deep --sign - --timestamp=none "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv --verbose=2 "$app" 2>&1 | sed -n '1,30p'
+
+          echo "Rebuilding signed DMG: $dmg_path"
+          rm -rf "$stage_dir"
+          mkdir -p "$stage_dir" "$dmg_dir"
+          cp -a "$app" "$stage_dir/${app_name}.app"
+          ln -s /Applications "$stage_dir/Applications"
+          xattr -cr "$stage_dir/${app_name}.app"
+          codesign --verify --deep --strict --verbose=2 "$stage_dir/${app_name}.app"
+
+          rm -f "$dmg_dir"/*.dmg
+          hdiutil create \
+            -volname "$app_name" \
+            -fs HFS+ \
+            -srcfolder "$stage_dir" \
+            -ov \
+            -format UDZO \
+            "$dmg_path"
+
+          xattr -cr "$dmg_path"
+          hdiutil verify "$dmg_path"
+
+          mount_point="$(hdiutil attach "$dmg_path" -nobrowse -readonly | awk '/\/Volumes\// {print $3; exit}')"
+          trap 'if [ -n "${mount_point:-}" ]; then hdiutil detach "$mount_point" >/dev/null 2>&1 || true; fi' EXIT
+
+          codesign --verify --deep --strict --verbose=2 "$mount_point/${app_name}.app"
+          "$mount_point/${app_name}.app/Contents/Resources/python-runtime/bin/python" \
+            -c "import agent.main; print('bundled backend import ok')"
+
+          hdiutil detach "$mount_point"
+          mount_point=""
+
+          ls -lh "$dmg_path"
+          shasum -a 256 "$dmg_path"
+
       - name: Collect app artifacts
         run: |
           $ErrorActionPreference = 'Stop'
@@ -301,6 +372,7 @@ jobs:
           - backend package: installed with bundled runtime pip into $env:PYTHON_RUNTIME_DIR
           - Tauri resource: $env:TAURI_RESOURCE_RUNTIME_DIR
           - bundle types: $env:TAURI_BUNDLES
+          - macOS signing: ad-hoc signed app bundle and rebuilt HFS+ dmg when runner is macOS
           - download: artifact $env:ARTIFACT_NAME
           - config.yaml: add it manually beside the installed main program after packaging
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
