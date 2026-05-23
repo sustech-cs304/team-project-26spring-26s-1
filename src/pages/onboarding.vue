@@ -545,6 +545,7 @@
     import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
     import { patchCas } from '@/api/cas'
     import { patchConfig, type AppConfig, type DeepPartial } from '@/api/config'
+    import { updateProfile as updateUserProfileBackend, writeProfile as writeUserProfileBackend } from '@/api/profile'
     import { defaultRagSyncState, getApiErrorMessage, getRagSyncStatus, triggerRagSync, type RagSyncState } from '@/api/rag'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
     import { requestOpenAIModels } from '@/composables/useOpenAIModelTools'
@@ -788,12 +789,23 @@
         }
     }
 
+    function syncUserProfileWriteToBackend () {
+        void writeUserProfileBackend(userProfile.oneLineProfile).catch(() => undefined)
+    }
+
+    function syncUserProfileUpdateToBackend () {
+        void updateUserProfileBackend().catch(() => undefined)
+    }
+
     function goNext () {
         if (!canProceed.value) {
             showNotice('请先完成当前步骤', 'warning')
             return
         }
         persistCurrentStep()
+        if (steps[currentStep.value]?.key === 'profile') {
+            syncUserProfileWriteToBackend()
+        }
         currentStep.value = Math.min(currentStep.value + 1, steps.length - 1)
     }
 
@@ -1104,6 +1116,7 @@
     function finishOnboarding () {
         if (isCompleting.value) return
         persistCurrentStep()
+        syncUserProfileUpdateToBackend()
         isCompleting.value = true
         markOnboardingCompleted()
         showNotice('引导完成，正在进入首页')
