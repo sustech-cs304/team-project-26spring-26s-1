@@ -3,9 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any
-from uuid import uuid4
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from langgraph.store.base import BaseStore
@@ -17,10 +15,8 @@ from agent.utils.model import build_model
 router = APIRouter(tags=["profile"])
 log = logging.getLogger(__name__)
 
-DRAFT_NAMESPACE = ("draft",)
 CORE_MEMORY_NAMESPACE = ("core_memory",)
-DRAFT_LIMIT = 1000
-MODEL_RETRY_DELAY_SECONDS = 5
+PROFILE_RAW_KEY = "profile_raw"
 MODEL_CONFIG_PATHS = ("api.agent", "api.utility")
 
 _profile_update_lock = asyncio.Lock()
@@ -30,12 +26,9 @@ _profile_update_lock = asyncio.Lock()
 async def write_profile(request: Request, content: str = Form(...)) -> dict:
     store = _get_profile_store(request)
     await store.aput(
-        DRAFT_NAMESPACE,
-        key=str(uuid4()),
-        value={
-            "data": content,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        },
+        CORE_MEMORY_NAMESPACE,
+        key=PROFILE_RAW_KEY,
+        value={"data": content},
     )
     return {}
 
@@ -44,16 +37,18 @@ async def write_profile(request: Request, content: str = Form(...)) -> dict:
 async def update_profile(request: Request) -> dict:
     async with _profile_update_lock:
         store = _get_profile_store(request)
-        draft_entries = await store.asearch(DRAFT_NAMESPACE, limit=DRAFT_LIMIT)
-        drafts = [
-            (entry.key, text)
-            for entry in draft_entries
-            if (text := _draft_entry_text(entry.value))
-        ]
-        if not drafts:
+        raw_entry = await store.aget(CORE_MEMORY_NAMESPACE, PROFILE_RAW_KEY)
+        if raw_entry is None:
             return {}
 
-        items = await _extract_profile_items_with_available_model(drafts)
+        profile_raw = _core_memory_entry_text(raw_entry.value)
+        if not profile_raw:
+            return {}
+
+        items = await _extract_profile_items_once([(PROFILE_RAW_KEY, profile_raw)])
+        if items is None:
+            return {}
+
         for item in items:
             await store.aput(
                 CORE_MEMORY_NAMESPACE,
@@ -61,8 +56,7 @@ async def update_profile(request: Request) -> dict:
                 value={"data": item["value"]},
             )
 
-        for key, _ in drafts:
-            await store.adelete(DRAFT_NAMESPACE, key)
+        await store.adelete(CORE_MEMORY_NAMESPACE, PROFILE_RAW_KEY)
 
     return {}
 
@@ -74,7 +68,7 @@ def _get_profile_store(request: Request) -> BaseStore:
     return store
 
 
-def _draft_entry_text(value: Any) -> str:
+def _core_memory_entry_text(value: Any) -> str:
     if isinstance(value, dict):
         raw = value.get("data")
     else:
@@ -84,20 +78,19 @@ def _draft_entry_text(value: Any) -> str:
     return str(raw).strip()
 
 
-async def _extract_profile_items_with_available_model(
-    drafts: list[tuple[str, str]],
-) -> list[dict[str, str]]:
-    while True:
-        for config_path in MODEL_CONFIG_PATHS:
-            items = await _try_extract_profile_items(config_path, drafts)
-            if items is not None:
-                return items
-        await asyncio.sleep(MODEL_RETRY_DELAY_SECONDS)
+async def _extract_profile_items_once(
+    raw_profiles: list[tuple[str, str]],
+) -> list[dict[str, str]] | None:
+    for config_path in MODEL_CONFIG_PATHS:
+        items = await _try_extract_profile_items(config_path, raw_profiles)
+        if items is not None:
+            return items
+    return None
 
 
 async def _try_extract_profile_items(
     config_path: str,
-    drafts: list[tuple[str, str]],
+    raw_profiles: list[tuple[str, str]],
 ) -> list[dict[str, str]] | None:
     try:
         endpoint = require_llm_endpoint_config(
@@ -105,29 +98,27 @@ async def _try_extract_profile_items(
             config_path,
         )
         model = build_model(endpoint)
-        response = await model.ainvoke([HumanMessage(content=_build_extraction_prompt(drafts))])
+        response = await model.ainvoke([HumanMessage(content=_build_extraction_prompt(raw_profiles))])
         return _parse_profile_items(_message_content_text(getattr(response, "content", "")))
-    except HTTPException:
-        raise
     except Exception as exc:
-        log.info("Profile update model unavailable: %s: %s", config_path, exc)
+        log.info("Profile update model failed: %s: %s", config_path, exc)
         return None
 
 
-def _build_extraction_prompt(drafts: list[tuple[str, str]]) -> str:
-    draft_text = "\n\n".join(
-        f"Draft {index} ({key}):\n{text}"
-        for index, (key, text) in enumerate(drafts, start=1)
+def _build_extraction_prompt(raw_profiles: list[tuple[str, str]]) -> str:
+    raw_profile_text = "\n\n".join(
+        f"Raw profile {index} ({key}):\n{text}"
+        for index, (key, text) in enumerate(raw_profiles, start=1)
     )
     return (
-        "Extract stable, user-provided profile facts from the draft text below and convert "
+        "Extract stable, user-provided profile facts from the raw profile text below and convert "
         "them into core memory entries.\n"
         "Only use facts explicitly stated by the user. Do not infer, embellish, or include "
         "temporary instructions.\n"
         "Return JSON only, with this exact shape:\n"
         '{"items":[{"key":"user_identity","value":"The user is Tom."}]}\n'
         'If there are no stable facts, return {"items":[]}.\n\n'
-        f"{draft_text}"
+        f"{raw_profile_text}"
     )
 
 
