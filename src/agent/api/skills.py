@@ -256,18 +256,7 @@ async def delete_submission_skill(request: Request, skill_id: int) -> Any:
     token = await _require_cloud_token(request)
     client = _skills_client(request)
     cloud_config = client.get_config_snapshot()
-    raw_path = client.get_delete_submission_path(cloud_config).strip()
-    if not raw_path:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=(
-                "Cloud delete-submission endpoint is not configured. "
-                "See doc/skills_delete_cloud_spec.md for upstream API requirements."
-            ),
-        )
-
-    cloud_path = raw_path.format(skill_id=skill_id)
-    return await client.request_json("DELETE", cloud_path, config=cloud_config, token=token)
+    return await client.request_json("DELETE", f"/api/skill/{skill_id}/delete", config=cloud_config, token=token)
 
 
 @router.post("/skill/{skill_id}/uninstall", response_model=MessageResponse)

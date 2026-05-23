@@ -25,7 +25,6 @@ class LocalSkillRow:
 @dataclass
 class FakeSkillsHubClient:
     calls: list[dict] = field(default_factory=list)
-    delete_submission_path: str = "/api/skills/{skill_id}/submission"
 
     async def request_json(self, method, path, *, token=None, params=None, json_body=None):
         self.calls.append(
@@ -240,7 +239,6 @@ def test_download_skill_rejects_malformed_upstream_detail(app_factory, tmp_path)
 
 def test_delete_submission_route_reports_not_configured(app_factory, tmp_path):
     app = _build_app(app_factory, tmp_path)
-    app.state.skills_hub_client.delete_submission_path = ""
     client = TestClient(app)
     _login(client)
 

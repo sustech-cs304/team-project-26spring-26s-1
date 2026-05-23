@@ -124,7 +124,6 @@ rag_cloud:
 skills_cloud:
   base_url: ""
   timeout_ms: 30000
-  delete_submission_path: ""
   local_store_path: ./workspace/skills
 
 notification:

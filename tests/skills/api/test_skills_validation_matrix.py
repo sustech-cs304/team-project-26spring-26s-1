@@ -16,7 +16,6 @@ pytestmark = pytest.mark.api
 @dataclass
 class RecordingSkillsClient:
     calls: list[dict] = field(default_factory=list)
-    delete_submission_path: str = "/api/skills/{skill_id}/submission"
     login_payload: dict | None = None
     login_tokens: list[str] = field(default_factory=list)
 

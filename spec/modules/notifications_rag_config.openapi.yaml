@@ -1979,10 +1979,6 @@ components:
           default: 30000
           title: Timeout Ms
           type: integer
-        delete_submission_path:
-          default: ''
-          title: Delete Submission Path
-          type: string
         local_store_path:
           default: ./workspace/skills
           title: Local Store Path

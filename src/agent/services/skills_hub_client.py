@@ -41,10 +41,6 @@ class SkillsHubClient:
     def __init__(self, config_override: SkillsCloudConfig | None = None):
         self._config_override = config_override
 
-    @property
-    def delete_submission_path(self) -> str:
-        return self.get_delete_submission_path()
-
     def _get_config(self) -> SkillsCloudConfig:
         if self._config_override is not None:
             return self._config_override
@@ -53,8 +49,6 @@ class SkillsHubClient:
     def get_config_snapshot(self) -> SkillsCloudConfig:
         return self._get_config()
 
-    def get_delete_submission_path(self, config: SkillsCloudConfig | None = None) -> str:
-        return get_config_path(config if config is not None else self._get_config(), "delete_submission_path")
 
     def _build_endpoint(self, path: str, config: SkillsCloudConfig | None = None) -> str:
         cfg = require_skills_cloud_config(config if config is not None else self._get_config())

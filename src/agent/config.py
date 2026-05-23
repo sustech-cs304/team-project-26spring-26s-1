@@ -109,7 +109,6 @@ class CodeInterpreterConfig(BaseModel):
 class SkillsCloudConfig(BaseModel):
     base_url: str = "http://10.16.137.51:8002"
     timeout_ms: int = 30000
-    delete_submission_path: str = ""
     local_store_path: str = "./workspace/skills"
 
 
