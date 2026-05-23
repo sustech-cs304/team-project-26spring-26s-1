@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 
 import aiohttp
-import requests
 
 log = logging.getLogger(__name__)
 
@@ -62,16 +61,19 @@ async def _submit_task(
 
 
 async def _upload_file_to_signed_url(file_url: str, source_file: Path) -> None:
-    # Keep upload behavior consistent with prior implementation: signed OSS URL may reject
-    # aiohttp-added headers, so upload via requests in a worker thread.
-    def _sync_put() -> requests.Response:
+    timeout = aiohttp.ClientTimeout(total=120)
+    async with aiohttp.ClientSession(
+        timeout=timeout,
+        skip_auto_headers={"Content-Type", "User-Agent"},
+    ) as session:
         with open(source_file, "rb") as f:
-            return requests.put(file_url, data=f, timeout=120)
+            async with session.put(file_url, data=f) as resp:
+                response_text = await resp.text()
+                status = resp.status
 
-    resp = await asyncio.to_thread(_sync_put)
-    if resp.status_code not in (200, 201):
+    if status not in (200, 201):
         raise MineruError(
-            f"MinerU file upload failed with HTTP {resp.status_code}: {resp.text[:200]}"
+            f"MinerU file upload failed with HTTP {status}: {response_text[:200]}"
         )
 
 
