@@ -51,7 +51,7 @@ jobs:
               frontend/src-tauri/target/*/release/bundle/deb/*.deb
           - platform: macos
             runner: macos-latest
-            bundles: dmg
+            bundles: app,dmg
             artifact_name: opencrab-macos
             artifact_patterns: |
               frontend/src-tauri/target/release/bundle/dmg/*.dmg
@@ -269,6 +269,7 @@ jobs:
 
           if [ "${#app_candidates[@]}" -eq 0 ]; then
             echo "No macOS .app bundle was produced." >&2
+            find frontend/src-tauri/target -maxdepth 5 -type d -path '*/bundle*' -print >&2 || true
             exit 1
           fi
 
