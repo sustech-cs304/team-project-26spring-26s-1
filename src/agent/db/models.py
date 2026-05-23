@@ -251,3 +251,22 @@ class Credential(Base):
         default=lambda: dt.datetime.now(dt.timezone.utc),
         nullable=False,
     )
+
+
+class KeyValueStore(Base):
+    """Generic string key-value storage backed by ``agent.db``."""
+
+    __tablename__ = "key_value_store"
+
+    key: Mapped[str] = mapped_column(String(1024), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: dt.datetime.now(dt.timezone.utc),
+        nullable=False,
+    )

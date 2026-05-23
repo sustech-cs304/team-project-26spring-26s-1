@@ -29,6 +29,7 @@ from agent.api.env_vars import router as env_vars_router
 from agent.api.config import router as config_router
 from agent.api.school_settings import router as school_settings_router
 from agent.api.routine_events import router as routine_events_router
+from agent.api.profile import router as profile_router
 from agent.rag.cloud_sync import RagCloudSyncService
 from agent.services.task_runtime import get_task_runtime
 from agent.services import (
@@ -83,6 +84,7 @@ async def lifespan(app: fastapi.FastAPI):
  
 	app.state.engine = engine
 	app.state.async_session = async_session
+	app.state.agent_store = store
 	app.state.ConversationRunner = ConversationRunner(graph, async_session)
 	app.state.OneBotHub = OneBotHub(async_session, graph, app.state.ConversationRunner)
 	await ensure_default_schema()
@@ -123,6 +125,7 @@ async def lifespan(app: fastapi.FastAPI):
 		await task_runtime.aclose()
 		log.info("Task scheduler stopped")
 		await dispose_default_async_engine()
+		app.state.agent_store = None
 		await store_conn.close()
 		await checkpointer_conn.close()
 
@@ -178,6 +181,7 @@ app.include_router(routine_events_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 app.include_router(rag_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(profile_router)
 
 
 def main() -> int:
