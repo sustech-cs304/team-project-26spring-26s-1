@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agent.api import profile
-from agent.services.profile_store import bind_profile_store, clear_profile_store
 
 
 pytestmark = pytest.mark.api
@@ -34,13 +33,10 @@ class FakeStore:
 @pytest.fixture
 def profile_client(app_factory):
     store = FakeStore()
-    bind_profile_store(store)
     app = app_factory()
+    app.state.agent_store = store
     app.include_router(profile.router)
-    try:
-        yield TestClient(app), store
-    finally:
-        clear_profile_store()
+    yield TestClient(app), store
 
 
 def test_profile_write_stores_multipart_content_in_draft(profile_client):

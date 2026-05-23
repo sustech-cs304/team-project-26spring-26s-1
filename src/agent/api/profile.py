@@ -7,11 +7,11 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, Form, HTTPException, Request
+from langgraph.store.base import BaseStore
 from langchain.messages import HumanMessage
 
 from agent.config import get_config, get_config_path, require_llm_endpoint_config
-from agent.services.profile_store import get_profile_store
 from agent.utils.model import build_model
 
 router = APIRouter(tags=["profile"])
@@ -27,8 +27,8 @@ _profile_update_lock = asyncio.Lock()
 
 
 @router.post("/profile/write")
-async def write_profile(content: str = Form(...)) -> dict:
-    store = get_profile_store()
+async def write_profile(request: Request, content: str = Form(...)) -> dict:
+    store = _get_profile_store(request)
     await store.aput(
         DRAFT_NAMESPACE,
         key=str(uuid4()),
@@ -41,9 +41,9 @@ async def write_profile(content: str = Form(...)) -> dict:
 
 
 @router.post("/profile/update")
-async def update_profile() -> dict:
+async def update_profile(request: Request) -> dict:
     async with _profile_update_lock:
-        store = get_profile_store()
+        store = _get_profile_store(request)
         draft_entries = await store.asearch(DRAFT_NAMESPACE, limit=DRAFT_LIMIT)
         drafts = [
             (entry.key, text)
@@ -65,6 +65,13 @@ async def update_profile() -> dict:
             await store.adelete(DRAFT_NAMESPACE, key)
 
     return {}
+
+
+def _get_profile_store(request: Request) -> BaseStore:
+    store = getattr(request.app.state, "agent_store", None)
+    if store is None:
+        raise HTTPException(status_code=503, detail="Profile store is not initialized")
+    return store
 
 
 def _draft_entry_text(value: Any) -> str:
