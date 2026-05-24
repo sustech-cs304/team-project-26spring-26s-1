@@ -15,12 +15,16 @@ function withTimeout (timeoutMs: number) {
     }
 }
 
+function buildMcpStatusURL (): string {
+    const backendOrigin = new URL(baseURL, window.location.origin).origin
+    return new URL('/api/mcp', `${backendOrigin}/`).toString()
+}
 
 export async function getMcpStatuses (): Promise<McpServerStatus[]> {
     const request = withTimeout(1200)
 
     try {
-        const response = await fetch(`/${baseURL}/mcp`, {
+        const response = await fetch(buildMcpStatusURL(), {
             method: 'GET',
             cache: 'no-store',
             credentials: 'include',
