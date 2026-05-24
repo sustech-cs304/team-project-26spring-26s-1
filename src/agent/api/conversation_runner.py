@@ -142,7 +142,7 @@ class ConversationRunner:
         return conversation_id in self._conversation_jobs
     
     async def run(self, conversation_id : str, user_message : str, restart_message_id: str | None = None, attachments: list[str] = []): # remove need_history and related logic
-        if not user_message and not attachments:
+        if not user_message and not attachments and not restart_message_id:
             return
         
         if conversation_id not in self._conversation_jobs:
@@ -165,6 +165,8 @@ class ConversationRunner:
                 await session.commit()
 
             rollback_checkpoint_id: str | None = None
+            retry_message_id: str | None = None
+            retry_message_attachments: list[PendingMessageAttachmentRef] = []
             if restart_message_id:
                 async with self.session_factory() as session:
                     session : AsyncSession
@@ -178,12 +180,28 @@ class ConversationRunner:
                             raise ValueError(f"Restart message {restart_message_id} not found in conversation {conversation_id}")
 
                         rollback_checkpoint_id = restart_message.rollback_checkpoint_id
+                        retry_message_id = restart_message.id
+                        retry_attachment_rows = (
+                            await session.execute(
+                                select(db_models.MessageAttachment)
+                                    .where(db_models.MessageAttachment.message_id == restart_message.id)
+                            )
+                        ).scalars().all()
+                        retry_message_attachments = [
+                            PendingMessageAttachmentRef(
+                                message_attachment_id=attachment.id,
+                                attachment_id=attachment.attachment_id,
+                                name=attachment.name,
+                            )
+                            for attachment in retry_attachment_rows
+                        ]
 
-                        # erase resume_message and everything after it
+                        # Keep the retried user message row in place so existing
+                        # MessageAttachment bindings survive the retry.
                         await session.execute(
                             delete(db_models.Message)
                                 .where(db_models.Message.conversation_id == conversation_id)
-                                .where(db_models.Message.seq >= restart_message.seq)
+                                .where(db_models.Message.seq > restart_message.seq)
                         )
 
                 if rollback_checkpoint_id:
@@ -205,11 +223,11 @@ class ConversationRunner:
                 }
             }
 
-            user_message_id = str(uuid4())
+            user_message_id = retry_message_id or str(uuid4())
             job = self._conversation_jobs[conversation_id]
             job.user_message_id = user_message_id
-            bound_attachments: list[PendingMessageAttachmentRef] = []
-            attachment_ids: list[str] = []
+            bound_attachments: list[PendingMessageAttachmentRef] = list(retry_message_attachments)
+            attachment_ids: list[str] = [attachment.attachment_id for attachment in bound_attachments]
             human_message = HumanMessage(role="user", content=user_message)
 
             def _checkpoint_id_from_config(config_value: object) -> str | None:
@@ -278,11 +296,30 @@ class ConversationRunner:
             latest_root_checkpoint_id = await _ensure_thread_waiting_for_resume()
             await _persist_stream_message(human_message, latest_root_checkpoint_id)
             if attachments:
+                existing_attachment_refs = {
+                    attachment.message_attachment_id for attachment in bound_attachments
+                }
+                existing_attachment_refs.update(
+                    attachment.attachment_id for attachment in bound_attachments
+                )
+                pending_attachments = [
+                    attachment
+                    for attachment in attachments
+                    if attachment not in existing_attachment_refs
+                ]
                 try:
-                    bound_attachments = await bind_pending_message_attachments(
+                    newly_bound_attachments = await bind_pending_message_attachments(
                         self.session_factory,
                         user_message_id,
-                        attachments,
+                        pending_attachments,
+                    )
+                    existing_message_attachment_ids = {
+                        attachment.message_attachment_id for attachment in bound_attachments
+                    }
+                    bound_attachments.extend(
+                        attachment
+                        for attachment in newly_bound_attachments
+                        if attachment.message_attachment_id not in existing_message_attachment_ids
                     )
                     attachment_ids = [attachment.attachment_id for attachment in bound_attachments]
                 except HTTPException as exc:
