@@ -72,13 +72,13 @@ api:
     type: OpenAI
     base_url: https://api.example.com/v1
     api_key: replace-me
-    model: text-embedding-3-large
-    dims: 3072
+    model: BAAI/bge-m3
+    dims: 1024
   rerank:
     type: OpenAI
     base_url: https://api.example.com/v1
     api_key: replace-me
-    model: rerank-model
+    model: BAAI/bge-reranker-v2-m3
   asr:
     type: Qwen
     base_url: wss://dashscope.aliyuncs.com/api-ws/v1/inference/
@@ -151,7 +151,7 @@ Configuration notes:
 
 - `api.agent` is the main model used for agent conversations.
 - `api.utility` is used for helper tasks such as lightweight generation or summarization.
-- `api.embed` and `api.rerank` are used by retrieval workflows.
+- `api.embed` and `api.rerank` are used by retrieval workflows. For cloud knowledge-base compatibility, configure `api.embed.model` as `BAAI/bge-m3` and `api.rerank.model` as `BAAI/bge-reranker-v2-m3`.
 - `file.upload_path`, `file.rag_path`, `skills_cloud.local_store_path`, and runtime folders are local writable directories.
 - Leave optional integrations blank when they are not needed.
 - Replace every `replace-me` value before running features that depend on that provider.
@@ -171,3 +171,7 @@ uv run pytest
 ## Runtime Data
 
 The backend stores local data in SQLite databases and runtime folders such as `uploads/`, `workspace/`, `runs/`, and `cron/`. These files are local development/runtime data and should not be committed.
+
+## RAG Utilities
+
+RAG document cleaning, chunking, and local cloud-knowledge-base serving utilities are documented in [`scripts/rag/README.md`](scripts/rag/README.md).
