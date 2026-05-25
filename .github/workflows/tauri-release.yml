@@ -1,6 +1,10 @@
 name: Tauri Desktop Release
 
 on:
+  push:
+    branches:
+      - frontend
+      - backend-new
   workflow_dispatch:
     inputs:
       frontend_ref:
@@ -18,8 +22,8 @@ permissions:
   contents: read
 
 env:
-  FRONTEND_REF: ${{ github.event.inputs.frontend_ref || 'frontend' }}
-  BACKEND_REF: ${{ github.event.inputs.backend_ref || 'backend-new' }}
+  FRONTEND_REF: ${{ github.event_name == 'push' && github.ref_name == 'frontend' && github.ref_name || github.event.inputs.frontend_ref || 'frontend' }}
+  BACKEND_REF: ${{ github.event_name == 'push' && github.ref_name == 'backend-new' && github.ref_name || github.event.inputs.backend_ref || 'backend-new' }}
   PYTHON_RUNTIME_VERSION: "3.13.13"
   PYTHON_RUNTIME_RELEASE: "20260408"
   PYTHON_RUNTIME_REPO: astral-sh/python-build-standalone
@@ -28,9 +32,45 @@ env:
   TAURI_RESOURCE_RUNTIME_DIR: frontend/src-tauri/resources/python-runtime
 
 jobs:
+  backend-test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    env:
+      AGENT_ENV_VAULT_MASTER_KEY: ci-test-master-key
+      PYTHONPATH: src
+    steps:
+      - name: Checkout backend source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ env.BACKEND_REF }}
+          path: backend
+          fetch-depth: 0
+
+      - name: Show selected backend ref
+        run: |
+          echo "backend ref: $BACKEND_REF"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync backend dependencies
+        working-directory: backend
+        run: |
+          uv sync --frozen --extra dev
+
+      - name: Run backend tests
+        working-directory: backend
+        run: uv run pytest -q
+
   build:
     name: Build ${{ matrix.platform }} App
     runs-on: ${{ matrix.runner }}
+    needs: backend-test
     strategy:
       fail-fast: false
       matrix:
@@ -128,7 +168,7 @@ jobs:
       - name: Verify Tauri runtime resource config
         run: |
           $tauriConfig = Get-Content frontend/src-tauri/tauri.conf.json -Raw
-          if ($tauriConfig -notmatch '"resources/python-runtime"\s*:\s*"python-runtime"') {
+          if ($tauriConfig -notmatch '\"resources/python-runtime\"\s*:\s*\"python-runtime\"') {
             throw 'src-tauri/tauri.conf.json must bundle resources/python-runtime as python-runtime.'
           }
 
@@ -368,6 +408,7 @@ jobs:
           ## Tauri ${{ matrix.platform }} Release
           - frontend ref: $env:FRONTEND_REF
           - backend ref: $env:BACKEND_REF
+          - backend tests: passed before packaging
           - runner: $env:RUNNER_OS / $env:RUNNER_ARCH
           - CPython runtime: $env:PYTHON_RUNTIME_REPO, $env:PYTHON_VERSION_PREFIX*
           - backend package: installed with bundled runtime pip into $env:PYTHON_RUNTIME_DIR

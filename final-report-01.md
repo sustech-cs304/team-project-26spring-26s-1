@@ -23,26 +23,29 @@ Highest-complexity functions observed:
 ## 2. CI/CD Pipeline Description
 
 The project uses GitHub Actions for CI/CD across the repository root, `../frontend`, and `../backend`.
+The `main` branch acts as the release hub: it does not carry application logic, and its workflow is used to run backend tests first and then package the desktop application. Day-to-day frontend and backend deployment flows remain in their own branches.
 
 Pipeline steps:
-1. Checkout repository sources.
+1. Checkout the required source branch or branches.
 2. Set up runtime tools.
-3. Install dependencies.
-4. Run tests, builds, metrics, or packaging jobs.
-5. Deploy artifacts or publish run summaries.
+3. Sync or install dependencies.
+4. Run backend tests first.
+5. Package the desktop application into runnable artifacts.
+6. Publish artifacts, summaries, or deployment outputs.
 
 Implemented workflows and tools:
+- Release pipeline: [`.github/workflows/tauri-release.yml`](./.github/workflows/tauri-release.yml)
+  - Triggered by pushes to the `frontend` and `backend-new` branches, and can also be run manually through `workflow_dispatch`.
+  - Uses `actions/checkout` to fetch the frontend and backend refs, `astral-sh/setup-uv` plus `uv sync --frozen --extra dev` and `uv run pytest -q` for backend verification, then `actions/setup-node`, `dtolnay/rust-toolchain`, `swatinem/rust-cache`, `npm ci`, and `npx tauri build` for packaging.
+  - Downloads the bundled CPython runtime, installs the backend package into it, stages it for Tauri, and builds release bundles for Windows, Linux, and macOS.
 - Code metrics pipeline: [`.github/workflows/code-metrics.yml`](./.github/workflows/code-metrics.yml)
   - Uses `actions/checkout`, `actions/setup-python`, `pip`, and the repository script [`.github/scripts/code_metrics.py`](./.github/scripts/code_metrics.py).
   - Installs `lizard` and `tomli`, then generates `summary.md` and `code-metrics.json`, and uploads them as an artifact.
-- Desktop release pipeline: [`.github/workflows/tauri-release.yml`](./.github/workflows/tauri-release.yml)
-  - Uses `actions/checkout`, `actions/setup-node`, `dtolnay/rust-toolchain`, `swatinem/rust-cache`, `npm ci`, and `npx tauri build`.
-  - Downloads the bundled CPython runtime, installs the backend package into it, stages it for Tauri, and builds release bundles for Windows, Linux, and macOS.
 - Frontend deployment pipeline: [`../frontend/.github/workflows/deploy.yml`](../frontend/.github/workflows/deploy.yml)
   - Uses `actions/checkout`, `npm ci`, `npm run build`, and a self-hosted runner.
   - Builds the frontend and copies the `dist` output to `/var/www/opencrab` for Nginx serving.
 - Backend CI/CD pipeline: [`../backend/.github/workflows/deploy.yml`](../backend/.github/workflows/deploy.yml)
-  - Uses `actions/checkout`, `actions/setup-python`, `pip`, `pytest`, and `docker build`.
+  - Uses `actions/checkout`, `actions/setup-python`, `uv`, `pytest`, and `docker build`.
   - Runs backend tests on pull requests and pushes, builds a Docker image, and deploys the container on a self-hosted runner for the `backend-new` branch.
 
 Pipeline configuration access:
