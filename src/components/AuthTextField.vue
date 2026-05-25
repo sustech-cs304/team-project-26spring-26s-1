@@ -1,11 +1,11 @@
 <template>
-    <div class="mb-4">
-        <div class="d-flex justify-space-between align-center mb-2">
-            <label class="text-body-1">{{ label }}</label>
+    <div class="auth-field">
+        <div class="d-flex justify-space-between align-center mb-1">
+            <label class="text-caption font-weight-medium text-medium-emphasis">{{ label }}</label>
             <slot name="label-append"></slot>
         </div>
         <div class="d-flex align-start ga-2">
-           <v-text-field
+            <v-text-field
                 v-model="model"
                 :placeholder="placeholder"
                 :prepend-inner-icon="icon"
@@ -14,10 +14,12 @@
                 :type="isPassword ? (showPassword ? 'text' : 'password') : 'text'"
                 :error-messages="errorMessages"
                 @click:append-inner="isPassword && (showPassword = !showPassword)"
-                variant="outlined"
+                variant="solo-filled"
                 :density="props.compact ? 'compact' : 'default'"
-                color="cyan-darken-2"
-                class="flex-grow-1"
+                flat
+                rounded="lg"
+                hide-details="auto"
+                class="auth-field-input flex-grow-1"
             />
             <slot name="append"></slot>
         </div>
@@ -40,7 +42,7 @@ const props = withDefaults(defineProps<{
     rules: () => [],
     isPassword: false,
     errorMessages: () => [],
-    compact: false,
+    compact: true,
 })
 
 const emit = defineEmits<{
@@ -55,8 +57,16 @@ const model = computed({
 })
 </script>
 
-<style>
-    input::-ms-reveal {
+<style scoped>
+    .auth-field {
+        margin-bottom: 12px;
+    }
+
+    .auth-field-input :deep(.v-field) {
+        font-size: 0.8125rem;
+    }
+
+    :deep(input::-ms-reveal) {
         display: none !important;
     }
 </style>
