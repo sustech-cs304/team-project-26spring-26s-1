@@ -78,6 +78,9 @@ export interface NotificationConfig {
     notification_limit: number | null
     default_timeout_s: number
     deeplink_scheme: string
+    task_complete: boolean
+    task_failed: boolean
+    calendar_reminder: boolean
 }
 
 export interface CodeInterpreterConfig {

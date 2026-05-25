@@ -375,8 +375,9 @@
                                 No MCP servers configured yet.
                             </v-alert>
 
-                            <v-sheet v-for="(draft, index) in mcpDrafts" :key="draft.originalName || draft.name || index"
-                                border rounded="lg" color="transparent" class="pa-3 mb-3">
+                            <v-sheet v-for="(draft, index) in mcpDrafts"
+                                :key="draft.originalName || draft.name || index" border rounded="lg" color="transparent"
+                                class="pa-3 mb-3">
                                 <div class="d-flex align-center ga-2 mb-3">
                                     <v-text-field v-model="draft.name" density="compact" variant="solo-filled" flat
                                         rounded="lg" label="Name" hide-details="auto" class="flex-grow-1" />
@@ -439,14 +440,14 @@
                                                 flat rounded="lg" label="Working Dir" hide-details="auto" />
                                         </v-col>
                                         <v-col cols="12" md="6" class="py-1">
-                                            <v-textarea v-model="draft.argsText" density="compact"
-                                                variant="solo-filled" flat rounded="lg" label="Args" hide-details="auto"
-                                                rows="4" auto-grow placeholder="--flag&#10;--another-flag" />
+                                            <v-textarea v-model="draft.argsText" density="compact" variant="solo-filled"
+                                                flat rounded="lg" label="Args" hide-details="auto" rows="4" auto-grow
+                                                placeholder="--flag&#10;--another-flag" />
                                         </v-col>
                                         <v-col cols="12" class="py-1">
-                                            <v-textarea v-model="draft.envText" density="compact"
-                                                variant="solo-filled" flat rounded="lg" label="Env" hide-details="auto"
-                                                rows="4" auto-grow placeholder="KEY=value&#10;OTHER=value" />
+                                            <v-textarea v-model="draft.envText" density="compact" variant="solo-filled"
+                                                flat rounded="lg" label="Env" hide-details="auto" rows="4" auto-grow
+                                                placeholder="KEY=value&#10;OTHER=value" />
                                         </v-col>
                                     </v-row>
                                 </template>
@@ -607,7 +608,9 @@
                                 <v-list-item-title>Enable Notifications</v-list-item-title>
                                 <v-list-item-subtitle>Master toggle for all notification types.</v-list-item-subtitle>
                                 <template #append>
-                                    <v-switch v-model="notif.enabled" density="compact" hide-details />
+                                    <v-switch v-model="notif.enabled" density="compact" hide-details
+                                        :loading="saving.notifications"
+                                        @update:model-value="queueNotificationSettingsSave" />
                                 </template>
                             </v-list-item>
 
@@ -620,17 +623,13 @@
                                     <v-list-item-subtitle>{{ item.description }}</v-list-item-subtitle>
                                     <template #append>
                                         <v-switch v-model="notif[item.key]" density="compact" hide-details
-                                            :disabled="!notif.enabled" />
+                                            :disabled="!notif.enabled || saving.notifications"
+                                            :loading="saving.notifications"
+                                            @update:model-value="queueNotificationSettingsSave" />
                                     </template>
                                 </v-list-item>
                             </template>
                         </v-list>
-
-                        <div class="d-flex justify-end">
-                            <v-btn size="small" rounded="lg" variant="tonal" @click="saveNotificationSettings">
-                                Save Notification Settings
-                            </v-btn>
-                        </div>
                     </div>
 
                     <div v-else-if="activeTab === 'preferences'">
@@ -839,6 +838,7 @@
         onebot: false,
         telegram: false,
         credentials: false,
+        notifications: false,
     })
 
     const visibility = reactive({
@@ -849,6 +849,8 @@
         onebotToken: false,
         telegramToken: false,
     })
+
+    const notificationConfigApplying = ref(false)
 
     const modelConfig = reactive({
         agent: {
@@ -1335,6 +1337,16 @@
         telegram.token = config.telegram?.token || ''
         telegram.superuserIdsText = (config.telegram?.superuser_ids || []).map(id => String(id)).join('\n')
 
+        notificationConfigApplying.value = true
+        try {
+            notif.enabled = config.notification?.enabled ?? true
+            notif.taskComplete = config.notification?.task_complete ?? true
+            notif.taskFailed = config.notification?.task_failed ?? true
+            notif.calendarReminder = config.notification?.calendar_reminder ?? true
+        } finally {
+            notificationConfigApplying.value = false
+        }
+
         hydrateMcpDrafts(config.mcp || {})
     }
 
@@ -1658,8 +1670,29 @@
         showNotice('Preferences saved')
     }
 
-    function saveNotificationSettings () {
-        showNotice('Notification settings saved')
+    async function saveNotificationSettings () {
+        saving.notifications = true
+
+        try {
+            const config = await patchConfig({
+                notification: {
+                    enabled: notif.enabled,
+                    task_complete: notif.taskComplete,
+                    task_failed: notif.taskFailed,
+                    calendar_reminder: notif.calendarReminder,
+                },
+            })
+            applyConfig(config)
+        } catch (error) {
+            showNotice(getErrorMessage(error, 'Failed to save notification settings.'), 'error')
+        } finally {
+            saving.notifications = false
+        }
+    }
+
+    function queueNotificationSettingsSave () {
+        if (notificationConfigApplying.value || saving.notifications) return
+        void saveNotificationSettings()
     }
 
     watch(
