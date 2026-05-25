@@ -61,7 +61,7 @@ jobs:
       - name: Sync backend dependencies
         working-directory: backend
         run: |
-          uv sync --frozen --extra dev
+          uv sync --extra dev
 
       - name: Run backend tests
         working-directory: backend
