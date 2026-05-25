@@ -10,6 +10,7 @@ TIS_SEMESTER_URL = "https://tis.sustech.edu.cn/Xsxk/queryXkdqXnxq"
 TIS_SCHEDULE_URL = "https://tis.sustech.edu.cn/xszykb/queryxszykbzong"
 TIS_CLASS_DAY_URL = "https://tis.sustech.edu.cn/component/querygrrclist"
 TIS_COURSE_URL = "https://tis.sustech.edu.cn/Xsxk/queryKxrw"
+TIS_EXAM_URL = "https://tis.sustech.edu.cn/kscxtj/queryXsksByxhList"
 
 
 async def login_tis(user_name: str, pwd: str) -> dict:
@@ -20,8 +21,9 @@ async def _post_json(
     session: aiohttp.ClientSession,
     url: str,
     data: dict | None = None,
+    headers: dict | None = None,
 ) -> dict:
-    async with session.post(url, data=data, ssl=SSL_CONTEXT) as resp:
+    async with session.post(url, data=data, headers=headers, ssl=SSL_CONTEXT) as resp:
         resp.raise_for_status()
         text = await resp.text()
     return loads(text)
@@ -76,6 +78,67 @@ async def get_class_days(session: aiohttp.ClientSession, query_month: date) -> d
         return {"success": True, "data": payload}
     except Exception as exc:
         return {"success": False, "message": "querygrrclist failed", "error": str(exc)}
+
+
+async def get_exams(
+    session: aiohttp.ClientSession,
+    page_size: int = 1000,
+    semester_info: dict | None = None,
+) -> dict:
+    if semester_info is None:
+        semester_result = await get_current_semester_info(session)
+        if not semester_result["success"]:
+            return semester_result
+        semester_info = semester_result["data"]
+
+    data_base = {
+        "ppylx": 1,
+        "pkkyx": "",
+        "pxn": semester_info.get("p_xn", ""),
+        "pxq": semester_info.get("p_xq", ""),
+    }
+    headers = {
+        "Origin": "https://tis.sustech.edu.cn",
+        "Referer": "https://tis.sustech.edu.cn/kscxtj/queryXskscxByXh",
+        "RoleCode": "01",
+    }
+
+    try:
+        first_payload = await _post_json(
+            session,
+            TIS_EXAM_URL,
+            {**data_base, "pageNum": 1, "pageSize": page_size},
+            headers=headers,
+        )
+
+        items = first_payload.get("list") if isinstance(first_payload, dict) else None
+        if not isinstance(items, list):
+            return {"success": True, "data": first_payload}
+
+        pages = first_payload.get("pages") if isinstance(first_payload, dict) else 1
+        try:
+            page_count = max(1, int(pages or 1))
+        except (TypeError, ValueError):
+            page_count = 1
+
+        all_items = list(items)
+        for page_num in range(2, page_count + 1):
+            page_payload = await _post_json(
+                session,
+                TIS_EXAM_URL,
+                {**data_base, "pageNum": page_num, "pageSize": page_size},
+                headers=headers,
+            )
+            page_items = page_payload.get("list") if isinstance(page_payload, dict) else None
+            if isinstance(page_items, list):
+                all_items.extend(page_items)
+
+        payload = dict(first_payload)
+        payload["list"] = all_items
+        payload["size"] = len(all_items)
+        return {"success": True, "data": payload}
+    except Exception as exc:
+        return {"success": False, "message": "queryXsksByxhList failed", "error": str(exc)}
 
 
 async def query_available_courses(
