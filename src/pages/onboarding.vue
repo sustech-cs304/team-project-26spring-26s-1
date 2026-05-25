@@ -7,7 +7,7 @@
                         <div>
                             <div>
                                 <div class="d-flex align-center ga-2 mb-2">
-                                    <v-chip size="x-small" variant="tonal" color="primary">Onboarding</v-chip>
+                                    <v-chip size="x-small" variant="tonal" color="primary">初次设置</v-chip>
                                     <v-chip size="x-small" variant="tonal">{{ currentStep + 1 }}/{{ steps.length
                                     }}</v-chip>
                                 </div>
@@ -37,26 +37,32 @@
                                 <template v-if="step.key === 'welcome'">
                                     <div class="d-flex flex-column ga-3">
                                         <div class="text-subtitle-1 font-weight-bold">欢迎使用 OpenCrab</div>
+                                        <div class="text-body-2 text-medium-emphasis">
+                                            接下来只需要完成几项必要设置。你可以先填最常用的配置，其他内容之后都能在设置页修改。
+                                        </div>
                                         <v-row density="comfortable">
                                             <v-col cols="12" md="4">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
-                                                    <div class="text-subtitle-2 font-weight-bold mb-2">了解你</div>
-                                                    <div class="text-body-2 text-medium-emphasis">一句话介绍、身份与专业会帮助 agent
-                                                        更快进入合适的语境。</div>
+                                                    <div class="text-subtitle-2 font-weight-bold mb-2">让助手了解你</div>
+                                                    <div class="text-body-2 text-medium-emphasis">
+                                                        简单说说你的学校、专业和最近关注的内容，OpenCrab 会用更贴近你的方式回答。
+                                                    </div>
                                                 </v-card>
                                             </v-col>
                                             <v-col cols="12" md="4">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
-                                                    <div class="text-subtitle-2 font-weight-bold mb-2">准备能力</div>
-                                                    <div class="text-body-2 text-medium-emphasis">配置 SUSTech
-                                                        账号和模型连接，后续聊天和设置页都可直接复用。</div>
+                                                    <div class="text-subtitle-2 font-weight-bold mb-2">连接常用服务</div>
+                                                    <div class="text-body-2 text-medium-emphasis">
+                                                        填入模型和校园账号后，就能开始聊天、查看日程和处理课程资料。
+                                                    </div>
                                                 </v-card>
                                             </v-col>
                                             <v-col cols="12" md="4">
                                                 <v-card rounded="lg" variant="tonal" class="pa-4 h-100">
-                                                    <div class="text-subtitle-2 font-weight-bold mb-2">下载知识包</div>
-                                                    <div class="text-body-2 text-medium-emphasis">首版会为 SUSTech-CS
-                                                        推荐知识库，便于后续问答和课程支持。</div>
+                                                    <div class="text-subtitle-2 font-weight-bold mb-2">准备课程知识</div>
+                                                    <div class="text-body-2 text-medium-emphasis">
+                                                        下载推荐知识包后，OpenCrab 可以更好地回答和 SUSTech-CS 相关的问题。
+                                                    </div>
                                                 </v-card>
                                             </v-col>
                                         </v-row>
@@ -66,16 +72,16 @@
                                 <template v-else-if="step.key === 'profile'">
                                     <div class="d-flex flex-column ga-4">
                                         <div>
-                                            <div class="text-subtitle-1 font-weight-bold mb-2">用一句话介绍你自己</div>
-                                            <div class="text-caption text-medium-emphasis">例如：我是南科大计科大二学生，最近在补操作系统和算法。
+                                            <div class="text-subtitle-1 font-weight-bold mb-2">先简单介绍一下你</div>
+                                            <div class="text-caption text-medium-emphasis">不用正式，像和同学自我介绍一样就好。例如：我是南科大计科大二学生，最近在补操作系统和算法。
                                             </div>
                                         </div>
                                         <v-textarea v-model="userProfile.oneLineProfile" variant="solo-filled" flat
                                             density="compact" rounded="lg" rows="3" counter="120" maxlength="120"
-                                            placeholder="输入一句能让 agent 快速了解你的描述" hide-details="auto" />
+                                            placeholder="例如：我是南科大计科大二学生，最近在补操作系统和算法。" hide-details="auto" />
                                         <div v-if="userProfile.oneLineProfile.trim().length === 0"
                                             class="text-caption text-medium-emphasis">
-                                            这一项是必填的，后续 agent 会参考这里的描述理解你的背景。
+                                            这一项会帮助 OpenCrab 理解你的学习背景。
                                         </div>
                                     </div>
                                 </template>
@@ -83,7 +89,10 @@
                                 <template v-else-if="step.key === 'identity'">
                                     <div class="d-flex flex-column ga-3">
                                         <div>
-                                            <div class="text-subtitle-1 font-weight-bold mb-2">学校、年龄层与专业</div>
+                                            <div class="text-subtitle-1 font-weight-bold mb-2">确认你的学习身份</div>
+                                            <div class="text-caption text-medium-emphasis">
+                                                这些信息会用于默认推荐和校园场景判断，不需要填写复杂资料。
+                                            </div>
                                         </div>
                                         <v-row density="compact">
                                             <v-col cols="12" md="4">
@@ -117,8 +126,10 @@
                                     <div class="d-flex flex-column ga-3">
                                         <div>
                                             <div>
-                                                <div class="text-subtitle-1 font-weight-bold mb-2">SUSTech 教务配置</div>
-                                                <div class="text-caption text-medium-emphasis">可跳过，后续可在设置页继续配置。</div>
+                                                <div class="text-subtitle-1 font-weight-bold mb-2">连接校园账号</div>
+                                                <div class="text-caption text-medium-emphasis">
+                                                    如果你希望 OpenCrab 读取课程和日程，请填写 SUSTech 账号。暂时不需要也可以留空，之后在设置页再补。
+                                                </div>
                                             </div>
                                         </div>
 
@@ -150,7 +161,12 @@
                                 <template v-else-if="step.key === 'model'">
                                     <div class="d-flex flex-column ga-2">
                                         <div class="d-flex align-center justify-space-between ga-3">
-                                            <div class="text-subtitle-1 font-weight-bold">模型连接</div>
+                                            <div>
+                                                <div class="text-subtitle-1 font-weight-bold">连接 AI 模型</div>
+                                                <div class="text-caption text-medium-emphasis">
+                                                    这里决定 OpenCrab 用哪个模型回答问题。通常填入你常用模型服务的地址、密钥和模型名即可。
+                                                </div>
+                                            </div>
                                             <v-btn size="x-small" variant="tonal" rounded="lg"
                                                 :prepend-icon="showSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
                                                 @click="showSecrets = !showSecrets">
@@ -161,32 +177,32 @@
                                         <v-sheet color="transparent" class="d-flex flex-column ga-2">
                                             <div>
                                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
-                                                    <div class="text-subtitle-2 font-weight-bold">主模型</div>
+                                                    <div class="text-subtitle-2 font-weight-bold">日常聊天模型</div>
                                                     <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
                                                 </div>
                                                 <v-row density="compact" class="my-n1">
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.agent.baseUrl"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="Base URL" placeholder="Base url (不需要写/v1)"
+                                                            label="服务地址" placeholder="例如 https://api.example.com"
                                                             hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.agent.apiKey"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            label="访问密钥" :type="showSecrets ? 'text' : 'password'"
                                                             hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" md="4" class="py-1">
                                                         <v-combobox v-model="serviceConfig.agent.model"
                                                             :items="modelOptions.agent" density="compact"
-                                                            variant="solo-filled" flat rounded="lg" label="Model"
+                                                            variant="solo-filled" flat rounded="lg" label="模型名称"
                                                             hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" md="3" class="py-1">
                                                         <v-text-field v-model.number="serviceConfig.agent.maxTokenCount"
                                                             type="number" density="compact" variant="solo-filled" flat
-                                                            rounded="lg" label="Max Tokens" hide-details="auto" />
+                                                            rounded="lg" label="回复长度上限" hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" md="5" class="py-1">
                                                         <div class="d-flex align-center justify-end ga-2 h-100">
@@ -195,7 +211,7 @@
                                                                 :loading="modelLoading.agentList"
                                                                 :disabled="modelLoading.agentTest"
                                                                 @click="fetchProviderModels('agent')">
-                                                                拉取模型
+                                                                查看可用模型
                                                             </v-btn>
                                                             <v-btn size="small" variant="tonal" rounded="lg"
                                                                 prepend-icon="mdi-connection"
@@ -213,33 +229,33 @@
 
                                             <div>
                                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
-                                                    <div class="text-subtitle-2 font-weight-bold">副模型</div>
+                                                    <div class="text-subtitle-2 font-weight-bold">轻量任务模型</div>
                                                     <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
                                                 </div>
                                                 <v-row density="compact" class="my-n1">
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.utility.baseUrl"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="Base URL" placeholder="Base url (不需要写/v1)"
+                                                            label="服务地址" placeholder="例如 https://api.example.com"
                                                             hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.utility.apiKey"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            label="访问密钥" :type="showSecrets ? 'text' : 'password'"
                                                             hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" md="4" class="py-1">
                                                         <v-combobox v-model="serviceConfig.utility.model"
                                                             :items="modelOptions.utility" density="compact"
-                                                            variant="solo-filled" flat rounded="lg" label="Model"
+                                                            variant="solo-filled" flat rounded="lg" label="模型名称"
                                                             hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" md="3" class="py-1">
                                                         <v-text-field
                                                             v-model.number="serviceConfig.utility.maxTokenCount"
                                                             type="number" density="compact" variant="solo-filled" flat
-                                                            rounded="lg" label="Max Tokens" hide-details="auto" />
+                                                            rounded="lg" label="回复长度上限" hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" md="5" class="py-1">
                                                         <div class="d-flex align-center justify-end ga-2 h-100">
@@ -248,7 +264,7 @@
                                                                 :loading="modelLoading.utilityList"
                                                                 :disabled="modelLoading.utilityTest"
                                                                 @click="fetchProviderModels('utility')">
-                                                                拉取模型
+                                                                查看可用模型
                                                             </v-btn>
                                                             <v-btn size="small" variant="tonal" rounded="lg"
                                                                 prepend-icon="mdi-connection"
@@ -268,7 +284,12 @@
                                 <template v-else-if="step.key === 'retrieval'">
                                     <div class="d-flex flex-column ga-2">
                                         <div class="d-flex align-center justify-space-between ga-3">
-                                            <div class="text-subtitle-1 font-weight-bold">知识检索</div>
+                                            <div>
+                                                <div class="text-subtitle-1 font-weight-bold">连接知识检索</div>
+                                                <div class="text-caption text-medium-emphasis">
+                                                    这一步让 OpenCrab 能从课程资料和知识库里找答案。云端知识库需要使用指定的检索模型，默认值请不要随意修改。
+                                                </div>
+                                            </div>
                                             <v-btn size="x-small" variant="tonal" rounded="lg"
                                                 :prepend-icon="showSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
                                                 @click="showSecrets = !showSecrets">
@@ -279,30 +300,30 @@
                                         <v-sheet color="transparent" class="d-flex flex-column ga-2">
                                             <div>
                                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
-                                                    <div class="text-subtitle-2 font-weight-bold">Embed</div>
+                                                    <div class="text-subtitle-2 font-weight-bold">资料理解模型</div>
                                                     <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
                                                 </div>
                                                 <v-row density="compact" class="my-n1">
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.embed.baseUrl"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="Base URL" hide-details="auto" />
+                                                            label="服务地址" hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.embed.apiKey"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            label="访问密钥" :type="showSecrets ? 'text' : 'password'"
                                                             hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" md="7" class="py-1">
                                                         <v-text-field v-model="serviceConfig.embed.model"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="Model" hide-details="auto" />
+                                                            label="模型名称" hint="云端知识库请使用 BAAI/bge-m3" persistent-hint />
                                                     </v-col>
                                                     <v-col cols="12" md="5" class="py-1">
                                                         <v-text-field v-model.number="serviceConfig.embed.dims"
                                                             type="number" density="compact" variant="solo-filled" flat
-                                                            rounded="lg" label="Dims" hide-details="auto" />
+                                                            rounded="lg" label="向量维度" hide-details="auto" />
                                                     </v-col>
                                                 </v-row>
                                             </div>
@@ -311,25 +332,25 @@
 
                                             <div>
                                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
-                                                    <div class="text-subtitle-2 font-weight-bold">Rerank</div>
+                                                    <div class="text-subtitle-2 font-weight-bold">结果排序模型</div>
                                                     <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
                                                 </div>
                                                 <v-row density="compact" class="my-n1">
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.rerank.baseUrl"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="Base URL" hide-details="auto" />
+                                                            label="服务地址" hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.rerank.apiKey"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            label="访问密钥" :type="showSecrets ? 'text' : 'password'"
                                                             hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.rerank.model"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="Model" hide-details="auto" />
+                                                            label="模型名称" hint="云端知识库请使用 BAAI/bge-reranker-v2-m3" persistent-hint />
                                                     </v-col>
                                                 </v-row>
                                             </div>
@@ -340,7 +361,12 @@
                                 <template v-else-if="step.key === 'services'">
                                     <div class="d-flex flex-column ga-2">
                                         <div class="d-flex align-center justify-space-between ga-3">
-                                            <div class="text-subtitle-1 font-weight-bold">语音与文档解析</div>
+                                            <div>
+                                                <div class="text-subtitle-1 font-weight-bold">语音和文档辅助功能</div>
+                                                <div class="text-caption text-medium-emphasis">
+                                                    如果你需要语音输入或上传复杂文档，请填写这些服务。它们会帮助 OpenCrab 识别语音、解析 PDF 和课件。
+                                                </div>
+                                            </div>
                                             <v-btn size="x-small" variant="tonal" rounded="lg"
                                                 :prepend-icon="showSecrets ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
                                                 @click="showSecrets = !showSecrets">
@@ -351,19 +377,19 @@
                                         <v-sheet color="transparent" class="d-flex flex-column ga-2">
                                             <div>
                                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
-                                                    <div class="text-subtitle-2 font-weight-bold">ASR</div>
+                                                    <div class="text-subtitle-2 font-weight-bold">语音识别</div>
                                                     <v-chip size="x-small" variant="tonal">Qwen</v-chip>
                                                 </div>
                                                 <v-row density="compact" class="my-n1">
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.asr.baseUrl"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="Base URL" hide-details="auto" />
+                                                            label="服务地址" hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.asr.apiKey"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            label="访问密钥" :type="showSecrets ? 'text' : 'password'"
                                                             hide-details="auto" />
                                                     </v-col>
                                                 </v-row>
@@ -373,19 +399,19 @@
 
                                             <div>
                                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
-                                                    <div class="text-subtitle-2 font-weight-bold">MinerU</div>
+                                                    <div class="text-subtitle-2 font-weight-bold">文档解析</div>
                                                     <v-chip size="x-small" variant="tonal">File</v-chip>
                                                 </div>
                                                 <v-row density="compact" class="my-n1">
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.mineru.baseUrl"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="Base URL" hide-details="auto" />
+                                                            label="服务地址" hide-details="auto" />
                                                     </v-col>
                                                     <v-col cols="12" class="py-1">
                                                         <v-text-field v-model="serviceConfig.mineru.apiKey"
                                                             density="compact" variant="solo-filled" flat rounded="lg"
-                                                            label="API Key" :type="showSecrets ? 'text' : 'password'"
+                                                            label="访问密钥" :type="showSecrets ? 'text' : 'password'"
                                                             hide-details="auto" />
                                                     </v-col>
                                                 </v-row>
@@ -398,7 +424,10 @@
                                     <div class="d-flex flex-column ga-4">
                                         <div class="d-flex flex-wrap align-center justify-space-between ga-3">
                                             <div>
-                                                <div class="text-subtitle-1 font-weight-bold mb-2">知识库下载</div>
+                                                <div class="text-subtitle-1 font-weight-bold mb-2">准备推荐知识包</div>
+                                                <div class="text-caption text-medium-emphasis">
+                                                    下载后，OpenCrab 可以在回答时参考课程和校园相关资料。这个过程可能需要一点时间。
+                                                </div>
                                             </div>
                                             <v-chip size="small" variant="tonal" color="primary">{{ knowledgePack.packId
                                             }}</v-chip>
@@ -407,9 +436,8 @@
                                         <v-card rounded="lg" variant="tonal" class="pa-4">
                                             <div class="d-flex align-center justify-space-between ga-3 mb-3">
                                                 <div>
-                                                    <div class="text-subtitle-2 font-weight-bold">SUSTech-CS Starter
-                                                        Pack</div>
-                                                    <div class="text-caption text-medium-emphasis">课程知识、院校上下文与计算机相关基础资料
+                                                    <div class="text-subtitle-2 font-weight-bold">SUSTech-CS 入门知识包</div>
+                                                    <div class="text-caption text-medium-emphasis">包含课程知识、校园上下文和计算机相关基础资料
                                                     </div>
                                                 </div>
                                                 <v-btn color="primary" size="small" rounded="lg"
@@ -446,7 +474,10 @@
                                     <div class="d-flex flex-column ga-5">
                                         <div class="d-flex flex-wrap align-start justify-space-between ga-3">
                                             <div>
-                                                <div class="text-subtitle-1 font-weight-bold mb-2">准备完成，认识一下主要功能</div>
+                                                <div class="text-subtitle-1 font-weight-bold mb-2">准备完成，可以开始使用了</div>
+                                                <div class="text-caption text-medium-emphasis">
+                                                    下面是你最常用的几个入口。之后也可以随时回到设置页调整模型、校园账号和知识库。
+                                                </div>
                                             </div>
                                             <v-chip size="small" variant="tonal" color="success">Ready to go</v-chip>
                                         </div>
@@ -460,7 +491,7 @@
                                                     </div>
                                                     <div class="text-body-2 text-medium-emphasis"
                                                         style="line-height:1.7;">
-                                                        以对话为中心的主工作区，支持消息输入、文件上传和后续 agent 交互。
+                                                        主要的学习和提问入口。你可以直接提问，也可以上传文件后让 OpenCrab 帮你整理、解释和总结。
                                                     </div>
                                                 </v-card>
                                             </v-col>
@@ -472,7 +503,7 @@
                                                     </div>
                                                     <div class="text-body-2 text-medium-emphasis"
                                                         style="line-height:1.7;">
-                                                        统一查看课程和个人安排，后续也可以接入校园与任务相关事件。
+                                                        集中查看课程、提醒和个人安排，减少在多个日历和消息之间来回确认。
                                                     </div>
                                                 </v-card>
                                             </v-col>
@@ -485,7 +516,7 @@
                                                     </div>
                                                     <div class="text-body-2 text-medium-emphasis"
                                                         style="line-height:1.7;">
-                                                        把高频操作沉淀成任务流，后续可以复用环境变量、脚本与定时触发能力。
+                                                        把每天或每周重复做的事情变成自动任务，比如定时总结日程或提醒待办。
                                                     </div>
                                                 </v-card>
                                             </v-col>
@@ -498,7 +529,7 @@
                                                     </div>
                                                     <div class="text-body-2 text-medium-emphasis"
                                                         style="line-height:1.7;">
-                                                        管理扩展能力、插件和工具入口，后续可逐步扩展校园与学习场景。
+                                                        管理可以复用的技能，让 OpenCrab 学会更多和课程、资料处理相关的能力。
                                                     </div>
                                                 </v-card>
                                             </v-col>
@@ -561,15 +592,15 @@
     }
 
     const steps: StepMeta[] = [
-        { key: 'welcome', shortLabel: '欢迎', title: '欢迎来到 OpenCrab', description: '花一点时间完成初始化，我们就可以开始了。' },
-        { key: 'profile', shortLabel: '画像', title: '先让 agent 认识你', description: '用一句话介绍自己，方便后续交流更贴近你的背景。' },
-        { key: 'identity', shortLabel: '身份', title: '确认学校、年龄层与专业', description: '补充你的基本信息，帮助我们提供更合适的内容。' },
-        { key: 'campus', shortLabel: '校园', title: '配置 SUSTech 教务账号', description: '如果你需要校园相关能力，可以在这里完成设置。' },
-        { key: 'model', shortLabel: '模型', title: '配置模型连接', description: '主模型和副模型会支撑对话与轻量任务。' },
-        { key: 'retrieval', shortLabel: '检索', title: '配置知识检索', description: 'Embed 和 Rerank 会用于知识库更新与资料召回。' },
-        { key: 'services', shortLabel: '服务', title: '配置语音与文档解析', description: 'ASR 和 MinerU 会用于语音输入、文件解析和后续工作流。' },
-        { key: 'knowledge', shortLabel: '知识库', title: '准备知识包', description: '先把知识内容准备好，后续使用会更顺畅。' },
-        { key: 'finish', shortLabel: '完成', title: '一切准备就绪', description: '看看 OpenCrab 会怎样帮你更轻松地学习、安排任务和获得支持。' },
+        { key: 'welcome', shortLabel: '欢迎', title: '欢迎来到 OpenCrab', description: '我们会用几步完成最小设置，让你尽快开始使用。' },
+        { key: 'profile', shortLabel: '你是谁', title: '先让 OpenCrab 认识你', description: '一句简单介绍就够了，它会帮助助手理解你的学习背景。' },
+        { key: 'identity', shortLabel: '学习背景', title: '确认你的学习身份', description: '选择学校、阶段和专业，OpenCrab 会据此给出更贴近校园场景的建议。' },
+        { key: 'campus', shortLabel: '校园账号', title: '连接校园账号', description: '需要课程和日程能力时再填写；不确定的话可以先留空。' },
+        { key: 'model', shortLabel: 'AI 模型', title: '连接 AI 模型', description: '填入模型服务信息后，OpenCrab 才能开始回答问题。' },
+        { key: 'retrieval', shortLabel: '知识检索', title: '连接知识检索', description: '这会让 OpenCrab 能从课程资料和知识库里找到相关内容。' },
+        { key: 'services', shortLabel: '辅助服务', title: '连接语音和文档服务', description: '语音输入、PDF 和课件解析会用到这些服务。' },
+        { key: 'knowledge', shortLabel: '知识包', title: '准备推荐知识包', description: '下载推荐资料后，课程相关问答会更有上下文。' },
+        { key: 'finish', shortLabel: '完成', title: '一切准备就绪', description: '你可以开始聊天、上传文件、查看日历或创建自动任务了。' },
     ]
 
     const identityOptions = [{ label: '大学生', value: 'student' }]
@@ -703,19 +734,19 @@
 
     const footerHint = computed(() => {
         if (currentMeta.value.key === 'model' && !hasCompleteModelConfig.value) {
-            return '需要填完整主模型和副模型'
+            return '请先填好两个模型的服务地址、密钥和模型名称'
         }
         if (currentMeta.value.key === 'retrieval' && !hasCompleteRetrievalConfig.value) {
-            return '需要填完整 Embed 和 Rerank'
+            return '请先填好知识检索所需的服务地址、密钥和模型名称'
         }
         if (currentMeta.value.key === 'services' && !hasCompleteServiceToolsConfig.value) {
-            return '需要填完整 ASR 和 MinerU'
+            return '请先填好语音识别和文档解析服务'
         }
         if (currentMeta.value.key === 'knowledge' && !hasCompleteServiceConfig.value) {
-            return '需要先完成配置'
+            return '请先完成前面的服务配置'
         }
         if (currentMeta.value.key === 'knowledge' && knowledgePack.status !== 'ready') {
-            return '需要先完成知识库更新'
+            return '请先下载推荐知识包'
         }
         return ''
     })
@@ -748,7 +779,7 @@
     }
 
     function getModelEndpointLabel (role: ModelEndpointRole) {
-        return role === 'agent' ? '主模型' : '副模型'
+        return role === 'agent' ? '日常聊天模型' : '轻量任务模型'
     }
 
     async function requestProviderModels (role: ModelEndpointRole) {
@@ -764,10 +795,10 @@
             const models = await requestProviderModels(role)
             modelOptions[role] = models
             if (!models.length) {
-                showNotice(`${getModelEndpointLabel(role)}连接成功，但没有返回模型列表`, 'warning')
+                showNotice(`${getModelEndpointLabel(role)}连接成功，但没有找到可选模型`, 'warning')
                 return
             }
-            showNotice(`已拉取 ${models.length} 个模型`)
+            showNotice(`找到 ${models.length} 个可用模型`)
         } catch (error) {
             showNotice(error instanceof Error ? error.message : '拉取模型失败', 'error')
         } finally {
@@ -1005,7 +1036,7 @@
     async function triggerKnowledgeDownload () {
         if (isKnowledgeSubmitting.value || knowledgeSync.value.status === 'running') return
         if (!hasCompleteServiceConfig.value) {
-            showNotice('请先填完整配置，再更新知识库', 'warning')
+            showNotice('请先完成前面的服务设置，再下载知识包', 'warning')
             return
         }
 
@@ -1014,7 +1045,7 @@
         try {
             const synced = await syncServiceConfigToBackend({ silent: true })
             if (!synced) {
-                showNotice('配置还没有同步成功，暂时不能更新知识库', 'warning')
+                showNotice('服务设置还没有保存成功，暂时不能下载知识包', 'warning')
                 return
             }
 
