@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 
-from langchain.messages import SystemMessage
+from langchain.messages import HumanMessage, SystemMessage
 from langchain.tools import BaseTool
 from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
@@ -8,6 +8,7 @@ from typing import Any
 
 from agent.config import LLMEndpointConfig, get_config, get_config_path, jinja_env, require_llm_endpoint_config
 from agent.utils.model import build_model as _build_chat_model
+from agent.utils.volatile_info import build_volatile_info
 from agent.core.runnable_config import runnable_config_bool
 from agent.core.state import AgentState
 from agent.services.mcp_lifespan import MCPLifespanManager
@@ -101,5 +102,6 @@ class ConfiguredModel:
             ]
         if tools or mcp_tools:
             model = model.bind_tools(tools + mcp_tools)
-        response = await model.ainvoke([system_prompt_message] + state["messages"])
+        volatile_message = HumanMessage(content=build_volatile_info())
+        response = await model.ainvoke([system_prompt_message] + state["messages"] + [volatile_message])
         return {"messages": [response]} if response else state
