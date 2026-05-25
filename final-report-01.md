@@ -58,3 +58,7 @@ Pipeline configuration access:
 Pipeline execution proof:
 
 https://github.com/sustech-cs304/team-project-26spring-26s-1/actions
+
+Successful CI/CD run snapshot:
+
+![CI/CD workflow run snapshot](img/CICD.png)
