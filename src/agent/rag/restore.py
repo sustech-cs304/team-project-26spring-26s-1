@@ -57,6 +57,37 @@ async def restore_from_embedding_array(
 
     overwrite_sources = {normalize_source_name(x) for x in (overwrite_sources or set())}
 
+    store_entries = []
+    vector_entries = []
+
+    for item in embedding_items:
+        try:
+            source_file = normalize_source_name(str(item.get("source_file") or "unknown"))
+            chunk_index = int(item.get("chunk_index", 0))
+            key = f"{source_file}#{chunk_index}"
+            value = {
+                "text": str(item.get("text") or ""),
+                "title_path": str(item.get("title_path") or ""),
+                "retrieval_text": str(item.get("retrieval_text") or ""),
+                "source_file": source_file,
+                "chunk_index": chunk_index,
+                "metadata": dict(item.get("metadata") or {}),
+                "embedding": item.get("embedding"),
+            }
+            if not value["retrieval_text"]:
+                value["retrieval_text"] = "\n".join([source_file, value["title_path"], value["text"]])
+            
+            store_entries.append((NAMESPACE, key, orjson.dumps(value)))
+            vector_entries.append((
+                NAMESPACE,
+                key,
+                "retrieval_text",
+                sqlite_vec.serialize_float32(value["embedding"]),
+            ))
+            stats.added += 1
+        except Exception:
+            stats.failed += 1
+
     async with aiosqlite.connect(str(store_db), isolation_level=None) as conn:
         embedding_config = require_embedding_config(get_config_path(config, "api.embed"))
         indexed_store = build_indexed_store(type("Store", (), {"conn": conn})(), embedding_config)
@@ -65,49 +96,31 @@ async def restore_from_embedding_array(
         for source_file in sorted(overwrite_sources):
             stats.overwritten += await _clear_source_keys(conn, source_file)
 
-        for item in embedding_items:
-            try:
-                source_file = normalize_source_name(str(item.get("source_file") or "unknown"))
-                chunk_index = int(item.get("chunk_index", 0))
-                key = f"{source_file}#{chunk_index}"
-                value = {
-                    "text": str(item.get("text") or ""),
-                    "title_path": str(item.get("title_path") or ""),
-                    "retrieval_text": str(item.get("retrieval_text") or ""),
-                    "source_file": source_file,
-                    "chunk_index": chunk_index,
-                    "metadata": dict(item.get("metadata") or {}),
-                    "embedding": item.get("embedding"),
-                }
-                if not value["retrieval_text"]:
-                    value["retrieval_text"] = "\n".join([source_file, value["title_path"], value["text"]])
-                await conn.execute(
+        await conn.execute("BEGIN TRANSACTION")
+        try:
+            if store_entries:
+                await conn.executemany(
                     """
                     INSERT OR REPLACE INTO store (
                         prefix, key, value, created_at, updated_at, expires_at, ttl_minutes
                     )
                     VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, NULL)
                     """,
-                    (NAMESPACE, key, orjson.dumps(value)),
+                    store_entries,
                 )
-                await conn.execute(
+            if vector_entries:
+                await conn.executemany(
                     """
                     INSERT OR REPLACE INTO store_vectors (
                         prefix, key, field_name, embedding, created_at, updated_at
                     )
                     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """,
-                    (
-                        NAMESPACE,
-                        key,
-                        "retrieval_text",
-                        sqlite_vec.serialize_float32(value["embedding"]),
-                    ),
+                    vector_entries,
                 )
-                stats.added += 1
-            except Exception:
-                stats.failed += 1
-
-        await conn.commit()
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
 
     return stats
