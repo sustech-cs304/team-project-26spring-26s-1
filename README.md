@@ -108,3 +108,7 @@ Build artifacts are written under `src-tauri/target/`.
 - Tasks: scheduled automations, manual triggers, run history, and logs.
 - Skills: browse, download, upload, and uninstall reusable agent skills.
 - Settings and onboarding: model endpoints, campus credentials, notifications, and runtime preferences.
+
+## RAG Model Compatibility
+
+The cloud knowledge base is built with `BAAI/bge-m3` for embedding and `BAAI/bge-reranker-v2-m3` for reranking. When configuring embedding and rerank models in Settings, use these two models for cloud knowledge-base workflows.
