@@ -220,10 +220,10 @@ def _format_retrieve_results(results) -> str:
         lines.append(
             (
                 f"{idx}. "
-                # f"score={score_text} semantic={semantic_text} rerank={rerank_text} "
+                f"score={score_text} semantic={semantic_text} rerank={rerank_text} "
                 f"source={source_file} "
                 f"source_url={source_url}"
-                # f"chunk={chunk_index} key={item.key}\n{text}"
+                f"chunk={chunk_index} key={item.key}\n{text}"
             )
         )
     return "\n\n".join(lines)
