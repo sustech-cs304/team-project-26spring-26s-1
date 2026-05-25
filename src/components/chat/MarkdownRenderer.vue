@@ -194,8 +194,29 @@
             .join('')
     }
 
+    // markdown-it-katex only recognizes $...$ / $$...$$. Model responses often use
+    // LaTeX delimiters \( ... \) and \[ ... \], which markdown-it otherwise treats
+    // as escaped parentheses/brackets before KaTeX can see them.
+    const normalizeMathDelimiters = (input: string): string => {
+        const segments = input.split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+
+        return segments
+            .map((segment, idx) => {
+                if (idx % 2 === 1) return segment
+
+                return segment
+                    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, formula: string) => {
+                        return `\n$$\n${formula.trim()}\n$$\n`
+                    })
+                    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula: string) => {
+                        return `$${formula.trim()}$`
+                    })
+            })
+            .join('')
+    }
+
     const rendered = computed(() => {
-        const normalizedContent = normalizeLooseEmphasis(props.content)
+        const normalizedContent = normalizeLooseEmphasis(normalizeMathDelimiters(props.content))
         const raw = props.inline
             ? md.renderInline(normalizedContent)
             : md.render(normalizedContent)
