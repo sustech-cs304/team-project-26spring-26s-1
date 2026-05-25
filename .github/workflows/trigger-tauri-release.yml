@@ -1,0 +1,25 @@
+name: Trigger Tauri Release
+
+on:
+  push:
+    branches:
+      - frontend
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  trigger-release:
+    name: Trigger main release workflow
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Tauri Desktop Release on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run tauri-release.yml \
+            --repo "${{ github.repository }}" \
+            --ref main \
+            -f frontend_ref="${{ github.ref_name }}" \
+            -f backend_ref=backend-new
