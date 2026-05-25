@@ -6,10 +6,12 @@
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Literal, Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -31,6 +33,7 @@ from agent.services.school_credentials import (
 )
 from agent.services.tis_client import (
     get_class_days as fetch_tis_class_days,
+    get_exams as fetch_tis_exams,
     get_schedule_with_semester as fetch_tis_schedule_with_semester,
     login_tis,
 )
@@ -62,6 +65,10 @@ _TIS_PERIOD_WINDOWS: dict[int, tuple[tuple[int, int], tuple[int, int]]] = {
     10: ((19, 0), (20, 50)),
     11: ((21, 0), (21, 50)),
 }
+try:
+    _TIS_LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+except Exception:
+    _TIS_LOCAL_TZ = timezone(timedelta(hours=8))
 
 _HEX_COLOR_PATTERN = re.compile(r"^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$")
 _COLOR_INVALID_MSG = (
@@ -731,6 +738,107 @@ def _parse_time_text(value: object) -> tuple[int, int, int] | None:
     return int(match.group(1)), int(match.group(2)), int(match.group(3) or 0)
 
 
+def _parse_time_range_text(value: object) -> tuple[tuple[int, int, int], tuple[int, int, int]] | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    matches = re.findall(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", text)
+    if len(matches) < 2:
+        return None
+    start_match, end_match = matches[0], matches[1]
+    return (
+        (int(start_match[0]), int(start_match[1]), int(start_match[2] or 0)),
+        (int(end_match[0]), int(end_match[1]), int(end_match[2] or 0)),
+    )
+
+
+def _parse_local_date_from_value(value: object) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return value.astimezone(_TIS_LOCAL_TZ).date()
+        return value.date()
+    if isinstance(value, date):
+        return value
+
+    text = str(value).strip()
+    if not text:
+        return None
+    normalized = text.replace("/", "-").replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is not None:
+            return parsed.astimezone(_TIS_LOCAL_TZ).date()
+        return parsed.date()
+    except ValueError:
+        pass
+
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d %B %Y", "%d %b %Y"):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(_TIS_LOCAL_TZ).date()
+            return parsed.date()
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_tis_exam_date(item: dict) -> date | None:
+    for key in ("KSRQ", "KSRQ_EN", "examDate", "date", "ksrq"):
+        parsed = _parse_local_date_from_value(item.get(key))
+        if parsed is not None:
+            return parsed
+
+    raw = str(item.get("KSRQ2") or "").strip()
+    match = re.fullmatch(r"(\d{1,2})月(\d{1,2})日", raw)
+    if not match:
+        return None
+
+    exam_month = int(match.group(1))
+    exam_day = int(match.group(2))
+    year = None
+    for key in ("XN", "xnxq", "p_xn"):
+        years = [int(value) for value in re.findall(r"\d{4}", str(item.get(key) or ""))]
+        if len(years) >= 2:
+            year = years[-1] if exam_month <= 8 else years[0]
+            break
+        if len(years) == 1:
+            year = years[0]
+            break
+    if year is None:
+        year = _local_now().year
+    try:
+        return date(year, exam_month, exam_day)
+    except ValueError:
+        return None
+
+
+def _resolve_tis_exam_time_window(item: dict) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    for key in ("KSJTSJ", "examTime", "timeRange", "ksjtsj"):
+        parsed_range = _parse_time_range_text(item.get(key))
+        if parsed_range is not None:
+            return parsed_range
+
+    start_time = None
+    for key in ("KSSJ", "startTime", "kssj"):
+        start_time = _parse_time_text(item.get(key))
+        if start_time is not None:
+            break
+    end_time = None
+    for key in ("JSSJ", "endTime", "jssj"):
+        end_time = _parse_time_text(item.get(key))
+        if end_time is not None:
+            break
+    if start_time is not None and end_time is not None:
+        return start_time, end_time
+
+    return _resolve_tis_period_window(item)
+
+
 def _parse_ts_from_value(value: object) -> int | None:
     if value is None:
         return None
@@ -1137,6 +1245,106 @@ def _tis_payload_to_events(
     return events
 
 
+def _build_tis_exam_detail(item: dict) -> str:
+    parts: list[str] = []
+    course_code = item.get("KCDM") or item.get("courseCode")
+    course_name_en = item.get("KCMC_EN") or item.get("courseNameEn")
+    exam_type = item.get("KSSJDMC") or item.get("KSSJDMC_EN") or item.get("examType")
+    time_text = item.get("KSJTSJ") or item.get("examTime")
+    location = item.get("CDMC") or item.get("CDMC_EN") or item.get("CDDM") or item.get("location")
+    building = item.get("JXLMC") or item.get("JXLMC_EN")
+    seat = item.get("ZWH") or item.get("seatNo")
+    exam_no = item.get("KSBH") or item.get("KSHKID") or item.get("examId")
+    student = item.get("XM") or item.get("XM_EN")
+    student_id = item.get("XH")
+
+    if course_code:
+        parts.append(f"Course code: {course_code}")
+    if course_name_en:
+        parts.append(f"Course name: {course_name_en}")
+    if exam_type:
+        parts.append(f"Exam type: {exam_type}")
+    if time_text:
+        parts.append(f"Time: {time_text}")
+    if location:
+        parts.append(f"Location: {location}")
+    if building and building != location:
+        parts.append(f"Building: {building}")
+    if seat:
+        parts.append(f"Seat: {seat}")
+    if exam_no:
+        parts.append(f"Exam ID: {exam_no}")
+    if student and student_id:
+        parts.append(f"Student: {student} ({student_id})")
+    elif student:
+        parts.append(f"Student: {student}")
+    elif student_id:
+        parts.append(f"Student ID: {student_id}")
+    return _join_detail_lines(parts)
+
+
+def _tis_exam_item_to_event(item: dict, start: datetime, end: datetime) -> dict[str, object] | None:
+    exam_date = _parse_tis_exam_date(item)
+    if exam_date is None:
+        return None
+
+    (start_hour, start_minute, start_second), (end_hour, end_minute, end_second) = _resolve_tis_exam_time_window(item)
+    ts = local_ymdhms_to_unix_sec(
+        exam_date.year,
+        exam_date.month,
+        exam_date.day,
+        start_hour,
+        start_minute,
+        start_second,
+    )
+    end_ts = local_ymdhms_to_unix_sec(
+        exam_date.year,
+        exam_date.month,
+        exam_date.day,
+        end_hour,
+        end_minute,
+        end_second,
+    )
+    if not _window_contains(ts, start, end):
+        return None
+
+    course_name = (
+        item.get("KCMC")
+        or item.get("KCMC_EN")
+        or item.get("courseName")
+        or item.get("name")
+        or item.get("KCDM")
+        or ""
+    )
+    exam_type = item.get("KSSJDMC") or item.get("KSSJDMC_EN") or "Exam"
+    title = f"{exam_type}: {course_name}" if course_name else str(exam_type)
+    return {
+        "time_": ts,
+        "end_time_": end_ts,
+        "event_name": title,
+        "detail": _build_tis_exam_detail(item),
+        "color": None,
+    }
+
+
+def _tis_exam_payload_to_events(payload: object, start: datetime, end: datetime) -> list[dict[str, object]]:
+    items = _extract_list_payload(
+        payload,
+        "list",
+        "data",
+        "items",
+        "rows",
+        "records",
+        "result",
+    )
+    events: list[dict[str, object]] = []
+    for item in items:
+        event = _tis_exam_item_to_event(item, start, end)
+        if event is not None:
+            events.append(event)
+    return events
+
+
 async def _replace_routines_from_bb(source: RoutineSource, db: AsyncSession) -> List[int]:
     user_name, pwd = await resolve_bb_credentials(None, None)
     if not user_name or not pwd:
@@ -1176,18 +1384,28 @@ async def _replace_routines_from_tis(source: RoutineSource, db: AsyncSession) ->
     start, end = _three_month_window()
     class_days_by_month: dict[tuple[int, int], set[date]] = {}
     try:
-        result = await fetch_tis_schedule_with_semester(login_result["session"])
-        for month_start in _month_start_window(_local_now().date()):
-            class_day_result = await fetch_tis_class_days(login_result["session"], month_start)
+        schedule_task = asyncio.create_task(fetch_tis_schedule_with_semester(login_result["session"]))
+        class_day_tasks = [
+            asyncio.create_task(fetch_tis_class_days(login_result["session"], month_start))
+            for month_start in _month_start_window(_local_now().date())
+        ]
+        result = await schedule_task
+        exam_task = asyncio.create_task(
+            fetch_tis_exams(login_result["session"], semester_info=result.get("semester"))
+        )
+        for class_day_result in await asyncio.gather(*class_day_tasks):
             if not class_day_result["success"]:
                 continue
             for month_key, days in _parse_tis_class_day_payload(class_day_result.get("data")).items():
                 class_days_by_month.setdefault(month_key, set()).update(days)
+        exam_result = await exam_task
     finally:
         await login_result["session"].close()
 
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
+    if not exam_result["success"]:
+        raise HTTPException(status_code=400, detail=exam_result["message"])
 
     events = _tis_payload_to_events(
         result.get("data"),
@@ -1195,6 +1413,7 @@ async def _replace_routines_from_tis(source: RoutineSource, db: AsyncSession) ->
         end,
         class_days_by_month or None,
     )
+    events.extend(_tis_exam_payload_to_events(exam_result.get("data"), start, end))
     return await _replace_source_routines(source, events, db)
 
 
