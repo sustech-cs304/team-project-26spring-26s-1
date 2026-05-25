@@ -12,6 +12,7 @@ from agent.api.skills_models import (
     MessageResponse,
     RegisterCaptchaRequest,
     RegisterRequest,
+    ResetPasswordRequest,
 )
 from agent.services.skills_auth_state import SkillsAuthState
 from agent.services.skills_hub_client import SkillsHubClient
@@ -85,6 +86,30 @@ async def register_user(
     return await _skills_client(request).request_json(
         "POST",
         "/auth/register",
+        json_body=body.model_dump(),
+    )
+
+
+@router.post("/auth/password/captcha")
+async def send_password_captcha(
+    body: RegisterCaptchaRequest,
+    request: Request,
+) -> Any:
+    return await _skills_client(request).request_json(
+        "POST",
+        "/auth/password/captcha",
+        json_body=body.model_dump(),
+    )
+
+
+@router.post("/auth/password/reset")
+async def reset_password(
+    body: ResetPasswordRequest,
+    request: Request,
+) -> Any:
+    return await _skills_client(request).request_json(
+        "POST",
+        "/auth/password/reset",
         json_body=body.model_dump(),
     )
 

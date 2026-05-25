@@ -34,5 +34,11 @@ class LoginRequest(BaseModel):
     password: str = Field(..., description="Password")
 
 
+class ResetPasswordRequest(BaseModel):
+    email: str = Field(..., description="Education email address")
+    newpassword: str = Field(..., description="New password")
+    verificationCode: str = Field(..., description="Verification code")
+
+
 class MessageResponse(BaseModel):
     message: str

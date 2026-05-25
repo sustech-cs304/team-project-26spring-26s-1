@@ -27,6 +27,8 @@ def test_current_fastapi_entrypoints_expose_key_backend_surfaces():
     expected = {
         "/api/auth/login": {"POST"},
         "/api/auth/me": {"GET"},
+        "/api/auth/password/captcha": {"POST"},
+        "/api/auth/password/reset": {"POST"},
         "/api/conversation": {"POST"},
         "/api/conversation/completion": {"POST"},
         "/api/conversations/": {"GET"},
@@ -64,8 +66,6 @@ def test_supplied_markdown_spec_stale_endpoints_are_not_current_fastapi_entrypoi
     spec = app.openapi()
 
     stale_or_external = {
-        "/api/auth/password/reset": "Spec lists password reset, current backend router does not expose it.",
-        "/api/auth/password/captcha": "Spec lists password captcha, current backend router does not expose it.",
         "/api/chat/icebreakers": "Spec lists icebreakers, current backend router does not expose it.",
     }
 
