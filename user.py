@@ -357,6 +357,16 @@ class LoginData(BaseModel):
     password: str
 
 
+class PasswordCaptchaData(BaseModel):
+    email: str
+
+
+class ResetPasswordData(BaseModel):
+    email: str
+    newpassword: str
+    verificationCode: str
+
+
 class SkillUploadData(BaseModel):
     tag_ids: list[int]
 
@@ -437,6 +447,66 @@ async def register(body: RegisterData, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "注册成功", "email": body.email}
+
+
+@app.post("/auth/password/captcha")
+async def send_password_captcha(body: PasswordCaptchaData, db: Session = Depends(get_db)):
+    email = body.email
+    if not is_valid_email(email):
+        raise HTTPException(status_code=400, detail="仅支持 .edu.cn 邮箱")
+
+    if not db.query(User).filter(User.email == email).first():
+        raise HTTPException(status_code=400, detail="邮箱未注册")
+
+    # 检查频率，与注册验证码保持一致
+    now = utc_now_naive()
+    fifteen_min_ago = now - timedelta(minutes=15)
+    existing = db.query(EmailVerification).filter(
+        EmailVerification.email == email,
+        EmailVerification.created_at > fifteen_min_ago
+    ).first()
+
+    if existing:
+        if existing.created_at > now - timedelta(minutes=1):
+            raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+        db.delete(existing)
+
+    code = generate_verification_code()
+    verification = EmailVerification(email=email, code=code)
+    db.add(verification)
+    db.commit()
+
+    send_verification_email(email, code)
+    return {"message": "验证码已发送"}
+
+
+@app.post("/auth/password/reset")
+async def reset_password(body: ResetPasswordData, db: Session = Depends(get_db)):
+    if not is_valid_email(body.email):
+        raise HTTPException(status_code=400, detail="仅支持 .edu.cn 邮箱")
+    if not is_valid_password(body.newpassword):
+        raise HTTPException(status_code=400, detail="密码需6-16位，包含字母和数字")
+
+    user = db.query(User).filter(User.email == body.email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="邮箱未注册")
+
+    # 验证验证码
+    fifteen_min_ago = utc_now_naive() - timedelta(minutes=15)
+    verification = db.query(EmailVerification).filter(
+        EmailVerification.email == body.email,
+        EmailVerification.code == body.verificationCode,
+        EmailVerification.created_at > fifteen_min_ago
+    ).order_by(EmailVerification.created_at.desc()).first()
+
+    if not verification:
+        raise HTTPException(status_code=422, detail="验证码无效或已过期")
+
+    db.delete(verification)
+    user.password = hash_password(body.newpassword)
+    db.commit()
+
+    return {"message": "密码重置成功"}
 
 
 @app.post("/auth/login")
