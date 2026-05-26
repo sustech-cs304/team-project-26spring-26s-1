@@ -1,5 +1,6 @@
 <template>
-    <div ref="rootEl" class="md-body" v-html="rendered" @click="handleCopy" />
+    <div ref="rootEl" class="md-body" v-html="rendered" @click="handleRootClick" />
+    <ImagePreviewer v-model="imagePreview.open" :src="imagePreview.src" :alt="imagePreview.alt" />
 </template>
 
 <script lang="ts">
@@ -12,9 +13,10 @@
     import markdownItKatex from '@vscode/markdown-it-katex'
     import DOMPurify from 'dompurify'
     import hljs from 'highlight.js'
+    import ImagePreviewer from '@/components/chat/ImagePreviewer.vue'
     import { copyText } from '@/utils/copyText'
     import { watchTheme } from '@/utils/theme'
-    import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+    import { ref, onMounted, onBeforeUnmount, computed, reactive } from 'vue'
     import xcodeCss from 'highlight.js/styles/xcode.css?inline'
     import atomOneDarkCss from 'highlight.js/styles/atom-one-dark.css?inline'
 
@@ -25,6 +27,11 @@
     }>()
 
     const rootEl = ref<HTMLElement | null>(null)
+    const imagePreview = reactive({
+        open: false,
+        src: '',
+        alt: '',
+    })
 
     // ── 主题管理（引用计数，多实例安全） ──
     const themeStyles = { light: xcodeCss, dark: atomOneDarkCss }
@@ -236,9 +243,26 @@
         })
     })
 
-    // 复制按钮：通过事件委托处理，无需手动绑定/解绑
-    const handleCopy = async (e: Event) => {
+    const openImagePreview = (img: HTMLImageElement) => {
+        const src = img.currentSrc || img.src
+        if (!src) return
+
+        imagePreview.src = src
+        imagePreview.alt = img.alt || img.title || ''
+        imagePreview.open = true
+    }
+
+    // 图片预览与复制按钮：通过事件委托处理，无需手动绑定/解绑
+    const handleRootClick = async (e: MouseEvent) => {
         const target = e.target as HTMLElement
+        const image = target.closest('img') as HTMLImageElement | null
+        if (image && rootEl.value?.contains(image)) {
+            e.preventDefault()
+            e.stopPropagation()
+            openImagePreview(image)
+            return
+        }
+
         const codeBtn = target.closest('.code-copy-btn')
         if (!codeBtn) return
 
@@ -278,6 +302,19 @@
 
     .md-body p:last-child {
         margin-bottom: 0;
+    }
+
+    .md-body img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        object-fit: contain;
+        border-radius: 8px;
+        cursor: zoom-in;
+    }
+
+    .md-body p > img:only-child {
+        margin: 0.5em 0;
     }
 
     /* ── 标题 ── */
