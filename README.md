@@ -113,7 +113,6 @@ telegram:
   token: ""
   superuser_ids: []
   command_trigger: /agent
-  message_trigger: /
 
 rag_cloud:
   base_url: ""

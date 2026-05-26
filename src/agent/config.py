@@ -84,7 +84,6 @@ class TelegramConfig(BaseModel):
     token: str = ""
     superuser_ids: list[str] = Field(default_factory=list)
     command_trigger: str = "/agent"
-    message_trigger: str = "/"
 
 class NotificationConfig(BaseModel):
     enabled: bool = True

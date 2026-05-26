@@ -1876,10 +1876,6 @@ components:
           default: /agent
           title: Command Trigger
           type: string
-        message_trigger:
-          default: /
-          title: Message Trigger
-          type: string
       title: TelegramConfig
       type: object
     NotificationConfig:
@@ -2146,10 +2142,6 @@ components:
         command_trigger:
           default: /agent
           title: Command Trigger
-          type: string
-        message_trigger:
-          default: /
-          title: Message Trigger
           type: string
       title: TelegramConfigPatch
       type: object

@@ -91,7 +91,11 @@ class TelegramBot(IMSessionController):
 
     @property
     def message_trigger(self) -> str:
-        return self._config.message_trigger
+        return ""
+
+    def extract_message_text(self, message_text: str) -> str | None:
+        message = message_text.strip()
+        return message or None
 
     def update_config(self, telegram_config: TelegramConfig):
         self._config = telegram_config.model_copy(deep=True)
