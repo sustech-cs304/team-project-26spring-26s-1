@@ -2,6 +2,7 @@ export type ThemePreference = 'system' | 'light' | 'dark'
 
 const THEME_STORAGE_KEY = 'opencrab:theme-preference'
 const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark']
+const THEME_CHANGE_EVENT = 'opencrab:theme-preference-change'
 
 function canUseLocalStorage () {
     return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
@@ -21,6 +22,13 @@ export function getStoredThemePreference (): ThemePreference {
 export function setStoredThemePreference (preference: ThemePreference) {
     if (!canUseLocalStorage()) return
     window.localStorage.setItem(THEME_STORAGE_KEY, preference)
+    window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: preference }))
+}
+
+function resolveThemePreference (preference: ThemePreference): boolean {
+    if (preference === 'dark') return true
+    if (preference === 'light') return false
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
 /**
@@ -29,20 +37,26 @@ export function setStoredThemePreference (preference: ThemePreference) {
  */
 export function watchTheme(callback: (isDark: boolean) => void): () => void {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const notify = () => callback(resolveThemePreference(getStoredThemePreference()))
     
     // 初始调用
-    callback(mediaQuery.matches)
+    notify()
     
     // 监听变化
-    const handler = (e: MediaQueryListEvent) => {
-        callback(e.matches)
+    const mediaHandler = () => {
+        if (getStoredThemePreference() === 'system') notify()
     }
+    const preferenceHandler = () => notify()
     
-    mediaQuery.addEventListener('change', handler)
+    mediaQuery.addEventListener('change', mediaHandler)
+    window.addEventListener(THEME_CHANGE_EVENT, preferenceHandler)
+    window.addEventListener('storage', preferenceHandler)
     
     // 返回取消监听的函数
     return () => {
-        mediaQuery.removeEventListener('change', handler)
+        mediaQuery.removeEventListener('change', mediaHandler)
+        window.removeEventListener(THEME_CHANGE_EVENT, preferenceHandler)
+        window.removeEventListener('storage', preferenceHandler)
     }
 }
 
@@ -50,5 +64,5 @@ export function watchTheme(callback: (isDark: boolean) => void): () => void {
  * 判断当前是否为深色模式
  */
 export const isDarkMode = (): boolean => {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
+    return resolveThemePreference(getStoredThemePreference())
 }

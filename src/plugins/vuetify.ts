@@ -6,6 +6,7 @@
 
 // Composables
 import { createVuetify } from 'vuetify'
+import { getStoredThemePreference } from '@/utils/theme'
 // Styles
 import '@mdi/font/css/materialdesignicons.css'
 
@@ -16,7 +17,7 @@ const lightSurface = '#EEEEEE'
 // https://vuetifyjs.com/en/introduction/why-vuetify/#feature-guides
 export default createVuetify({
   theme: {
-    defaultTheme: 'system',
+    defaultTheme: getStoredThemePreference(),
     themes: {
       light: {
         colors: {
