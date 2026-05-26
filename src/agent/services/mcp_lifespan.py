@@ -16,10 +16,46 @@ from agent.config import AppConfig, ConfigMissingError, MCPConfig, get_config, g
 log = logging.getLogger(__name__)
 
 
+MCP_TOOL_NAME_PREFIX = "mcp"
+
+
 def _normalize_token(token: str | None) -> str | None:
     if not token:
         return None
     return token
+
+
+def _safe_tool_name_part(value: str) -> str:
+    normalized = "".join(
+        char if char.isalnum() or char in {"_", "-"} else "_"
+        for char in value
+    ).strip("_")
+    return normalized or "unnamed"
+
+
+def _mcp_tool_name(server_name: str, tool_name: str) -> str:
+    return (
+        f"{MCP_TOOL_NAME_PREFIX}__"
+        f"{_safe_tool_name_part(server_name)}__"
+        f"{_safe_tool_name_part(tool_name)}"
+    )
+
+
+def _expose_mcp_tool(tool: BaseTool, server_name: str) -> BaseTool:
+    original_name = tool.name
+    tool.name = _mcp_tool_name(server_name, original_name)
+
+    description = (tool.description or "").strip()
+    if description:
+        tool.description = f"[MCP: {server_name}] {description}"
+    else:
+        tool.description = f"[MCP: {server_name}] Tool provided by an MCP server."
+
+    metadata = dict(tool.metadata or {})
+    metadata.setdefault("mcp_server", server_name)
+    metadata.setdefault("mcp_original_name", original_name)
+    tool.metadata = metadata
+    return tool
 
 
 @dataclass(frozen=True)
@@ -166,10 +202,11 @@ class _ManagedMCPServer:
 
     async def _load_tools(self) -> list[BaseTool]:
         session = await self._ensure_session()
-        return await load_mcp_tools(
+        tools = await load_mcp_tools(
             session,
             server_name=self.name,
         )
+        return [_expose_mcp_tool(tool, self.name) for tool in tools]
 
     async def get_tools(self) -> list[BaseTool]:
         async with self._lock:
