@@ -9,6 +9,7 @@ class ToolArtifact(TypedDict):
 
 from .code_interpreter import code_interpreter
 from .core_memory import core_memory_insert, core_memory_modify
+from .sleep import sleep
 from .routine_tools import (
     add_routine_event,
     delete_routine_events,
@@ -27,7 +28,7 @@ from .web_tools import webfetch, websearch
 from .quiz_card import quiz_card
 from .retrieve import retrieve_from_rag_db
 from .skills_tools import read_installed_skills
-from .subagent import create_subagent
+# from .subagent import create_subagent
 
 tools = [
     get_my_routine_events,
@@ -42,13 +43,14 @@ tools = [
     delete_scheduled_task,
     core_memory_insert,
     core_memory_modify,
+    sleep,
     code_interpreter,
     quiz_card,
     webfetch,
     websearch,
     retrieve_from_rag_db,
     read_installed_skills,
-    create_subagent,
+    # create_subagent,
 ]
 
 internal_tool_names = frozenset(tool.name for tool in tools)
