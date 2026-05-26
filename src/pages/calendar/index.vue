@@ -157,6 +157,17 @@
                             </v-sheet>
 
                             <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-bell-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Reminder</span>
+                                    <v-select v-model="eventDetailForm.informType" class="calendar-detail-field"
+                                        density="compact" variant="outlined" rounded="lg" hide-details
+                                        :items="calendarInformTypeOptions" item-title="title" item-value="value"
+                                        @update:model-value="saveSelectedEventDetail" />
+                                </v-sheet>
+                            </v-sheet>
+
+                            <v-sheet class="calendar-detail-property">
                                 <v-icon class="calendar-detail-property-icon" size="13">mdi-link-variant</v-icon>
                                 <v-sheet class="calendar-detail-property-content">
                                     <span class="calendar-detail-label">Link</span>
@@ -187,6 +198,13 @@
                                     <span class="calendar-detail-label">Time</span>
                                     <strong class="calendar-detail-value">{{ selectedEventDetail.date }} {{
                                         getEventDisplayTime(selectedEventDetail) || '-' }}</strong>
+                                </v-sheet>
+                            </v-sheet>
+                            <v-sheet class="calendar-detail-property">
+                                <v-icon class="calendar-detail-property-icon" size="13">mdi-bell-outline</v-icon>
+                                <v-sheet class="calendar-detail-property-content">
+                                    <span class="calendar-detail-label">Reminder</span>
+                                    <strong class="calendar-detail-value">{{ getCalendarInformTypeLabel(selectedEventDetail.informType) }}</strong>
                                 </v-sheet>
                             </v-sheet>
                             <v-sheet class="calendar-detail-property">
@@ -387,6 +405,17 @@
     const CALENDAR_MAX_WHEEL_STEPS_PER_FRAME = 6
     const CALENDAR_WHEEL_ACCUMULATOR_RESET_MS = 260
     const theme = useTheme()
+    const calendarInformTypeOptions = [
+        { title: 'No reminder', value: 'none' },
+        { title: 'At start', value: 'at_start' },
+        { title: '5 minutes before', value: '5_minutes_before' },
+        { title: '10 minutes before', value: '10_minutes_before' },
+        { title: '30 minutes before', value: '30_minutes_before' },
+        { title: '1 hour before', value: '1_hour_before' },
+    ] as const
+    const getCalendarInformTypeLabel = (informType: CalEvent['informType']) => (
+        calendarInformTypeOptions.find(option => option.value === (informType ?? 'none'))?.title ?? 'No reminder'
+    )
 
     interface CalendarPagePersistedState {
         viewStartDate: string
@@ -408,6 +437,7 @@
         location: string
         description: string
         link: string
+        informType: CalEvent['informType']
     }
 
     const startOfWeek = (input: Date) => {
@@ -459,6 +489,7 @@
         location: '',
         description: '',
         link: '',
+        informType: 'none',
     })
     const eventDetailSnapshot = ref('')
     const eventDetailSaving = ref(false)
@@ -1036,6 +1067,7 @@
         location: eventDetailForm.location.trim(),
         description: eventDetailForm.description.trim(),
         link: eventDetailForm.link.trim(),
+        informType: eventDetailForm.informType ?? 'none',
     })
 
     const syncEventDetailForm = (event: CalEvent | null) => {
@@ -1050,6 +1082,7 @@
                 location: '',
                 description: '',
                 link: '',
+                informType: 'none',
             })
             return
         }
@@ -1062,6 +1095,7 @@
             location: event.location ?? '',
             description: event.description ?? '',
             link: event.link ?? '',
+            informType: event.informType ?? 'none',
         })
         normalizeEventDetailTimeRange()
         eventDetailSnapshot.value = JSON.stringify(eventDetailFormPayload())
@@ -1131,7 +1165,7 @@
             location: payload.location,
             description: payload.description,
             link: payload.link,
-            informType: event.informType,
+            informType: payload.informType,
         }
 
         if (isDraftEvent(event)) {
@@ -1163,7 +1197,7 @@
                 location: payload.location,
                 description: payload.description,
                 link: payload.link,
-                informType: event.informType ?? 'none',
+                informType: payload.informType ?? 'none',
             }
 
             try {
