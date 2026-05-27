@@ -2,8 +2,11 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+import shutil
 import sys
 import tempfile
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from langchain.tools import tool
@@ -43,24 +46,6 @@ Provide JSON output like this:
 WORKSPACE_DIR = Path("./workspace")
 MAX_EXECUTION_OUTPUT_CHARS = 12000
 _ENV_VAR_CREDENTIAL_TYPE = "env_var"
-SUPPORTED_LANGUAGE_ALIASES = {
-    "py": "python",
-    "python": "python",
-    "python3": "python",
-    "bash": "bash",
-    "sh": "bash",
-    "shell": "bash",
-    "js": "javascript",
-    "javascript": "javascript",
-    "node": "javascript",
-    "nodejs": "javascript",
-}
-LANGUAGE_FILE_SUFFIXES = {
-    "python": ".py",
-    "bash": ".sh",
-    "javascript": ".js",
-}
-SUPPORTED_LANGUAGES = tuple(LANGUAGE_FILE_SUFFIXES)
 RISK_LEVEL_VALUES = {
     "Low": 0,
     "Medium": 1,
@@ -69,12 +54,111 @@ RISK_LEVEL_VALUES = {
 RiskLevel = Literal["Low", "Medium", "High"]
 
 
+@dataclass(frozen=True)
+class CodeInterpreterLanguage:
+    name: str
+    aliases: tuple[str, ...]
+    file_suffix: str
+    test: Callable[[], bool]
+    run: Callable[[str], Sequence[str]]
+
+
+def _python_available() -> bool:
+    return bool(sys.executable)
+
+
+def _python_command(script_path: str) -> Sequence[str]:
+    return [sys.executable, script_path]
+
+
+def _bash_available() -> bool:
+    return shutil.which("bash") is not None
+
+
+def _bash_command(script_path: str) -> Sequence[str]:
+    return ["bash", script_path]
+
+
+def _javascript_available() -> bool:
+    return shutil.which("node") is not None
+
+
+def _javascript_command(script_path: str) -> Sequence[str]:
+    return ["node", script_path]
+
+
+def _powershell_executable() -> str | None:
+    return shutil.which("pwsh") or shutil.which("powershell")
+
+
+def _powershell_available() -> bool:
+    return _powershell_executable() is not None
+
+
+def _powershell_command(script_path: str) -> Sequence[str]:
+    executable = _powershell_executable() or "pwsh"
+    return [
+        executable,
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        script_path,
+    ]
+
+
+CODE_INTERPRETER_LANGUAGES: tuple[CodeInterpreterLanguage, ...] = (
+    CodeInterpreterLanguage(
+        name="python",
+        aliases=("python", "python3", "py"),
+        file_suffix=".py",
+        test=_python_available,
+        run=_python_command,
+    ),
+    CodeInterpreterLanguage(
+        name="bash",
+        aliases=("bash", "sh", "shell"),
+        file_suffix=".sh",
+        test=_bash_available,
+        run=_bash_command,
+    ),
+    CodeInterpreterLanguage(
+        name="javascript",
+        aliases=("javascript", "js", "node", "nodejs"),
+        file_suffix=".js",
+        test=_javascript_available,
+        run=_javascript_command,
+    ),
+    CodeInterpreterLanguage(
+        name="powershell",
+        aliases=("powershell", "pwsh", "ps", "ps1"),
+        file_suffix=".ps1",
+        test=_powershell_available,
+        run=_powershell_command,
+    ),
+)
+SUPPORTED_LANGUAGE_ALIASES = {
+    alias: language.name
+    for language in CODE_INTERPRETER_LANGUAGES
+    for alias in language.aliases
+}
+LANGUAGE_FILE_SUFFIXES = {
+    language.name: language.file_suffix
+    for language in CODE_INTERPRETER_LANGUAGES
+}
+SUPPORTED_LANGUAGES = tuple(language.name for language in CODE_INTERPRETER_LANGUAGES)
+
+
 class CodeInterpreterInput(BaseModel):
     code: str = Field(min_length=1, description="Code to execute.")
     language: str | None = Field(
         default=None,
         min_length=1,
-        description="Execution language. Supported values: python, bash, javascript. Defaults to python when omitted.",
+        description=(
+            "Execution language. Defaults to python when omitted."
+        ),
     )
     timeout_s: float | None = Field(
         default=None,
@@ -113,18 +197,80 @@ def _truncate_output(output: str) -> str:
     )
 
 
+def _language_by_alias() -> dict[str, CodeInterpreterLanguage]:
+    languages: dict[str, CodeInterpreterLanguage] = {}
+    for language in CODE_INTERPRETER_LANGUAGES:
+        languages[language.name.lower()] = language
+        for alias in language.aliases:
+            languages[alias.lower()] = language
+    return languages
+
+
+def _resolve_language(language: str) -> CodeInterpreterLanguage | None:
+    return _language_by_alias().get(language.strip().lower())
+
+
 def _normalize_language(language: str) -> str | None:
-    return SUPPORTED_LANGUAGE_ALIASES.get(language.strip().lower())
+    resolved = _resolve_language(language)
+    return resolved.name if resolved is not None else None
 
 
 def _build_command(language: str, script_path: str) -> list[str]:
-    if language == "python":
-        return [sys.executable, script_path]
-    if language == "bash":
-        return ["bash", script_path]
-    if language == "javascript":
-        return ["node", script_path]
-    raise ValueError(f"Unsupported language: {language}")
+    resolved = _resolve_language(language)
+    if resolved is None:
+        raise ValueError(f"Unsupported language: {language}")
+    return list(resolved.run(script_path))
+
+
+def _is_language_available(language: CodeInterpreterLanguage) -> bool:
+    try:
+        return language.test()
+    except OSError:
+        log.debug("Language availability check failed for %s", language.name, exc_info=True)
+        return False
+
+
+def discover_available_languages() -> tuple[CodeInterpreterLanguage, ...]:
+    return tuple(
+        language
+        for language in CODE_INTERPRETER_LANGUAGES
+        if _is_language_available(language)
+    )
+
+
+def _format_language(language: CodeInterpreterLanguage) -> str:
+    aliases = ", ".join(language.aliases)
+    return f"{language.name} (aliases: {aliases})"
+
+
+def _format_languages(languages: Sequence[CodeInterpreterLanguage]) -> str:
+    if not languages:
+        return "none detected"
+    return "; ".join(_format_language(language) for language in languages)
+
+
+def _build_language_field_description(languages: Sequence[CodeInterpreterLanguage]) -> str:
+    return (
+        "Execution language. "
+        f"Available values on this platform: {_format_languages(languages)}. "
+        "Defaults to python when omitted."
+    )
+
+
+def _build_tool_description(languages: Sequence[CodeInterpreterLanguage]) -> str:
+    return (
+        "Execute code in a supported interpreter after a security review. "
+        f"Available languages on this platform: {_format_languages(languages)}. "
+        "Defaults to python when language is omitted."
+    )
+
+
+def discover_languages_and_update_tool_description() -> tuple[CodeInterpreterLanguage, ...]:
+    languages = discover_available_languages()
+    description = _build_tool_description(languages)
+    code_interpreter.description = description
+    CodeInterpreterInput.model_fields["language"].description = _build_language_field_description(languages)
+    return languages
 
 
 def _is_risk_level_allowed(threat_level: RiskLevel, max_risk_level: RiskLevel) -> bool:
@@ -163,13 +309,21 @@ async def _build_execution_env() -> dict[str, str]:
 
 
 async def _run_script(code: str, language: str, timeout_s: float) -> str:
+    language_runtime = _resolve_language(language)
+    if language_runtime is None:
+        return _truncate_output(f"Unable to execute unsupported language: {language}")
+    if not _is_language_available(language_runtime):
+        return _truncate_output(
+            f"Unable to execute {language_runtime.name} code because no interpreter is available on this platform."
+        )
+
     workspace_dir = WORKSPACE_DIR.resolve()
     workspace_dir.mkdir(parents=True, exist_ok=True)
 
     script_path = ""
     with tempfile.NamedTemporaryFile(
         mode="w",
-        suffix=LANGUAGE_FILE_SUFFIXES[language],
+        suffix=language_runtime.file_suffix,
         dir=workspace_dir,
         delete=False,
         encoding="utf-8",
@@ -187,7 +341,7 @@ async def _run_script(code: str, language: str, timeout_s: float) -> str:
         except EnvVaultAccessError as exc:
             return _truncate_output(f"Unable to execute {language} code because the credential store is unavailable: {exc}")
 
-        command = _build_command(language, str(script_path_obj))
+        command = list(language_runtime.run(str(script_path_obj)))
         try:
             process = await asyncio.create_subprocess_exec(
                 *command,
@@ -357,18 +511,25 @@ async def code_interpreter(
         return f"Error: {exc}", {"break_agent_loop": False}
 
     selected_language = language or "python"
-    resolved_language = _normalize_language(selected_language)
+    resolved_language = _resolve_language(selected_language)
     if resolved_language is None:
-        supported = ", ".join(SUPPORTED_LANGUAGES)
+        supported = _format_languages(discover_available_languages())
         return (
-            f"Error: Unsupported language '{selected_language}'. Supported languages: {supported}.",
+            f"Error: Unsupported language '{selected_language}'. Available languages: {supported}.",
+            {"break_agent_loop": False},
+        )
+    if not _is_language_available(resolved_language):
+        available = _format_languages(discover_available_languages())
+        return (
+            f"Error: Language '{resolved_language.name}' is supported but not available on this platform. "
+            f"Available languages: {available}.",
             {"break_agent_loop": False},
         )
 
     resolved_timeout_s = timeout_s if timeout_s is not None else interpreter_config.default_timeout_s
     state = cast(CodeInterpreterGraph, {
         "code": code,
-        "language": resolved_language,
+        "language": resolved_language.name,
         "timeout_s": resolved_timeout_s,
         "tool_call_id": runtime.tool_call_id or "",
     })
@@ -377,3 +538,6 @@ async def code_interpreter(
         "break_agent_loop": bool(result.get("break_agent_loop", False))
     }
     return result["execution_result"], artifact
+
+
+discover_languages_and_update_tool_description()
