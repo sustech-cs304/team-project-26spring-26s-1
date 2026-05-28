@@ -34,11 +34,6 @@ const summaryIcon = computed(() => {
     return 'mdi-lan-disconnect'
 })
 
-const summaryColor = computed(() => {
-    if (summaryState.value === 'healthy') return 'success'
-    return 'warning'
-})
-
 const hasEnabledServers = computed(() => enabledStatuses.value.length > 0)
 
 async function runMcpStatusCheck () {
@@ -93,7 +88,6 @@ export function useMcpStatus () {
         summaryState,
         summaryLabel,
         summaryIcon,
-        summaryColor,
         hasEnabledServers,
         isCheckingNow: readonly(isCheckingNow),
         startMcpStatusPolling,
