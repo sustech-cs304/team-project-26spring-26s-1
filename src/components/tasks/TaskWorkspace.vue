@@ -1,54 +1,56 @@
 <template>
     <v-layout class="task-workspace h-100 overflow-hidden min-height-0">
         <v-navigation-drawer v-model="drawer" permanent width="250" color="surface" floating class="task-sidebar min-height-0">
-            <template v-if="!taskSearchMode">
-                <v-list nav density="compact" class="pb-0">
-                    <v-list-item title="任务" rounded="lg" slim prepend-gap="6" :ripple="false"
-                        :active="currentView === 'tasks'" active-class="theme-active-list-item"
-                        @click="currentView = 'tasks'">
-                        <template #prepend>
-                            <v-icon size="small">mdi-format-list-bulleted-square</v-icon>
-                        </template>
-                    </v-list-item>
-                    <v-list-item title="搜索任务" rounded="lg" slim prepend-gap="6" :ripple="false" link
-                        @click="enterTaskSearchMode">
-                        <template #prepend>
-                            <v-icon size="small">mdi-text-box-search-outline</v-icon>
-                        </template>
-                    </v-list-item>
-                    <v-list-item title="环境变量" rounded="lg" slim prepend-gap="6" :ripple="false"
-                        :active="currentView === 'env-vars'" active-class="theme-active-list-item"
-                        @click="openEnvVars">
-                        <template #prepend>
-                            <v-icon size="small">mdi-key-outline</v-icon>
-                        </template>
-                    </v-list-item>
-                </v-list>
-            </template>
-            <div v-else class="px-2 py-2">
-                <v-text-field :model-value="search" placeholder="搜索任务" variant="solo-filled" flat
-                    density="compact" hide-details clearable autofocus prepend-inner-icon="mdi-magnify"
-                    rounded="lg" class="text-body-2"
-                    @update:model-value="handleSearchUpdate(String($event ?? ''))"
-                    @click:clear="exitTaskSearchMode" @keydown.esc="exitTaskSearchMode" />
-                <div class="d-flex justify-end mt-1">
-                    <v-btn size="x-small" variant="text" @click="exitTaskSearchMode">取消</v-btn>
+            <div class="task-sidebar-controls">
+                <template v-if="!taskSearchMode">
+                    <v-list nav density="compact" class="pb-0">
+                        <v-list-item title="任务" rounded="lg" slim prepend-gap="6" :ripple="false"
+                            :active="currentView === 'tasks'" active-class="theme-active-list-item"
+                            @click="currentView = 'tasks'">
+                            <template #prepend>
+                                <v-icon size="small">mdi-format-list-bulleted-square</v-icon>
+                            </template>
+                        </v-list-item>
+                        <v-list-item title="搜索任务" rounded="lg" slim prepend-gap="6" :ripple="false" link
+                            @click="enterTaskSearchMode">
+                            <template #prepend>
+                                <v-icon size="small">mdi-text-box-search-outline</v-icon>
+                            </template>
+                        </v-list-item>
+                        <v-list-item title="环境变量" rounded="lg" slim prepend-gap="6" :ripple="false"
+                            :active="currentView === 'env-vars'" active-class="theme-active-list-item"
+                            @click="openEnvVars">
+                            <template #prepend>
+                                <v-icon size="small">mdi-key-outline</v-icon>
+                            </template>
+                        </v-list-item>
+                    </v-list>
+                </template>
+                <div v-else class="px-2 py-2">
+                    <v-text-field :model-value="search" placeholder="搜索任务" variant="solo-filled" flat
+                        density="compact" hide-details clearable autofocus prepend-inner-icon="mdi-magnify"
+                        rounded="lg" class="text-body-2"
+                        @update:model-value="handleSearchUpdate(String($event ?? ''))"
+                        @click:clear="exitTaskSearchMode" @keydown.esc="exitTaskSearchMode" />
+                    <div class="d-flex justify-end mt-1">
+                        <v-btn size="x-small" variant="text" @click="exitTaskSearchMode">取消</v-btn>
+                    </div>
+                </div>
+
+                <div v-if="currentView === 'tasks'" class="d-flex align-center justify-space-between px-3 pt-2 pb-1">
+                    <v-card-subtitle class="pa-0 text-caption">
+                        {{ taskSearchMode ? '搜索结果' : '任务' }}
+                    </v-card-subtitle>
                 </div>
             </div>
 
-            <div v-if="currentView === 'tasks'" class="d-flex align-center justify-space-between px-3 pt-2 pb-1">
-                <v-card-subtitle class="pa-0 text-caption">
-                    {{ taskSearchMode ? '搜索结果' : '任务' }}
-                </v-card-subtitle>
-            </div>
-
-            <template v-if="currentView === 'tasks'">
+            <div v-if="currentView === 'tasks'" class="task-sidebar-scroll">
                 <TaskListPane :loading="loading" :search-mode="taskSearchMode" :search="search"
                     :status-filter="statusFilter" :status-filters="statusFilters" :tasks="filteredTasks"
                     :selected-task-id="selectedTaskId" @update:status-filter="statusFilter = $event as StatusFilter"
                     @select="selectTask" @edit="handleListEdit" @duplicate="handleListDuplicate"
                     @toggle-status="handleListToggleStatus" @delete="handleListDelete" />
-            </template>
+            </div>
         </v-navigation-drawer>
 
         <v-app-bar flat height="48" color="background" class="task-app-bar">
@@ -162,10 +164,17 @@
     import TaskEditorDialog from '@/components/tasks/TaskEditorDialog.vue'
     import TaskEnvVarsPane from '@/components/tasks/TaskEnvVarsPane.vue'
     import TaskListPane from '@/components/tasks/TaskListPane.vue'
+    import { useAppStore } from '@/stores/app'
     import { useRoute } from 'vue-router'
 
     const route = useRoute()
-    const drawer = ref(true)
+    const appStore = useAppStore()
+    const drawer = computed({
+        get: () => appStore.contentSidebarOpen,
+        set: (value: boolean) => {
+            appStore.contentSidebarOpen = value
+        },
+    })
     const currentView = ref<'tasks' | 'env-vars'>('tasks')
     const taskSearchMode = ref(false)
     const requestEnvVarDialog = ref(false)
@@ -362,6 +371,24 @@
 
     .task-sidebar {
         background: rgb(var(--v-theme-surface)) !important;
+    }
+
+    .task-sidebar :deep(.v-navigation-drawer__content) {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .task-sidebar-controls {
+        flex: 0 0 auto;
+    }
+
+    .task-sidebar-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
     }
 
     .task-app-bar {

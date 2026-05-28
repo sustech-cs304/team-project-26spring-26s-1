@@ -2,83 +2,87 @@
     <v-layout class="chat-layout h-100 overflow-hidden min-height-0">
 
         <!-- 对话列表侧边栏 -->
-        <v-navigation-drawer v-model="drawer" permanent width="250" class="min-height-0" floating>
-            <v-list nav density="compact" v-if="!searchMode" class="pb-0">
-                <!-- 新对话按钮 -->
-                <v-list-item title="新对话" @click="newConversation" link rounded="lg" slim prepend-gap="6"
-                    :ripple="false">
-                    <template #prepend>
-                        <v-icon size="small">mdi-chat-plus-outline</v-icon>
-                    </template>
-                </v-list-item>
-                <!-- 搜索对话按钮 -->
-                <v-list-item title="搜索对话历史" @click="enterSearchMode" link rounded="lg" slim prepend-gap="6"
-                    :ripple="false">
-                    <template #prepend>
-                        <v-icon size="small">mdi-text-box-search-outline</v-icon>
-                    </template>
-                </v-list-item>
-            </v-list>
+        <v-navigation-drawer v-model="drawer" permanent width="250" class="chat-sidebar min-height-0" floating>
+            <div class="chat-sidebar-controls">
+                <v-list nav density="compact" v-if="!searchMode" class="pb-0">
+                    <!-- 新对话按钮 -->
+                    <v-list-item title="新对话" @click="newConversation" link rounded="lg" slim prepend-gap="6"
+                        :ripple="false">
+                        <template #prepend>
+                            <v-icon size="small">mdi-chat-plus-outline</v-icon>
+                        </template>
+                    </v-list-item>
+                    <!-- 搜索对话按钮 -->
+                    <v-list-item title="搜索对话历史" @click="enterSearchMode" link rounded="lg" slim prepend-gap="6"
+                        :ripple="false">
+                        <template #prepend>
+                            <v-icon size="small">mdi-text-box-search-outline</v-icon>
+                        </template>
+                    </v-list-item>
+                </v-list>
 
-            <!-- 搜索框 -->
-            <div v-else class="px-2 py-2">
-                <v-text-field v-model="searchKeyword" placeholder="搜索" variant="solo-filled" flat density="compact"
-                    hide-details clearable autofocus prepend-inner-icon="mdi-magnify" @click:clear="exitSearchMode"
-                    @keydown.esc="exitSearchMode"></v-text-field>
-                <div class="d-flex justify-end mt-1">
-                    <v-btn size="x-small" variant="text" @click="exitSearchMode">取消</v-btn>
+                <!-- 搜索框 -->
+                <div v-else class="px-2 py-2">
+                    <v-text-field v-model="searchKeyword" placeholder="搜索" variant="solo-filled" flat density="compact"
+                        hide-details clearable autofocus prepend-inner-icon="mdi-magnify" @click:clear="exitSearchMode"
+                        @keydown.esc="exitSearchMode"></v-text-field>
+                    <div class="d-flex justify-end mt-1">
+                        <v-btn size="x-small" variant="text" @click="exitSearchMode">取消</v-btn>
+                    </div>
                 </div>
             </div>
 
-            <!-- Loading State -->
-            <div v-if="loading" class="d-flex justify-center py-4">
-                <v-progress-circular indeterminate size="24"></v-progress-circular>
-            </div>
+            <div class="chat-sidebar-scroll">
+                <!-- Loading State -->
+                <div v-if="loading" class="d-flex justify-center py-4">
+                    <v-progress-circular indeterminate size="24"></v-progress-circular>
+                </div>
 
-            <v-list nav density="compact" v-else-if="displayConversations.length > 0">
-                <v-list-item v-for="conv in displayConversations" :key="conv.conversation_id" :title="conv.title"
-                    :to="`/c/${conv.conversation_id}`" rounded="lg" slim prepend-gap="6" :ripple="false"
-                    class="conv-item" @contextmenu.prevent.stop="openConversationMenu(conv.conversation_id)">
-                    <template #prepend>
-                        <v-icon size="x-small" v-if="conv.is_pinned && !searchMode">mdi-pin</v-icon>
-                    </template>
-                    <template #append>
-                        <v-menu :model-value="conversationMenuId === conv.conversation_id"
-                            :close-on-content-click="true" location="end"
-                            @update:model-value="updateConversationMenu(conv.conversation_id, $event)">
-                            <template #activator="{ props: menuProps }">
-                                <v-btn v-bind="menuProps" icon="mdi-dots-vertical" size="x-small" variant="text"
-                                    :ripple="false" class="conv-menu-btn" @click.prevent.stop />
-                            </template>
-                            <v-list density="compact" min-width="120" nav slim tile>
-                                <v-list-item slim density="compact" :title="conv.is_pinned ? '取消置顶' : '置顶'"
-                                    @click="handleTogglePin(conv)">
-                                    <template #prepend>
-                                        <v-icon size="x-small">{{ conv.is_pinned ? 'mdi-pin-off-outline' :
-                                            'mdi-pin-outline' }}</v-icon>
-                                    </template>
-                                </v-list-item>
-                                <v-list-item title="重命名" slim density="compact" @click="handleRename(conv)" height="10">
-                                    <template #prepend>
-                                        <v-icon size="x-small">mdi-pencil-outline</v-icon>
-                                    </template>
-                                </v-list-item>
-                                <v-divider />
-                                <v-list-item slim density="compact" title="删除" base-color="error"
-                                    @click="handleDelete(conv)">
-                                    <template #prepend>
-                                        <v-icon size="x-small">mdi-delete-outline</v-icon>
-                                    </template>
-                                </v-list-item>
-                            </v-list>
-                        </v-menu>
-                    </template>
-                </v-list-item>
-            </v-list>
+                <v-list nav density="compact" v-else-if="displayConversations.length > 0">
+                    <v-list-item v-for="conv in displayConversations" :key="conv.conversation_id" :title="conv.title"
+                        :to="`/c/${conv.conversation_id}`" rounded="lg" slim prepend-gap="6" :ripple="false"
+                        class="conv-item" @contextmenu.prevent.stop="openConversationMenu(conv.conversation_id)">
+                        <template #prepend>
+                            <v-icon size="x-small" v-if="conv.is_pinned && !searchMode">mdi-pin</v-icon>
+                        </template>
+                        <template #append>
+                            <v-menu :model-value="conversationMenuId === conv.conversation_id"
+                                :close-on-content-click="true" location="end"
+                                @update:model-value="updateConversationMenu(conv.conversation_id, $event)">
+                                <template #activator="{ props: menuProps }">
+                                    <v-btn v-bind="menuProps" icon="mdi-dots-vertical" size="x-small" variant="text"
+                                        :ripple="false" class="conv-menu-btn" @click.prevent.stop />
+                                </template>
+                                <v-list density="compact" min-width="120" nav slim tile>
+                                    <v-list-item slim density="compact" :title="conv.is_pinned ? '取消置顶' : '置顶'"
+                                        @click="handleTogglePin(conv)">
+                                        <template #prepend>
+                                            <v-icon size="x-small">{{ conv.is_pinned ? 'mdi-pin-off-outline' :
+                                                'mdi-pin-outline' }}</v-icon>
+                                        </template>
+                                    </v-list-item>
+                                    <v-list-item title="重命名" slim density="compact" @click="handleRename(conv)" height="10">
+                                        <template #prepend>
+                                            <v-icon size="x-small">mdi-pencil-outline</v-icon>
+                                        </template>
+                                    </v-list-item>
+                                    <v-divider />
+                                    <v-list-item slim density="compact" title="删除" base-color="error"
+                                        @click="handleDelete(conv)">
+                                        <template #prepend>
+                                            <v-icon size="x-small">mdi-delete-outline</v-icon>
+                                        </template>
+                                    </v-list-item>
+                                </v-list>
+                            </v-menu>
+                        </template>
+                    </v-list-item>
+                </v-list>
 
-            <!-- Empty State -->
-            <div v-else class="text-center py-4 text-body-medium opacity-70">
-                {{ searchMode ? '未找到相关对话' : '暂无对话' }}
+                <!-- Empty State -->
+                <div v-else class="text-center py-4 text-body-medium opacity-70">
+                    {{ searchMode ? '未找到相关对话' : '暂无对话' }}
+                </div>
             </div>
 
             <!-- 重命名对话框 -->
@@ -178,7 +182,12 @@
     const router = useRouter()
     const route = useRoute()
     const appStore = useAppStore()
-    const drawer = ref(true)
+    const drawer = computed({
+        get: () => appStore.contentSidebarOpen,
+        set: (value: boolean) => {
+            appStore.contentSidebarOpen = value
+        },
+    })
     const loading = ref(false)
     const conversationMenuId = ref<string | null>(null)
     const deleteDialog = ref(false)
@@ -521,6 +530,24 @@
     .chat-layout {
         --chat-content-radius: 8px;
         background: rgb(var(--v-theme-surface));
+    }
+
+    .chat-sidebar :deep(.v-navigation-drawer__content) {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .chat-sidebar-controls {
+        flex: 0 0 auto;
+    }
+
+    .chat-sidebar-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
     }
 
     .chat-route-main {
