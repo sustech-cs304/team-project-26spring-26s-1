@@ -1,5 +1,5 @@
 <template>
-    <v-layout class="h-100 overflow-hidden min-height-0 bg-surface">
+    <v-layout class="settings-layout h-100 overflow-hidden min-height-0 bg-surface">
         <v-navigation-drawer permanent width="250" color="surface" floating class="min-height-0">
             <v-list density="compact" class="pa-2" nav>
                 <v-list-item v-for="tab in tabs" :key="tab.id" :prepend-icon="tab.icon" :title="tab.label"
@@ -8,18 +8,8 @@
             </v-list>
         </v-navigation-drawer>
 
-        <v-app-bar flat height="48" color="background" rounded="ts-lg">
-            <template #prepend>
-                <v-icon size="18" class="ml-3">{{ activeTabMeta.icon }}</v-icon>
-            </template>
-
-            <v-app-bar-title class="text-center text-body-2 font-weight-bold">
-                {{ activeTabMeta.label }}
-            </v-app-bar-title>
-        </v-app-bar>
-
-        <v-main class="h-100 overflow-hidden min-height-0 bg-background rounded-bs-lg">
-            <v-sheet color="background" height="100%" class="overflow-y-auto">
+        <v-main class="settings-main h-100 overflow-hidden min-height-0">
+            <v-sheet color="background" height="100%" class="settings-content-panel overflow-y-auto">
                 <v-sheet color="transparent" max-width="720" width="100%" class="mx-auto pa-4 pb-8">
                     <template v-if="isConfigTab(activeTab)">
 
@@ -54,7 +44,20 @@
                             <div class="mb-2">
                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
                                     <div class="text-body-1 font-weight-bold">Primary Model</div>
-                                    <v-chip size="x-small" variant="tonal">{{ modelConfig.agent.provider }}</v-chip>
+                                    <v-menu location="bottom end">
+                                        <template #activator="{ props }">
+                                            <v-chip v-bind="props" size="x-small" variant="tonal" append-icon="mdi-menu-down">
+                                                {{ modelConfig.agent.provider }}
+                                            </v-chip>
+                                        </template>
+                                        <v-list density="compact" rounded="lg">
+                                            <v-list-item v-for="provider in llmProviders" :key="`agent-${provider}`"
+                                                :active="modelConfig.agent.provider === provider"
+                                                @click="setModelProvider('agent', provider)">
+                                                <v-list-item-title>{{ provider }}</v-list-item-title>
+                                            </v-list-item>
+                                        </v-list>
+                                    </v-menu>
                                 </div>
                                 <v-row density="compact" class="my-n1">
                                     <v-col cols="12" class="py-1">
@@ -102,7 +105,20 @@
                             <div class="mb-2">
                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
                                     <div class="text-body-1 font-weight-bold">Utility Model</div>
-                                    <v-chip size="x-small" variant="tonal">{{ modelConfig.utility.provider }}</v-chip>
+                                    <v-menu location="bottom end">
+                                        <template #activator="{ props }">
+                                            <v-chip v-bind="props" size="x-small" variant="tonal" append-icon="mdi-menu-down">
+                                                {{ modelConfig.utility.provider }}
+                                            </v-chip>
+                                        </template>
+                                        <v-list density="compact" rounded="lg">
+                                            <v-list-item v-for="provider in llmProviders" :key="`utility-${provider}`"
+                                                :active="modelConfig.utility.provider === provider"
+                                                @click="setModelProvider('utility', provider)">
+                                                <v-list-item-title>{{ provider }}</v-list-item-title>
+                                            </v-list-item>
+                                        </v-list>
+                                    </v-menu>
                                 </div>
                                 <v-row density="compact" class="my-n1">
                                     <v-col cols="12" class="py-1">
@@ -463,7 +479,7 @@
 
                         <div v-else-if="activeTab === 'onebot'">
                             <div class="text-body-1 font-weight-bold">OneBot</div>
-                            <div class="text-body-2 text-medium-emphasis mb-6">
+                            <div class="text-body-2 text-medium-emphasis mb-4">
                                 Edit the backend-managed OneBot token and superuser list.
                             </div>
 
@@ -497,7 +513,7 @@
 
                         <div v-else-if="activeTab === 'telegram'">
                             <div class="text-body-1 font-weight-bold">Telegram</div>
-                            <div class="text-body-2 text-medium-emphasis mb-6">
+                            <div class="text-body-2 text-medium-emphasis mb-4">
                                 Edit the backend-managed Telegram bot token and superuser list.
                             </div>
 
@@ -560,7 +576,7 @@
 
                     <div v-else-if="activeTab === 'appearance'">
                         <div class="text-body-1 font-weight-bold">Appearance</div>
-                        <div class="text-body-2 text-medium-emphasis mb-6">
+                        <div class="text-body-2 text-medium-emphasis mb-4">
                             Customize the look and feel of the application.
                         </div>
 
@@ -741,7 +757,7 @@
     import { patchCas } from '@/api/cas'
     import { getConfig, patchConfig, type AppConfig, type ASREndpointConfig, type DeepPartial, type EmbedEndpointConfig, type FileConfig, type LLMEndpointConfig, type LLMProviderType, type MCPConfig, type RerankerEndpointConfig } from '@/api/config'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
-    import { requestOpenAIModels } from '@/composables/useOpenAIModelTools'
+    import { requestAnthropicModels, requestOpenAIModels, testChatModelConnection } from '@/composables/useOpenAIModelTools'
     import { baseURL, getDefaultBaseURLIsCloud, setDefaultBaseURLIsCloud } from '@/utils/http'
     import { useRoute } from 'vue-router'
     import { useTheme } from 'vuetify'
@@ -763,6 +779,7 @@
     type NoticeColor = 'success' | 'error' | 'warning'
     type NotificationKey = 'taskComplete' | 'taskFailed' | 'calendarReminder'
     type OpenAIProviderKey = 'agent' | 'utility' | 'embed' | 'rerank'
+    type LLMModelKey = 'agent' | 'utility'
     type ServiceToolKey = 'asr' | 'mineru'
     type McpTransport = 'http' | 'stdio'
 
@@ -802,13 +819,14 @@
         { id: 'credentials', icon: 'mdi-shield-check', label: 'Credential Vault' },
         { id: 'appearance', icon: 'mdi-palette-outline', label: 'Appearance' },
         { id: 'notifications', icon: 'mdi-bell-outline', label: 'Notifications' },
-        { id: 'preferences', icon: 'mdi-wrench-outline', label: 'System Preferences' },
         { id: 'developer', icon: 'mdi-code-braces', label: 'Developer' },
     ]
 
     const activeTabMeta = computed(() =>
         tabs.find(tab => tab.id === activeTab.value) ?? tabs[0]!
     )
+
+    const llmProviders: LLMProviderType[] = ['OpenAI', 'Qwen', 'Anthropic']
 
     watch(
         () => route.query.tab,
@@ -1168,12 +1186,19 @@
         return retrievalConfig[key]
     }
 
+    function setModelProvider (key: LLMModelKey, provider: LLMProviderType) {
+        modelConfig[key].provider = provider
+        modelOptions[key] = []
+    }
+
     async function fetchProviderModels (key: OpenAIProviderKey) {
         const loadingKey = `${key}List` as const
         modelToolLoading[loadingKey] = true
 
         try {
-            const models = await requestOpenAIModels(getOpenAIProviderDraft(key), getOpenAIProviderLabel(key))
+            const models = (key === 'agent' || key === 'utility') && modelConfig[key].provider === 'Anthropic'
+                ? await requestAnthropicModels(modelConfig[key], getOpenAIProviderLabel(key))
+                : await requestOpenAIModels(getOpenAIProviderDraft(key), getOpenAIProviderLabel(key))
             modelOptions[key] = models
             if (!models.length) {
                 showNotice(`${getOpenAIProviderLabel(key)} connected, but no model list was returned.`, 'warning')
@@ -1192,7 +1217,11 @@
         modelToolLoading[loadingKey] = true
 
         try {
-            await requestOpenAIModels(getOpenAIProviderDraft(key), getOpenAIProviderLabel(key))
+            if (key === 'agent' || key === 'utility') {
+                await testChatModelConnection(modelConfig[key], getOpenAIProviderLabel(key))
+            } else {
+                await requestOpenAIModels(getOpenAIProviderDraft(key), getOpenAIProviderLabel(key))
+            }
             showNotice(`${getOpenAIProviderLabel(key)} connection looks good.`)
         } catch (error) {
             showNotice(getErrorMessage(error, 'Connection test failed.'), 'error')
@@ -1299,12 +1328,14 @@
 
         saveServiceConfig({
             agent: {
+                provider: modelConfig.agent.provider,
                 baseUrl: modelConfig.agent.baseUrl,
                 apiKey: modelConfig.agent.apiKey,
                 model: modelConfig.agent.model,
                 maxTokenCount: modelConfig.agent.maxTokenCount,
             },
             utility: {
+                provider: modelConfig.utility.provider,
                 baseUrl: modelConfig.utility.baseUrl,
                 apiKey: modelConfig.utility.apiKey,
                 model: modelConfig.utility.model,
@@ -1711,3 +1742,19 @@
         cleanupShortcutCapture()
     })
 </script>
+
+<style scoped>
+    .settings-layout {
+        --settings-content-radius: 8px;
+    }
+
+    .settings-main {
+        background: transparent;
+    }
+
+    .settings-content-panel {
+        border-top-left-radius: var(--settings-content-radius);
+        border-bottom-left-radius: var(--settings-content-radius);
+        overflow: hidden;
+    }
+</style>

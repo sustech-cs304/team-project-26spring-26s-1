@@ -30,7 +30,10 @@ export interface CampusAuthConfig {
     password: string
 }
 
+export type ModelProviderType = 'OpenAI' | 'Qwen' | 'Anthropic'
+
 export interface ModelEndpointConfig {
+    provider: ModelProviderType
     baseUrl: string
     apiKey: string
     model: string
@@ -96,6 +99,7 @@ const defaultCampusAuth = (): CampusAuthConfig => ({
 })
 
 const defaultModelEndpoint = (): ModelEndpointConfig => ({
+    provider: 'OpenAI',
     baseUrl: '',
     apiKey: '',
     model: '',

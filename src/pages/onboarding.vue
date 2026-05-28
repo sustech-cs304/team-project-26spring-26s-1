@@ -178,7 +178,22 @@
                                             <div>
                                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
                                                     <div class="text-subtitle-2 font-weight-bold">日常聊天模型</div>
-                                                    <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
+                                                    <v-menu location="bottom end">
+                                                        <template #activator="{ props }">
+                                                            <v-chip v-bind="props" size="x-small" variant="tonal"
+                                                                append-icon="mdi-menu-down">
+                                                                {{ serviceConfig.agent.provider }}
+                                                            </v-chip>
+                                                        </template>
+                                                        <v-list density="compact" rounded="lg">
+                                                            <v-list-item v-for="provider in llmProviders"
+                                                                :key="`agent-${provider}`"
+                                                                :active="serviceConfig.agent.provider === provider"
+                                                                @click="setModelProvider('agent', provider)">
+                                                                <v-list-item-title>{{ provider }}</v-list-item-title>
+                                                            </v-list-item>
+                                                        </v-list>
+                                                    </v-menu>
                                                 </div>
                                                 <v-row density="compact" class="my-n1">
                                                     <v-col cols="12" class="py-1">
@@ -230,7 +245,22 @@
                                             <div>
                                                 <div class="d-flex align-center justify-space-between ga-2 mb-1">
                                                     <div class="text-subtitle-2 font-weight-bold">轻量任务模型</div>
-                                                    <v-chip size="x-small" variant="tonal">OpenAI</v-chip>
+                                                    <v-menu location="bottom end">
+                                                        <template #activator="{ props }">
+                                                            <v-chip v-bind="props" size="x-small" variant="tonal"
+                                                                append-icon="mdi-menu-down">
+                                                                {{ serviceConfig.utility.provider }}
+                                                            </v-chip>
+                                                        </template>
+                                                        <v-list density="compact" rounded="lg">
+                                                            <v-list-item v-for="provider in llmProviders"
+                                                                :key="`utility-${provider}`"
+                                                                :active="serviceConfig.utility.provider === provider"
+                                                                @click="setModelProvider('utility', provider)">
+                                                                <v-list-item-title>{{ provider }}</v-list-item-title>
+                                                            </v-list-item>
+                                                        </v-list>
+                                                    </v-menu>
                                                 </div>
                                                 <v-row density="compact" class="my-n1">
                                                     <v-col cols="12" class="py-1">
@@ -575,11 +605,11 @@
     import confetti from 'canvas-confetti'
     import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
     import { patchCas } from '@/api/cas'
-    import { patchConfig, type AppConfig, type DeepPartial } from '@/api/config'
+    import { getConfig, patchConfig, type AppConfig, type DeepPartial, type LLMProviderType } from '@/api/config'
     import { updateProfile as updateUserProfileBackend, writeProfile as writeUserProfileBackend } from '@/api/profile'
     import { defaultRagSyncState, getApiErrorMessage, getRagSyncStatus, triggerRagSync, type RagSyncState } from '@/api/rag'
     import { useOnboardingConfig } from '@/composables/useOnboardingConfig'
-    import { requestOpenAIModels } from '@/composables/useOpenAIModelTools'
+    import { requestAnthropicModels, requestOpenAIModels, testChatModelConnection } from '@/composables/useOpenAIModelTools'
 
     type StepKey = 'welcome' | 'profile' | 'identity' | 'campus' | 'model' | 'retrieval' | 'services' | 'knowledge' | 'finish'
     type ModelEndpointRole = 'agent' | 'utility'
@@ -610,6 +640,7 @@
         { label: '研究生', value: 'graduate' },
     ]
     const majorOptions = [{ label: 'Computer Science', value: 'cs' }]
+    const llmProviders: LLMProviderType[] = ['OpenAI', 'Qwen', 'Anthropic']
     const router = useRouter()
     const route = useRoute()
     const {
@@ -782,8 +813,14 @@
         return role === 'agent' ? '日常聊天模型' : '轻量任务模型'
     }
 
+    function setModelProvider (role: ModelEndpointRole, provider: LLMProviderType) {
+        serviceConfig[role].provider = provider
+        modelOptions[role] = []
+    }
+
     async function requestProviderModels (role: ModelEndpointRole) {
         const target = serviceConfig[role]
+        if (target.provider === 'Anthropic') return requestAnthropicModels(target, getModelEndpointLabel(role))
         return requestOpenAIModels(target, getModelEndpointLabel(role))
     }
 
@@ -811,7 +848,7 @@
         modelLoading[loadingKey] = true
 
         try {
-            await requestProviderModels(role)
+            await testChatModelConnection(serviceConfig[role], getModelEndpointLabel(role))
             showNotice(`${getModelEndpointLabel(role)}连接正常`)
         } catch (error) {
             showNotice(error instanceof Error ? error.message : '连接测试失败', 'error')
@@ -887,18 +924,65 @@
         }
     }
 
+    function applyBackendServiceConfig (config: AppConfig) {
+        saveServiceConfig({
+            agent: {
+                provider: config.api.agent.type,
+                baseUrl: config.api.agent.base_url || '',
+                apiKey: config.api.agent.api_key || '',
+                model: config.api.agent.model || '',
+                maxTokenCount: config.api.agent.max_token_count || 128000,
+            },
+            utility: {
+                provider: config.api.utility.type,
+                baseUrl: config.api.utility.base_url || '',
+                apiKey: config.api.utility.api_key || '',
+                model: config.api.utility.model || '',
+                maxTokenCount: config.api.utility.max_token_count || 128000,
+            },
+            embed: {
+                baseUrl: config.api.embed.base_url || '',
+                apiKey: config.api.embed.api_key || '',
+                model: config.api.embed.model || '',
+                dims: config.api.embed.dims || 1536,
+            },
+            rerank: {
+                baseUrl: config.api.rerank.base_url || '',
+                apiKey: config.api.rerank.api_key || '',
+                model: config.api.rerank.model || '',
+            },
+            asr: {
+                baseUrl: config.api.asr.base_url || '',
+                apiKey: config.api.asr.api_key || '',
+            },
+            mineru: {
+                baseUrl: config.file?.mineru?.base_url || '',
+                apiKey: config.file?.mineru?.api_key || '',
+            },
+        })
+    }
+
+    async function hydrateServiceConfigFromBackend () {
+        try {
+            const config = await getConfig()
+            applyBackendServiceConfig(config)
+        } catch {
+            // Onboarding can still proceed with local drafts when backend config is unavailable.
+        }
+    }
+
     function buildServiceConfigPatch (): DeepPartial<AppConfig> {
         return {
             api: {
                 agent: {
-                    type: 'OpenAI',
+                    type: serviceConfig.agent.provider,
                     base_url: serviceConfig.agent.baseUrl.trim(),
                     api_key: serviceConfig.agent.apiKey.trim(),
                     model: serviceConfig.agent.model.trim(),
                     max_token_count: serviceConfig.agent.maxTokenCount,
                 },
                 utility: {
-                    type: 'OpenAI',
+                    type: serviceConfig.utility.provider,
                     base_url: serviceConfig.utility.baseUrl.trim(),
                     api_key: serviceConfig.utility.apiKey.trim(),
                     model: serviceConfig.utility.model.trim(),
@@ -1169,6 +1253,7 @@
     })
 
     onMounted(() => {
+        void hydrateServiceConfigFromBackend()
         void pollKnowledgeStatus({ silent: true })
     })
 
