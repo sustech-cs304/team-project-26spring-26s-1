@@ -16,6 +16,15 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  if (to.path === '/') {
+    return {
+      path: '/c/',
+      query: to.query,
+      hash: to.hash,
+      replace: true,
+    }
+  }
+
   const publicPrefixes = ['/onboarding', '/auth']
   const isPublicRoute = publicPrefixes.some(prefix => to.path.startsWith(prefix))
   if (isPublicRoute) return true
