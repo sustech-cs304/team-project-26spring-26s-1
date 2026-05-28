@@ -4,7 +4,7 @@
             <FilePreview v-if="attachments.length" v-model="attachments" class="py-2" />
             <v-textarea ref="textareaRef" :model-value="modelValue"
                 :class="['message-textarea', { 'message-textarea--with-files': attachments.length > 0 }]"
-                @update:model-value="emit('update:modelValue', $event)"
+                @update:model-value="handleModelUpdate"
                 :placeholder="disabled ? '请先处理待审批的操作…' : '发送消息（Enter 发送，Shift + Enter 换行）'" variant="plain" rows="1"
                 auto-grow max-rows="6" hide-details :disabled="disabled" @keydown="onTextareaKeydown"
                 @compositionstart="onCompositionStart" @compositionend="onCompositionEnd" @paste="onPaste">
@@ -71,6 +71,7 @@
     const attachments = ref<AttachmentFile[]>([])
     const fileInput = ref<HTMLInputElement | null>(null)
     const textareaRef = ref<{ $el: HTMLElement } | null>(null)
+    const TEXTAREA_MAX_ROWS = 6
 
     // ── Snackbar ─────────────────────────
     const snackbar = reactive({
@@ -107,6 +108,35 @@
         if (target.closest('button, input, a, [role="button"]')) return
         const textarea = textareaRef.value?.$el?.querySelector('textarea')
         textarea?.focus()
+    }
+
+    const getTextareaElement = () =>
+        textareaRef.value?.$el?.querySelector('textarea') ?? null
+
+    const resizeTextarea = () => {
+        const textarea = getTextareaElement()
+        if (!textarea) return
+
+        textarea.style.height = 'auto'
+
+        const style = window.getComputedStyle(textarea)
+        const lineHeight = Number.parseFloat(style.lineHeight) || 24
+        const paddingTop = Number.parseFloat(style.paddingTop) || 0
+        const paddingBottom = Number.parseFloat(style.paddingBottom) || 0
+        const maxHeight = (lineHeight * TEXTAREA_MAX_ROWS) + paddingTop + paddingBottom
+        const nextHeight = Math.min(textarea.scrollHeight, maxHeight)
+
+        textarea.style.height = `${nextHeight}px`
+        textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden'
+    }
+
+    const scheduleResizeTextarea = () => {
+        void nextTick(resizeTextarea)
+    }
+
+    const handleModelUpdate = (value: string) => {
+        emit('update:modelValue', value)
+        scheduleResizeTextarea()
     }
 
     const hasContent = computed(() =>
@@ -280,6 +310,9 @@
         attachments.value = []
     }
 
+    watch(() => props.modelValue, scheduleResizeTextarea)
+    onMounted(scheduleResizeTextarea)
+
     defineExpose({ addFiles, getAttachmentsSnapshot, clearAttachments })
 </script>
 
@@ -303,5 +336,7 @@
 
     .message-textarea :deep(textarea.v-field__input) {
         line-height: 1.5;
+        overflow-y: hidden;
+        resize: none;
     }
 </style>
