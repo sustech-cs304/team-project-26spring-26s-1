@@ -6,6 +6,8 @@ type BackendHealthStatus = 'checking' | 'online' | 'offline'
 const POLL_INTERVAL_MS = 3000
 const DISCONNECT_TIMEOUT_MS = 60000
 const TIP_INTERVAL_MS = 2600
+const shouldSkipBackendHealthCheck = import.meta.env.MODE === 'tauri-dev'
+    || import.meta.env.VITE_SKIP_BACKEND_HEALTH_CHECK === 'true'
 
 const tips = [
     'OpenCrab 正在启动，第一次见面可能会多花几秒。',
@@ -16,12 +18,12 @@ const tips = [
     '小蟹正在确认一切准备妥当，马上回来。',
 ]
 
-const status = ref<BackendHealthStatus>('checking')
+const status = ref<BackendHealthStatus>(shouldSkipBackendHealthCheck ? 'online' : 'checking')
 const disconnectedSince = ref(Date.now())
 const now = ref(Date.now())
 const tipIndex = ref(0)
 const isCheckingNow = ref(false)
-const hasConnectedOnce = ref(false)
+const hasConnectedOnce = ref(shouldSkipBackendHealthCheck)
 
 let pollTimer: ReturnType<typeof window.setInterval> | null = null
 let clockTimer: ReturnType<typeof window.setInterval> | null = null
@@ -95,6 +97,12 @@ async function runHealthCheck () {
 }
 
 function startBackendHealthPolling () {
+    if (shouldSkipBackendHealthCheck) {
+        status.value = 'online'
+        hasConnectedOnce.value = true
+        return
+    }
+
     if (!browserEventsStarted) {
         window.addEventListener('online', () => {
             void runHealthCheck()
@@ -133,6 +141,8 @@ function startBackendHealthPolling () {
 }
 
 function retryBackendHealthCheck () {
+    if (shouldSkipBackendHealthCheck) return
+
     disconnectedSince.value = Date.now()
     now.value = Date.now()
     tipIndex.value = 0

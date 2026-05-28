@@ -546,6 +546,11 @@ fn start_backend_sidecar(app: &AppHandle) -> Result<(), String> {
 }
 
 fn start_backend_sidecar_in_background(app: AppHandle) {
+    if cfg!(debug_assertions) {
+        log::info!("skipping backend sidecar autostart in debug build");
+        return;
+    }
+
     thread::spawn(move || {
         if let Err(err) = start_backend_sidecar(&app) {
             log::warn!("backend autostart disabled: {err}");
